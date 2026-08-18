@@ -258,19 +258,23 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
               {activeDataset ? (
                 <div className="flex items-center gap-1.5 text-[10px] text-slate-400 font-medium mt-0.5">
                   <Database className="w-3.5 h-3.5 text-blue-400 shrink-0" />
-                  <span className="truncate max-w-[150px] font-bold text-slate-300">
+                  <span className={`truncate max-w-[150px] font-bold ${isDark ? "text-slate-300" : "text-slate-700"}`}>
                     {activeDataset.dataset_name || activeDataset.original_filename}
                   </span>
                   {(activeDataset.academic_label || activePeriodLabel) && (
                     <>
-                      <span className="text-slate-500">•</span>
-                      <span className="text-blue-400 font-bold">
+                      <span className="text-slate-400">•</span>
+                      <span className="text-blue-500 font-extrabold">
                         {activeDataset.academic_label || activePeriodLabel}
                       </span>
                     </>
                   )}
-                  <span className="text-slate-500">•</span>
-                  <span className="font-mono text-[9px] bg-slate-800 px-1 py-0.2 rounded text-slate-400">
+                  <span className="text-slate-400">•</span>
+                  <span className={`font-mono text-[9px] px-1.5 py-0.5 rounded-md font-bold ${
+                    isDark
+                      ? "bg-slate-800/90 border border-slate-700/60 text-slate-300"
+                      : "bg-slate-100 border border-slate-200 text-slate-700"
+                  }`}>
                     {activeDataset.row_count.toLocaleString()} rows
                   </span>
                 </div>

@@ -21,6 +21,11 @@ interface Props {
   onConfirmed: () => void;   // called after successful confirmation so parent can refresh
 }
 
+export interface PeriodOptionItem {
+  label: string;
+  uploaded: boolean;
+}
+
 export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConfirmed }) => {
   const uploadStatus = file.upload_status;
   const detection = file.period_detection;
@@ -30,7 +35,10 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
   const detectedLabel = detection?.academic_label ?? null;
 
   // Generate 2-year non-overlapping stepping options (e.g. 2025-26, 2023-24, 2021-22, 2019-20)
-  const getTwoYearSteppingOptions = (anchor?: string | null, serverList: string[] = []): string[] => {
+  const getTwoYearSteppingOptions = (
+    anchor?: string | null,
+    serverList: string[] = []
+  ): PeriodOptionItem[] => {
     let anchorStart = 2025;
     if (anchor) {
       const m = anchor.match(/^(20\d{2})[-_](\d{2}|20\d{2})$/);
@@ -44,22 +52,33 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
       const e = s + 1;
       generated.push(`${s}-${e.toString().slice(-2)}`);
     }
-    const options: string[] = [];
-    if (anchor && !options.includes(anchor)) options.push(anchor);
+
+    const uploadedSet = new Set(serverList.map((s) => s.trim()));
+
+    const allLabels: string[] = [];
+    if (anchor && !allLabels.includes(anchor)) allLabels.push(anchor);
     generated.forEach((g) => {
-      if (!options.includes(g)) options.push(g);
+      if (!allLabels.includes(g)) allLabels.push(g);
     });
     serverList.forEach((sp) => {
-      if (sp && !options.includes(sp)) options.push(sp);
+      if (sp && !allLabels.includes(sp)) allLabels.push(sp);
     });
-    return options;
+
+    return allLabels.map((l) => ({
+      label: l,
+      uploaded: uploadedSet.has(l),
+    }));
   };
 
   const periodOptions = getTwoYearSteppingOptions(detectedLabel, availablePeriods);
 
-  const [selectedLabel, setSelectedLabel] = useState<string>(
-    detectedLabel ?? (periodOptions[0] ?? "2025-26")
-  );
+  // Pick first non-uploaded period as default selection if detected is not available
+  const firstUnuploaded = periodOptions.find((p) => !p.uploaded)?.label;
+  const defaultSelection = (detectedLabel && !availablePeriods.includes(detectedLabel))
+    ? detectedLabel
+    : (firstUnuploaded ?? detectedLabel ?? periodOptions[0]?.label ?? "2025-26");
+
+  const [selectedLabel, setSelectedLabel] = useState<string>(defaultSelection);
   const [isCustom, setIsCustom] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(file.error_detail ?? null);
@@ -219,7 +238,7 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
             <div className="bg-slate-50 border border-slate-100 rounded-xl p-4">
               <p className="text-sm text-slate-600">
                 Could not automatically detect the academic period from the filename.
-                Please select the correct period below.
+                Please select an available academic session below.
               </p>
             </div>
           )}
@@ -256,8 +275,15 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
                     onChange={(e) => setSelectedLabel(e.target.value)}
                     className="w-full pl-9 pr-8 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
                   >
-                    {periodOptions.map((label) => (
-                      <option key={label} value={label}>{label}</option>
+                    {periodOptions.map(({ label, uploaded }) => (
+                      <option
+                        key={label}
+                        value={label}
+                        disabled={uploaded}
+                        className={uploaded ? "text-slate-400 bg-slate-100" : "text-slate-900 font-medium"}
+                      >
+                        {label} {uploaded ? " (Already Uploaded)" : ""}
+                      </option>
                     ))}
                   </select>
                   <div className="pointer-events-none absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 text-xs">▼</div>
