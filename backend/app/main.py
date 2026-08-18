@@ -52,6 +52,7 @@ app.add_middleware(
         "http://127.0.0.1:3000",
         "http://localhost:8000",
         "http://127.0.0.1:8000",
+        "https://aianalyzer-nine.vercel.app",
     ],
     allow_origin_regex=r"http://(localhost|127\.0\.0\.1)(:[0-9]+)?",
     allow_credentials=True,
