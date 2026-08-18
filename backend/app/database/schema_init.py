@@ -7,8 +7,8 @@ logger = logging.getLogger(__name__)
 
 def ensure_all_database_tables(db: Session) -> None:
     """
-    Ensure all required PostgreSQL schemas, tables, and columns exist on application startup.
-    Executes schema DDL and ALTER TABLE column additions idempotently.
+    Ensure all required PostgreSQL schemas, tables, columns, constraints, and indexes exist on application startup.
+    Executes DDL and ALTER TABLE column additions idempotently.
     """
     try:
         # Enable extensions
@@ -19,13 +19,13 @@ def ensure_all_database_tables(db: Session) -> None:
         db.rollback()
 
     try:
-        # Create schemas
+        # 1. Create all schemas
         schemas = ["raw", "staging", "core", "intelligence", "rag", "system", "analytics", "ai_audit", "organization"]
         for schema in schemas:
             db.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema};"))
         db.commit()
 
-        # system.data_sources
+        # 2. system.data_sources
         db.execute(
             text(
                 """
@@ -41,7 +41,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # system.datasets
+        # 3. system.datasets
         db.execute(
             text(
                 """
@@ -89,7 +89,7 @@ def ensure_all_database_tables(db: Session) -> None:
                 logger.debug("Column system.datasets.%s add notice: %s", col_name, e)
                 db.rollback()
 
-        # system.data_quality_reports
+        # 4. system.data_quality_reports
         db.execute(
             text(
                 """
@@ -109,7 +109,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # system.column_mappings
+        # 5. system.column_mappings
         db.execute(
             text(
                 """
@@ -129,7 +129,27 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # system.conversations
+        # Ensure unique constraint on system.column_mappings if table pre-existed
+        try:
+            db.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'uq_system_column_mappings'
+                        ) THEN
+                            ALTER TABLE system.column_mappings ADD CONSTRAINT uq_system_column_mappings UNIQUE (dataset_id, original_column);
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+        except Exception as e:
+            logger.debug("Constraint uq_system_column_mappings notice: %s", e)
+            db.rollback()
+
+        # 6. system.conversations
         db.execute(
             text(
                 """
@@ -143,7 +163,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # system.conversation_messages
+        # 7. system.conversation_messages
         db.execute(
             text(
                 """
@@ -158,7 +178,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # system.conversation_context
+        # 8. system.conversation_context
         db.execute(
             text(
                 """
@@ -172,7 +192,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # staging.records
+        # 9. staging.records
         db.execute(
             text(
                 """
@@ -190,7 +210,6 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # Ensure missing columns exist in staging.records if table was created with different schema
         staging_columns = [
             ("row_number", "BIGINT NOT NULL DEFAULT 0"),
             ("raw_data", "JSONB NOT NULL DEFAULT '{}'::jsonb"),
@@ -209,7 +228,7 @@ def ensure_all_database_tables(db: Session) -> None:
                 logger.debug("Column staging.records.%s add notice: %s", col_name, e)
                 db.rollback()
 
-        # staging.cleaned_records
+        # 10. staging.cleaned_records
         db.execute(
             text(
                 """
@@ -228,20 +247,24 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # analytics.uploaded_metrics
+        # 11. analytics.uploaded_metrics
         db.execute(
             text(
                 """
                 CREATE TABLE IF NOT EXISTS analytics.uploaded_metrics (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
                     dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
+                    row_number BIGINT NOT NULL DEFAULT 0,
                     academic_session VARCHAR(100),
                     campus_name VARCHAR(255),
                     state VARCHAR(255),
                     source VARCHAR(255),
+                    main_source VARCHAR(255),
                     program_name VARCHAR(255),
                     specialization VARCHAR(255),
                     owner VARCHAR(255),
+                    cluster VARCHAR(255),
+                    lead_type VARCHAR(255),
                     cy_leads BIGINT DEFAULT 0,
                     py_leads BIGINT DEFAULT 0,
                     cy_cucet BIGINT DEFAULT 0,
@@ -254,7 +277,58 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # analytics.physical_mappings
+        # Ensure ALL columns exist on analytics.uploaded_metrics if table pre-existed
+        metrics_columns = [
+            ("row_number", "BIGINT NOT NULL DEFAULT 0"),
+            ("owner", "VARCHAR(255)"),
+            ("cluster", "VARCHAR(255)"),
+            ("lead_type", "VARCHAR(255)"),
+            ("main_source", "VARCHAR(255)"),
+            ("source", "VARCHAR(255)"),
+            ("campus_name", "VARCHAR(255)"),
+            ("state", "VARCHAR(255)"),
+            ("program_name", "VARCHAR(255)"),
+            ("specialization", "VARCHAR(255)"),
+            ("academic_session", "VARCHAR(100)"),
+            ("cy_leads", "BIGINT DEFAULT 0"),
+            ("py_leads", "BIGINT DEFAULT 0"),
+            ("cy_cucet", "BIGINT DEFAULT 0"),
+            ("py_cucet", "BIGINT DEFAULT 0"),
+            ("cy_admission", "BIGINT DEFAULT 0"),
+            ("py_admission", "BIGINT DEFAULT 0"),
+        ]
+        for col_name, col_type in metrics_columns:
+            try:
+                db.execute(
+                    text(
+                        f"ALTER TABLE analytics.uploaded_metrics ADD COLUMN IF NOT EXISTS {col_name} {col_type};"
+                    )
+                )
+            except Exception as e:
+                logger.debug("Column analytics.uploaded_metrics.%s add notice: %s", col_name, e)
+                db.rollback()
+
+        # Ensure UNIQUE constraint on (dataset_id, row_number)
+        try:
+            db.execute(
+                text(
+                    """
+                    DO $$
+                    BEGIN
+                        IF NOT EXISTS (
+                            SELECT 1 FROM pg_constraint WHERE conname = 'uq_uploaded_metrics_dataset_row'
+                        ) THEN
+                            ALTER TABLE analytics.uploaded_metrics ADD CONSTRAINT uq_uploaded_metrics_dataset_row UNIQUE (dataset_id, row_number);
+                        END IF;
+                    END $$;
+                    """
+                )
+            )
+        except Exception as e:
+            logger.debug("Constraint uq_uploaded_metrics_dataset_row notice: %s", e)
+            db.rollback()
+
+        # 12. analytics.physical_mappings
         db.execute(
             text(
                 """
@@ -270,7 +344,7 @@ def ensure_all_database_tables(db: Session) -> None:
         )
 
         db.commit()
-        logger.info("Successfully verified all PostgreSQL schemas, tables, and columns.")
+        logger.info("Successfully verified all PostgreSQL schemas, tables, columns, and constraints.")
     except Exception as exc:
         logger.error("Error ensuring database tables on startup: %s", exc)
         db.rollback()
