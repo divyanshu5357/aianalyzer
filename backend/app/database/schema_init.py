@@ -7,9 +7,8 @@ logger = logging.getLogger(__name__)
 
 def ensure_all_database_tables(db: Session) -> None:
     """
-    Ensure all required PostgreSQL schemas and tables exist on application startup.
-    This guarantees that freshly deployed instances (e.g. on Render/Supabase/Neon)
-    do not crash with 'relation system.datasets does not exist'.
+    Ensure all required PostgreSQL schemas, tables, and columns exist on application startup.
+    Executes schema DDL and ALTER TABLE column additions idempotently.
     """
     try:
         # Enable extensions
@@ -21,7 +20,7 @@ def ensure_all_database_tables(db: Session) -> None:
 
     try:
         # Create schemas
-        schemas = ["raw", "staging", "core", "intelligence", "rag", "system", "analytics", "ai_audit"]
+        schemas = ["raw", "staging", "core", "intelligence", "rag", "system", "analytics", "ai_audit", "organization"]
         for schema in schemas:
             db.execute(text(f"CREATE SCHEMA IF NOT EXISTS {schema};"))
         db.commit()
@@ -69,7 +68,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # Ensure missing columns exist in system.datasets if table pre-existed
+        # Ensure missing columns exist in system.datasets if pre-existed
         dataset_columns = [
             ("is_active", "BOOLEAN DEFAULT FALSE"),
             ("is_period_active", "BOOLEAN DEFAULT FALSE"),
@@ -87,7 +86,7 @@ def ensure_all_database_tables(db: Session) -> None:
                     )
                 )
             except Exception as e:
-                logger.debug("Column %s add notice: %s", col_name, e)
+                logger.debug("Column system.datasets.%s add notice: %s", col_name, e)
                 db.rollback()
 
         # system.data_quality_reports
@@ -96,7 +95,7 @@ def ensure_all_database_tables(db: Session) -> None:
                 """
                 CREATE TABLE IF NOT EXISTS system.data_quality_reports (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    dataset_id UUID,
+                    dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
                     total_rows BIGINT DEFAULT 0,
                     total_columns INTEGER DEFAULT 0,
                     missing_values BIGINT DEFAULT 0,
@@ -116,9 +115,51 @@ def ensure_all_database_tables(db: Session) -> None:
                 """
                 CREATE TABLE IF NOT EXISTS staging.records (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    dataset_id UUID,
-                    raw_payload JSONB,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
+                    row_number BIGINT NOT NULL DEFAULT 0,
+                    raw_data JSONB NOT NULL DEFAULT '{}'::jsonb,
+                    cleaned_data JSONB,
+                    cleaning_status VARCHAR(50) DEFAULT 'pending',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+
+        # Ensure missing columns exist in staging.records if table was created with different schema
+        staging_columns = [
+            ("row_number", "BIGINT NOT NULL DEFAULT 0"),
+            ("raw_data", "JSONB NOT NULL DEFAULT '{}'::jsonb"),
+            ("cleaned_data", "JSONB"),
+            ("cleaning_status", "VARCHAR(50) DEFAULT 'pending'"),
+            ("updated_at", "TIMESTAMP DEFAULT CURRENT_TIMESTAMP"),
+        ]
+        for col_name, col_type in staging_columns:
+            try:
+                db.execute(
+                    text(
+                        f"ALTER TABLE staging.records ADD COLUMN IF NOT EXISTS {col_name} {col_type};"
+                    )
+                )
+            except Exception as e:
+                logger.debug("Column staging.records.%s add notice: %s", col_name, e)
+                db.rollback()
+
+        # staging.cleaned_records
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS staging.cleaned_records (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
+                    staging_record_id UUID REFERENCES staging.records(id) ON DELETE CASCADE,
+                    cleaned_data JSONB NOT NULL,
+                    issues JSONB NOT NULL DEFAULT '[]'::jsonb,
+                    issue_count INTEGER NOT NULL DEFAULT 0,
+                    cleaning_status VARCHAR(50) DEFAULT 'cleaned',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
@@ -130,7 +171,7 @@ def ensure_all_database_tables(db: Session) -> None:
                 """
                 CREATE TABLE IF NOT EXISTS analytics.uploaded_metrics (
                     id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-                    dataset_id UUID,
+                    dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
                     academic_session VARCHAR(100),
                     campus_name VARCHAR(255),
                     state VARCHAR(255),
@@ -166,7 +207,7 @@ def ensure_all_database_tables(db: Session) -> None:
         )
 
         db.commit()
-        logger.info("Successfully verified all PostgreSQL schemas and tables.")
+        logger.info("Successfully verified all PostgreSQL schemas, tables, and columns.")
     except Exception as exc:
         logger.error("Error ensuring database tables on startup: %s", exc)
         db.rollback()
