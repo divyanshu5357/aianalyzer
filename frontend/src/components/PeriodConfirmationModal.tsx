@@ -28,10 +28,39 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
   const availablePeriods = file.available_periods ?? [];
 
   const detectedLabel = detection?.academic_label ?? null;
+
+  // Generate 2-year non-overlapping stepping options (e.g. 2025-26, 2023-24, 2021-22, 2019-20)
+  const getTwoYearSteppingOptions = (anchor?: string | null, serverList: string[] = []): string[] => {
+    let anchorStart = 2025;
+    if (anchor) {
+      const m = anchor.match(/^(20\d{2})[-_](\d{2}|20\d{2})$/);
+      if (m && m[1]) {
+        anchorStart = parseInt(m[1], 10);
+      }
+    }
+    const generated: string[] = [];
+    for (let i = 0; i < 6; i++) {
+      const s = anchorStart - i * 2;
+      const e = s + 1;
+      generated.push(`${s}-${e.toString().slice(-2)}`);
+    }
+    const options: string[] = [];
+    if (anchor && !options.includes(anchor)) options.push(anchor);
+    generated.forEach((g) => {
+      if (!options.includes(g)) options.push(g);
+    });
+    serverList.forEach((sp) => {
+      if (sp && !options.includes(sp)) options.push(sp);
+    });
+    return options;
+  };
+
+  const periodOptions = getTwoYearSteppingOptions(detectedLabel, availablePeriods);
+
   const [selectedLabel, setSelectedLabel] = useState<string>(
-    detectedLabel ?? (availablePeriods[0] ?? "2025-26")
+    detectedLabel ?? (periodOptions[0] ?? "2025-26")
   );
-  const [isCustom, setIsCustom] = useState(availablePeriods.length === 0 && !detectedLabel);
+  const [isCustom, setIsCustom] = useState(false);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [error, setError] = useState<string | null>(file.error_detail ?? null);
 
@@ -200,19 +229,17 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
               <label className="block text-sm font-semibold text-slate-700" htmlFor="period-select-modal">
                 Academic Session
               </label>
-              {availablePeriods.length > 0 && (
-                <button
-                  type="button"
-                  onClick={() => setIsCustom(!isCustom)}
-                  className="text-xs text-blue-600 font-semibold hover:underline"
-                >
-                  {isCustom ? "Select from list" : "+ Enter custom session"}
-                </button>
-              )}
+              <button
+                type="button"
+                onClick={() => setIsCustom(!isCustom)}
+                className="text-xs text-blue-600 font-semibold hover:underline"
+              >
+                {isCustom ? "Select from list" : "+ Enter custom session"}
+              </button>
             </div>
             <div className="relative">
               <Calendar className="w-4 h-4 text-slate-400 absolute left-3 top-1/2 -translate-y-1/2 pointer-events-none" />
-              {isCustom || availablePeriods.length === 0 ? (
+              {isCustom ? (
                 <input
                   id="period-select-modal"
                   type="text"
@@ -229,7 +256,7 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
                     onChange={(e) => setSelectedLabel(e.target.value)}
                     className="w-full pl-9 pr-8 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all appearance-none"
                   >
-                    {availablePeriods.map((label) => (
+                    {periodOptions.map((label) => (
                       <option key={label} value={label}>{label}</option>
                     ))}
                   </select>
