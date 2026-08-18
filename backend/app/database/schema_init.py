@@ -129,27 +129,100 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # Ensure unique constraint on system.column_mappings if table pre-existed
-        try:
-            db.execute(
-                text(
-                    """
-                    DO $$
-                    BEGIN
-                        IF NOT EXISTS (
-                            SELECT 1 FROM pg_constraint WHERE conname = 'uq_system_column_mappings'
-                        ) THEN
-                            ALTER TABLE system.column_mappings ADD CONSTRAINT uq_system_column_mappings UNIQUE (dataset_id, original_column);
-                        END IF;
-                    END $$;
-                    """
-                )
+        # 6. intelligence.column_mappings
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS intelligence.column_mappings (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
+                    original_column VARCHAR(255) NOT NULL,
+                    canonical_column VARCHAR(255),
+                    business_meaning TEXT,
+                    data_type VARCHAR(100),
+                    confidence NUMERIC(5,2),
+                    verified BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
             )
-        except Exception as e:
-            logger.debug("Constraint uq_system_column_mappings notice: %s", e)
-            db.rollback()
+        )
 
-        # 6. system.conversations
+        # 7. intelligence.business_terms
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS intelligence.business_terms (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    term VARCHAR(255) NOT NULL UNIQUE,
+                    meaning TEXT,
+                    description TEXT,
+                    examples JSONB,
+                    confidence NUMERIC(5,2),
+                    verified BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+
+        # 8. intelligence.metrics
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS intelligence.metrics (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    metric_name VARCHAR(255) NOT NULL UNIQUE,
+                    description TEXT,
+                    business_definition TEXT,
+                    calculation_logic TEXT,
+                    source_tables JSONB,
+                    filters JSONB,
+                    time_dimension VARCHAR(255),
+                    confidence NUMERIC(5,2),
+                    verified BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+
+        # 9. intelligence.entities & entity_aliases
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS intelligence.entities (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    entity_type VARCHAR(100) NOT NULL,
+                    canonical_name VARCHAR(500) NOT NULL,
+                    description TEXT,
+                    metadata JSONB,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS intelligence.entity_aliases (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    entity_id UUID REFERENCES intelligence.entities(id) ON DELETE CASCADE,
+                    alias VARCHAR(500) NOT NULL,
+                    source VARCHAR(255),
+                    confidence NUMERIC(5,2),
+                    verified BOOLEAN DEFAULT FALSE,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+
+        # 10. system.conversations, conversation_messages, conversation_context
         db.execute(
             text(
                 """
@@ -162,8 +235,6 @@ def ensure_all_database_tables(db: Session) -> None:
                 """
             )
         )
-
-        # 7. system.conversation_messages
         db.execute(
             text(
                 """
@@ -177,8 +248,6 @@ def ensure_all_database_tables(db: Session) -> None:
                 """
             )
         )
-
-        # 8. system.conversation_context
         db.execute(
             text(
                 """
@@ -192,7 +261,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # 9. staging.records
+        # 11. staging.records
         db.execute(
             text(
                 """
@@ -228,7 +297,7 @@ def ensure_all_database_tables(db: Session) -> None:
                 logger.debug("Column staging.records.%s add notice: %s", col_name, e)
                 db.rollback()
 
-        # 10. staging.cleaned_records
+        # 12. staging.cleaned_records
         db.execute(
             text(
                 """
@@ -247,7 +316,7 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # 11. analytics.uploaded_metrics
+        # 13. analytics.uploaded_metrics
         db.execute(
             text(
                 """
@@ -277,7 +346,6 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
-        # Ensure ALL columns exist on analytics.uploaded_metrics if table pre-existed
         metrics_columns = [
             ("row_number", "BIGINT NOT NULL DEFAULT 0"),
             ("owner", "VARCHAR(255)"),
@@ -328,7 +396,7 @@ def ensure_all_database_tables(db: Session) -> None:
             logger.debug("Constraint uq_uploaded_metrics_dataset_row notice: %s", e)
             db.rollback()
 
-        # 12. analytics.physical_mappings
+        # 14. analytics.physical_mappings & intelligence.physical_mappings
         db.execute(
             text(
                 """
@@ -338,6 +406,27 @@ def ensure_all_database_tables(db: Session) -> None:
                     column_name VARCHAR(255),
                     canonical_metric VARCHAR(255),
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                """
+            )
+        )
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS intelligence.physical_mappings (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    concept_key VARCHAR(150) NOT NULL,
+                    table_schema VARCHAR(150) NOT NULL,
+                    table_name VARCHAR(255) NOT NULL,
+                    column_name VARCHAR(255) NOT NULL,
+                    column_role VARCHAR(100),
+                    data_type VARCHAR(100),
+                    confidence NUMERIC(5,4) NOT NULL DEFAULT 0,
+                    evidence JSONB DEFAULT '{}'::jsonb,
+                    inference_method VARCHAR(100),
+                    verified BOOLEAN DEFAULT false,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
                 """
             )
