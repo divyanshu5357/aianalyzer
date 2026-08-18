@@ -109,6 +109,69 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
+        # system.column_mappings
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS system.column_mappings (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
+                    original_column VARCHAR(255) NOT NULL,
+                    canonical_field VARCHAR(255),
+                    confidence NUMERIC(5,2) DEFAULT 0.0,
+                    is_ambiguous BOOLEAN DEFAULT FALSE,
+                    reasoning TEXT,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT uq_system_column_mappings UNIQUE (dataset_id, original_column)
+                );
+                """
+            )
+        )
+
+        # system.conversations
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS system.conversations (
+                    id VARCHAR(255) PRIMARY KEY,
+                    active_dataset_id VARCHAR(255),
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+        )
+
+        # system.conversation_messages
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS system.conversation_messages (
+                    id VARCHAR(255) PRIMARY KEY,
+                    conversation_id VARCHAR(255) REFERENCES system.conversations(id) ON DELETE CASCADE,
+                    role VARCHAR(50) NOT NULL,
+                    content TEXT NOT NULL,
+                    created_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+        )
+
+        # system.conversation_context
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS system.conversation_context (
+                    conversation_id VARCHAR(255) PRIMARY KEY REFERENCES system.conversations(id) ON DELETE CASCADE,
+                    dataset_id VARCHAR(255),
+                    context_json JSONB NOT NULL,
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                """
+            )
+        )
+
         # staging.records
         db.execute(
             text(
