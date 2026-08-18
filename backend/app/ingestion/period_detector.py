@@ -292,12 +292,11 @@ def parse_label(label: str) -> tuple[int, int] | None:
     return _parse_years_from_label(label)
 
 
-def available_period_labels(db: Session | None = None, n: int = 10) -> list[str]:
+def available_period_labels(db: Session | None = None, n: int = 20) -> list[str]:
     """
-    Return distinct academic period labels that exist in the database,
-    supplemented by non-overlapping 2-year stepping default sessions (e.g. "2025-26", "2023-24", "2021-22", "2019-20").
+    Return distinct academic period labels that ACTUALLY exist in system.datasets in DB.
+    Does NOT include fake/un-uploaded periods.
     """
-    db_labels = []
     if db is not None:
         try:
             rows = db.execute(
@@ -312,17 +311,10 @@ def available_period_labels(db: Session | None = None, n: int = 10) -> list[str]
                 ),
                 {"limit": n},
             ).mappings().all()
-            db_labels = [r["academic_label"] for r in rows if r["academic_label"]]
+            return [r["academic_label"] for r in rows if r["academic_label"]]
         except Exception as exc:
             logger.warning("Failed to fetch available periods from DB: %s", exc)
 
-    # Standard non-overlapping 2-year stepping sessions
-    default_spans = ["2025-26", "2023-24", "2021-22", "2019-20", "2017-18"]
+    return []
 
-    result = []
-    for label in db_labels + default_spans:
-        if label not in result:
-            result.append(label)
-
-    return result
 
