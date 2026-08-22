@@ -30,7 +30,7 @@ interface SourcePerformanceProps {
 }
 
 export const SourcePerformanceComponent: React.FC<SourcePerformanceProps> = ({
-  sources,
+  sources = [],
   onSelectSource,
   isLoading = false,
 }) => {
@@ -47,14 +47,16 @@ export const SourcePerformanceComponent: React.FC<SourcePerformanceProps> = ({
   } | null>(null);
   const [viewMode, setViewMode] = useState<"py_vs_cy" | "absolute" | "pct_change">("py_vs_cy");
 
+  const safeSources = Array.isArray(sources) ? sources : [];
+
   // Compute "All Sources" totals lazily
   const allSourcesTotals = useMemo(() => {
-    const totalLeads = sources.reduce((a, b) => a + b.leads, 0);
-    const totalCucet = sources.reduce((a, b) => a + b.cucet, 0);
-    const totalAdmission = sources.reduce((a, b) => a + b.admission, 0);
-    const totalPyLeads = sources.reduce((a, b) => a + b.py_leads, 0);
-    const totalPyCucet = sources.reduce((a, b) => a + b.py_cucet, 0);
-    const totalPyAdmission = sources.reduce((a, b) => a + b.py_admission, 0);
+    const totalLeads = safeSources.reduce((a, b) => a + (b?.leads || 0), 0);
+    const totalCucet = safeSources.reduce((a, b) => a + (b?.cucet || 0), 0);
+    const totalAdmission = safeSources.reduce((a, b) => a + (b?.admission || 0), 0);
+    const totalPyLeads = safeSources.reduce((a, b) => a + (b?.py_leads || 0), 0);
+    const totalPyCucet = safeSources.reduce((a, b) => a + (b?.py_cucet || 0), 0);
+    const totalPyAdmission = safeSources.reduce((a, b) => a + (b?.py_admission || 0), 0);
     return {
       name: "All Sources",
       raw_name: "All Sources",
@@ -355,7 +357,7 @@ export const SourcePerformanceComponent: React.FC<SourcePerformanceProps> = ({
                     <span>All Sources</span>
                   </div>
                   <span className="text-[10px] font-mono text-slate-500">
-                    {sources.reduce((a, b) => a + b.leads, 0).toLocaleString()}
+                    {safeSources.reduce((a, b) => a + (b?.leads || 0), 0).toLocaleString()}
                   </span>
                 </div>
 

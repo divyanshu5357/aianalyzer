@@ -97,7 +97,8 @@ WORKSPACE_SORT_FIELDS = {
 
 def _normalised_dimension(column: str) -> str:
     """Use a stable key so blank/null values join between the two periods."""
-    return f"COALESCE(NULLIF(BTRIM(\"{column}\"), ''), 'Unspecified')"
+    return f"COALESCE(NULLIF(BTRIM({column}), ''), 'Unspecified')"
+
 
 
 def _validated_workspace(workspace: str) -> dict[str, Any]:

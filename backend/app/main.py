@@ -10,12 +10,8 @@ from app.api.physical import router as physical_router
 from app.api.relationships import router as relationships_router
 from app.api.chat import router as chat_router
 from app.api.analytics import router as analytics_router
-from app.api.source_insights import (
-    router as source_insights_router,
-)
-from app.api.source_hierarchy import (
-    router as source_hierarchy_router,
-)
+from app.api.source_insights import (router as source_insights_router,)
+from app.api.source_hierarchy import (router as source_hierarchy_router,)
 from app.api.dashboard import router as dashboard_router
 from app.api.periods import router as periods_router
 from app.api.data_management import router as data_management_router
@@ -23,7 +19,6 @@ from app.api.audit import router as audit_router
 from app.database.connection import SessionLocal
 from app.database.ai_audit import ensure_ai_audit_tables, seed_initial_golden_cases
 from app.database.schema_init import ensure_all_database_tables
-
 
 from app.config.settings import settings
 
@@ -57,7 +52,7 @@ app.add_middleware(
         "http://127.0.0.1:8000",
         "https://aianalyzer-nine.vercel.app",
     ],
-    allow_origin_regex=r"https?://.*",
+    allow_origin_regex=r"https://.*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -66,15 +61,17 @@ app.add_middleware(
 
 @app.exception_handler(Exception)
 async def global_exception_handler(request: Request, exc: Exception):
-    origin = request.headers.get("origin", "*")
+    origin = request.headers.get("origin")
+    headers = {}
+    if origin:
+        headers["Access-Control-Allow-Origin"] = origin
+        headers["Access-Control-Allow-Credentials"] = "true"
     return JSONResponse(
         status_code=500,
         content={"detail": str(exc)},
-        headers={
-            "Access-Control-Allow-Origin": origin,
-            "Access-Control-Allow-Credentials": "true",
-        },
+        headers=headers,
     )
+
 
 
 

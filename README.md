@@ -77,3 +77,33 @@
 ⬜ SHAP/XGBoost
 ⬜ Voice
 ⬜ Client SQL connector
+                         USER
+                           │
+                           ↓
+                     Vercel Frontend
+                           │
+               ┌───────────┴───────────┐
+               │                       │
+               ↓                       ↓
+        Render API                S3 Upload
+       Node + Express           100 MB Excel
+               │                       │
+               │                       ↓
+               │                    S3
+               │                       │
+               ↓                       ↓
+          Job Creation              File Ready
+               │                       │
+               └──────────┬────────────┘
+                          ↓
+                       Queue
+                          ↓
+                       Worker
+                          ↓
+                    Excel Parser
+                          ↓
+                     AI Agent
+                          ↓
+                   Database
+                          ↓
+                    Frontend

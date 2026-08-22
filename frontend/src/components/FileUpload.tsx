@@ -21,6 +21,8 @@ import {
 } from "lucide-react";
 import {
   uploadFiles,
+  getIngestionJobStatus,
+  IngestionJobStatus,
   FileUploadResponse,
   ActiveDatasetInfo,
   UploadedFileItemExtended,
@@ -51,8 +53,90 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   // Period confirmation modal state
   const [pendingPeriodFile, setPendingPeriodFile] = useState<UploadedFileItemExtended | null>(null);
 
+  // Real-time backend progress state
+  const [activeJobId, setActiveJobId] = useState<string | null>(null);
+  const [jobStatus, setJobStatus] = useState<IngestionJobStatus | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+
+  // On mount: Check if there was an active ingestion job stored in localStorage
+  React.useEffect(() => {
+    const savedJobId = localStorage.getItem("active_ingestion_job_id");
+    if (!savedJobId) return;
+
+    let isMounted = true;
+
+    getIngestionJobStatus(savedJobId)
+      .then((status) => {
+        if (!isMounted) return;
+        if (status.status === "processing") {
+          setActiveJobId(savedJobId);
+          setJobStatus(status);
+          setUploadStep("normalizing");
+        } else if (status.status === "completed") {
+          localStorage.removeItem("active_ingestion_job_id");
+        } else if (status.status === "failed") {
+          localStorage.removeItem("active_ingestion_job_id");
+          setError(status.error || status.message || "Previous ingestion job failed.");
+        }
+      })
+      .catch(() => {
+        localStorage.removeItem("active_ingestion_job_id");
+      });
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
+  // Polling effect while activeJobId is set and status is processing
+  React.useEffect(() => {
+    if (!activeJobId) return;
+
+    const pollInterval = setInterval(async () => {
+      try {
+        const status = await getIngestionJobStatus(activeJobId);
+        setJobStatus(status);
+
+        if (status.status === "completed") {
+          localStorage.removeItem("active_ingestion_job_id");
+          setActiveJobId(null);
+
+          const resData = (status.result_data || uploadResult) as FileUploadResponseExtended | null;
+          if (resData) {
+            setUploadResult(resData);
+            setSelectedFiles([]);
+            setUploadStep("success");
+
+            const needsConfirmation = resData.files?.find(
+              (f) =>
+                f.upload_status === "pending_confirmation" ||
+                f.upload_status === "period_unknown" ||
+                f.upload_status === "conflict"
+            ) as UploadedFileItemExtended | undefined;
+
+            if (needsConfirmation) {
+              setPendingPeriodFile(needsConfirmation);
+            } else if (onUploadSuccess) {
+              onUploadSuccess(resData);
+            }
+          } else {
+            setUploadStep("success");
+          }
+        } else if (status.status === "failed") {
+          localStorage.removeItem("active_ingestion_job_id");
+          setActiveJobId(null);
+          setUploadStep("error");
+          setError(status.error || status.message || "Ingestion failed.");
+        }
+      } catch (err) {
+        console.warn("Failed polling ingestion status:", err);
+      }
+    }, 600);
+
+    return () => clearInterval(pollInterval);
+  }, [activeJobId, uploadResult, onUploadSuccess]);
+
 
   const validateFiles = (files: File[]): File[] => {
     const valid: File[] = [];
@@ -120,6 +204,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setUploadResult(null);
     setError(null);
     setUploadStep("idle");
+    setActiveJobId(null);
+    setJobStatus(null);
+    localStorage.removeItem("active_ingestion_job_id");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
     }
@@ -128,17 +215,23 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const handleUpload = async () => {
     if (selectedFiles.length === 0) return;
 
+    const newJobId = `job_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    localStorage.setItem("active_ingestion_job_id", newJobId);
+    setActiveJobId(newJobId);
+
     setUploadStep("uploading");
     setError(null);
     setUploadResult(null);
 
     try {
       setUploadStep("staging");
-      const result = await uploadFiles(selectedFiles) as FileUploadResponseExtended;
+      const result = await uploadFiles(selectedFiles, newJobId) as FileUploadResponseExtended;
       setUploadStep("normalizing");
       setUploadResult(result);
       setSelectedFiles([]); // clear queue on success
       setUploadStep("success");
+      localStorage.removeItem("active_ingestion_job_id");
+      setActiveJobId(null);
 
       // Check if any file needs period confirmation
       const needsConfirmation = result.files?.find(
@@ -154,6 +247,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
         onUploadSuccess(result);
       }
     } catch (err) {
+      localStorage.removeItem("active_ingestion_job_id");
+      setActiveJobId(null);
       setUploadStep("error");
       setError(
         err instanceof Error
@@ -172,7 +267,8 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const isProcessing =
     uploadStep === "uploading" ||
     uploadStep === "staging" ||
-    uploadStep === "normalizing";
+    uploadStep === "normalizing" ||
+    !!activeJobId;
 
   return (
     <div className="space-y-6">
@@ -313,33 +409,48 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           </div>
         </div>
 
-        {/* Upload Progress State Banner */}
+        {/* Upload Progress State Banner with Real-time Backend Percent & Row Metrics */}
         {isProcessing && (
-          <div className="mt-4 p-4 bg-blue-50/80 border border-blue-200 rounded-xl space-y-2">
-            <div className="flex items-center justify-between text-xs font-bold text-blue-900">
-              <span className="flex items-center gap-2">
-                <Loader2 className="w-4 h-4 animate-spin text-blue-600" />
-                {uploadStep === "uploading" && "Uploading files to server..."}
-                {uploadStep === "staging" && "Staging JSON records into database..."}
-                {uploadStep === "normalizing" && "Normalizing metrics & inferring schema mapping..."}
+          <div className="mt-4 p-5 bg-gradient-to-r from-blue-50 to-indigo-50/70 border border-blue-200 rounded-2xl space-y-3 shadow-xs">
+            <div className="flex items-center justify-between text-xs font-bold text-slate-900">
+              <span className="flex items-center gap-2.5">
+                <Loader2 className="w-4 h-4 animate-spin text-blue-600 shrink-0" />
+                <span className="text-slate-800 font-semibold">
+                  {jobStatus?.message ||
+                    (uploadStep === "uploading"
+                      ? "Uploading files to server..."
+                      : uploadStep === "staging"
+                      ? "Staging records into database..."
+                      : "Processing & normalizing metrics...")}
+                </span>
               </span>
-              <span className="text-blue-600 uppercase text-[10px] tracking-wider font-mono">
-                {uploadStep}
+              <span className="text-blue-700 font-extrabold text-sm font-mono">
+                {jobStatus ? `${jobStatus.progress_percent.toFixed(0)}%` : "0%"}
               </span>
             </div>
-            <div className="w-full bg-blue-200/60 rounded-full h-1.5 overflow-hidden">
+
+            <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden p-0.5">
               <div
-                className={`h-full bg-blue-600 rounded-full transition-all duration-500 ${
-                  uploadStep === "uploading"
-                    ? "w-1/3"
-                    : uploadStep === "staging"
-                    ? "w-2/3"
-                    : "w-11/12 animate-pulse"
-                }`}
+                className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full transition-all duration-300 shadow-xs"
+                style={{
+                  width: `${Math.max(5, Math.min(100, jobStatus?.progress_percent || 5))}%`,
+                }}
               />
+            </div>
+
+            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5 font-medium">
+              <span className="uppercase tracking-wider font-bold text-blue-800/80 text-[10px]">
+                Stage: {jobStatus?.stage ? jobStatus.stage.toUpperCase() : uploadStep.toUpperCase()}
+              </span>
+              {jobStatus && jobStatus.total_rows > 0 && (
+                <span className="font-mono text-slate-700 font-semibold">
+                  {jobStatus.processed_rows.toLocaleString()} / {jobStatus.total_rows.toLocaleString()} rows
+                </span>
+              )}
             </div>
           </div>
         )}
+
 
         {/* Error Alert */}
         {error && (
@@ -417,12 +528,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
               <CheckCircle2 className="w-5 h-5 text-emerald-600" />
               <div>
                 <h3 className="font-bold text-emerald-900 text-sm">
-                  Upload & Ingestion Complete ({uploadResult.file_count} File(s))
+                  Upload & Ingestion Complete ({uploadResult.file_count ?? uploadResult.files?.length ?? 1} File(s))
                 </h3>
                 <p className="text-xs text-emerald-700 font-semibold">
                   Dataset uploaded successfully.{" "}
-                  {uploadResult.files
-                    .reduce((sum, f) => sum + (f.normalized_rows ?? f.staged_rows ?? 0), 0)
+                  {(uploadResult.files || [])
+                    .reduce((sum, f) => sum + (f?.normalized_rows ?? f?.staged_rows ?? 0), 0)
                     .toLocaleString()}{" "}
                   rows are ready for analysis.
                 </p>
@@ -434,7 +545,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           </div>
 
           <div className="grid grid-cols-1 gap-3 pt-2">
-            {uploadResult.files.map((file) => {
+            {(uploadResult.files || []).map((file) => {
               const rowsCount = file.profile?.rows ?? file.staged_rows;
               const colsCount = file.profile?.columns ?? "N/A";
               const normalizedCount = file.normalized_rows ?? file.staged_rows;

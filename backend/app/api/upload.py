@@ -30,7 +30,8 @@ import logging
 from pathlib import Path
 from uuid import uuid4
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from typing import Optional, Any
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query, BackgroundTasks
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 
@@ -85,33 +86,60 @@ def _compute_file_checksum(file_path: Path) -> str:
     return sha.hexdigest()
 
 
-def _process_single_file(file: UploadFile, db: Session) -> dict:
+def _process_single_file(
+    file: Optional[UploadFile] = None,
+    db: Session = None,
+    job_id: Optional[str] = None,
+    pre_saved_path: Optional[Path] = None,
+    pre_saved_filename: Optional[str] = None,
+    pre_saved_dataset_id: Optional[Any] = None,
+) -> dict:
     """
     Run all ingestion steps for one uploaded file and return a dict describing
     the outcome.  Does NOT commit the DB transaction — caller does that.
-
-    Flow:
-      1. Save file to disk
-      2. Compute SHA-256 checksum → check for duplicate file
-      3. Detect period from filename → check for period conflict (fast, no DB staging)
-      4. If no blockers: profile → stage → schema-map → normalise (expensive)
     """
-    dataset_id = uuid4()
-    original_filename = file.filename or "unknown"
+    from app.ingestion.job_tracker import create_job, update_job_progress, mark_job_completed
+
+    if pre_saved_path:
+        file_path = pre_saved_path
+        original_filename = pre_saved_filename or file_path.name
+        dataset_id = pre_saved_dataset_id or uuid4()
+    else:
+        dataset_id = uuid4()
+        original_filename = file.filename or "unknown"
+        safe_filename = f"{dataset_id}_{original_filename}"
+        file_path = UPLOAD_DIRECTORY / safe_filename
+        import shutil
+        with file_path.open("wb") as buf:
+            shutil.copyfileobj(file.file, buf)
+
     extension = Path(original_filename).suffix.lower()
-    safe_filename = f"{dataset_id}_{original_filename}"
-    file_path = UPLOAD_DIRECTORY / safe_filename
 
-    import shutil
-    with file_path.open("wb") as buf:
-        shutil.copyfileobj(file.file, buf)
+    import time
 
-    # ── Step 2: Checksum duplicate detection ──────────────────────────────
+    t0_overall = time.perf_counter()
+    logger.info("[INGESTION PROFILE] Starting ingestion for file=%s", original_filename)
+
+    if job_id:
+        create_job(job_id, filename=original_filename, dataset_id=str(dataset_id), db=db)
+
+    # ── Stage 1: File upload & save & checksum ────────────────────────────
+    t0_stage1 = time.perf_counter()
+
+
     checksum = _compute_file_checksum(file_path)
+    t1_stage1 = time.perf_counter()
+    logger.info(
+        "[INGESTION PROFILE] Stage 1 (File Upload & Checksum): elapsed=%.4fs, file=%s",
+        t1_stage1 - t0_stage1,
+        original_filename,
+    )
+
     existing = find_dataset_by_checksum(db, checksum)
     if existing:
-        # Exact duplicate file — skip all expensive processing
         file_path.unlink(missing_ok=True)
+        if job_id:
+            mark_job_completed(job_id, message="Duplicate file detected.", db=db)
         return {
             "dataset_id": existing["dataset_id"],
             "filename": original_filename,
@@ -125,18 +153,22 @@ def _process_single_file(file: UploadFile, db: Session) -> dict:
             "profile": {},
         }
 
-    # ── Step 3: Early period detection from filename ──────────────────────
-    filename_period = detect_period(filename=original_filename)
-    if filename_period.is_confident and filename_period.academic_label:
-        early_conflict = check_period_conflict(db, filename_period.academic_label)
-        if early_conflict.has_conflict:
-            # Period conflict detected BEFORE expensive processing
-            # Still register the dataset so the user can confirm via Phase B
-            pass  # We continue to process, but mark the conflict later
+    # ── Stage 2: Excel / File Parsing & Profiling ─────────────────────────
+    t0_stage2 = time.perf_counter()
+    if job_id:
+        update_job_progress(job_id, "parsing", dataset_id=str(dataset_id), message="Parsing file and profiling columns...", db=db)
 
-    # ── Step 4: Expensive processing ─────────────────────────────────────
-    # Profile
     profile = profile_file(str(file_path))
+    t1_stage2 = time.perf_counter()
+    rows = profile.get("rows", 0)
+    logger.info(
+        "[INGESTION PROFILE] Stage 2 (Excel Parsing & Profiling): elapsed=%.4fs, rows=%d",
+        t1_stage2 - t0_stage2,
+        rows,
+    )
+
+    if job_id:
+        update_job_progress(job_id, "parsing", total_rows=rows, dataset_id=str(dataset_id), message=f"Parsed {rows:,} rows", db=db)
 
     # Register source + dataset
     source_id = create_data_source(
@@ -152,30 +184,89 @@ def _process_single_file(file: UploadFile, db: Session) -> dict:
         dataset_name=original_filename,
         original_filename=original_filename,
         dataset_type=extension.replace(".", ""),
-        row_count=profile["rows"],
+        row_count=rows,
         column_count=profile["columns"],
         status="profiled",
         file_checksum=checksum,
     )
     create_quality_report(db=db, dataset_id=dataset_id, profile=profile)
+    db.commit()
 
-    # Stage
-    staged_rows = load_to_staging(db=db, dataset_id=dataset_id, file_path=str(file_path))
+    # ── Stage 3: Staging Insert ───────────────────────────────────────────
+    t0_stage3 = time.perf_counter()
+    if job_id:
+        update_job_progress(job_id, "staging", processed_rows=0, total_rows=rows, dataset_id=str(dataset_id), db=db)
 
-    # Schema mapping
+    def staging_callback(proc_rows: int, tot_rows: int):
+        if job_id:
+            update_job_progress(job_id, "staging", processed_rows=proc_rows, total_rows=tot_rows or rows, dataset_id=str(dataset_id), db=db)
+
+    staged_rows = load_to_staging(
+        db=db,
+        dataset_id=dataset_id,
+        file_path=str(file_path),
+        progress_callback=staging_callback if job_id else None,
+        total_rows=rows,
+    )
+
+    t1_stage3 = time.perf_counter()
+    logger.info(
+        "[INGESTION PROFILE] Stage 3 (Staging Insert): elapsed=%.4fs, staged_rows=%d",
+        t1_stage3 - t0_stage3,
+        staged_rows,
+    )
+
+    # Schema mapping / Validation
+    if job_id:
+        update_job_progress(job_id, "validation", processed_rows=staged_rows, total_rows=rows, dataset_id=str(dataset_id), db=db)
+
     columns = profile.get("column_names") or []
     column_mappings = map_and_store_dataset_schema(db=db, dataset_id=dataset_id, columns=columns)
 
-    # Normalise
-    normalized_rows = normalize_dataset(db=db, dataset_id=dataset_id)
+    # ── Stage 4 & 5: Dataset Normalization & Indexing ─────────────────────
+    t0_stage4 = time.perf_counter()
+    if job_id:
+        update_job_progress(job_id, "normalization", processed_rows=0, total_rows=staged_rows or rows, dataset_id=str(dataset_id), db=db)
 
-    # Cleanup staging if counts match
+    def norm_callback(proc_rows: int, tot_rows: int):
+        if job_id:
+            update_job_progress(job_id, "normalization", processed_rows=proc_rows, total_rows=tot_rows or staged_rows or rows, dataset_id=str(dataset_id), db=db)
+
+    normalized_rows = normalize_dataset(
+        db=db,
+        dataset_id=dataset_id,
+        progress_callback=norm_callback if job_id else None,
+    )
+    t1_stage4 = time.perf_counter()
+    logger.info(
+        "[INGESTION PROFILE] Stage 4 & 5 (Dataset Normalization & Index Constraints): elapsed=%.4fs, normalized_rows=%d",
+        t1_stage4 - t0_stage4,
+        normalized_rows,
+    )
+
+    # ── Stage 6: Staging Cleanup & Activation ─────────────────────────────
+    t0_stage6 = time.perf_counter()
+    if job_id:
+        update_job_progress(job_id, "finalization", processed_rows=normalized_rows, total_rows=rows, dataset_id=str(dataset_id), db=db)
+
     final_status = "normalized"
     if staged_rows == normalized_rows:
         from app.ingestion.cleanup import cleanup_staging_for_dataset
         cleanup_res = cleanup_staging_for_dataset(db=db, dataset_id=dataset_id)
         if cleanup_res.get("success"):
             final_status = "staging_cleared"
+    t1_stage6 = time.perf_counter()
+    logger.info(
+        "[INGESTION PROFILE] Stage 6 (Final Cleanup & Activation): elapsed=%.4fs",
+        t1_stage6 - t0_stage6,
+    )
+
+    t1_overall = time.perf_counter()
+    logger.info(
+        "[INGESTION PROFILE] TOTAL INGESTION TIME: elapsed=%.4fs for %d rows",
+        t1_overall - t0_overall,
+        rows,
+    )
 
     return {
         "dataset_id": str(dataset_id),
@@ -189,6 +280,7 @@ def _process_single_file(file: UploadFile, db: Session) -> dict:
         "file_path": str(file_path),
         "file_checksum": checksum,
     }
+
 
 
 def _detect_and_check(
@@ -261,6 +353,69 @@ def _detect_and_check(
         }
 
 
+def _process_job_background(job_id: str, saved_files_info: list[dict]):
+    """Background task to run expensive ingestion steps asynchronously."""
+    from app.database.connection import SessionLocal
+    from app.ingestion.job_tracker import mark_job_completed, mark_job_failed
+
+    db = SessionLocal()
+    file_paths: list[Path] = []
+    try:
+        uploaded_files = []
+        for info in saved_files_info:
+            fp = Path(info["file_path"])
+            file_paths.append(fp)
+
+            result = _process_single_file(
+                db=db,
+                job_id=job_id,
+                pre_saved_path=fp,
+                pre_saved_filename=info["filename"],
+                pre_saved_dataset_id=info["dataset_id"],
+            )
+
+            if result.get("upload_status") == "duplicate_file":
+                uploaded_files.append(result)
+                continue
+
+            period_situation = _detect_and_check(
+                db=db,
+                dataset_id=result["dataset_id"],
+                original_filename=result["filename"],
+            )
+            result.pop("file_path", None)
+            result.update(period_situation)
+            uploaded_files.append(result)
+
+        for f in uploaded_files:
+            if f.get("upload_status") == "confirmed":
+                set_active_dataset(db, f["dataset_id"])
+
+        db.commit()
+
+        status_result = {
+            "status": "success",
+            "file_count": len(uploaded_files),
+            "files": uploaded_files,
+        }
+
+        conflicts = [f for f in uploaded_files if f.get("upload_status") == "conflict"]
+        if conflicts and len(uploaded_files) == 1:
+            status_result["status"] = "conflict"
+
+        mark_job_completed(job_id, message="Ingestion complete", result_data=status_result, db=db)
+
+    except Exception as e:
+        logger.exception("Background ingestion failed for job %s: %s", job_id, e)
+        db.rollback()
+        for fp in file_paths:
+            if fp.exists():
+                fp.unlink(missing_ok=True)
+        mark_job_failed(job_id, error=str(e), db=db)
+    finally:
+        db.close()
+
+
 # ---------------------------------------------------------------------------
 # Endpoints
 # ---------------------------------------------------------------------------
@@ -273,19 +428,26 @@ def get_active_dataset_route(db: Session = Depends(get_db)):
     return {"active": True, "dataset": active}
 
 
+@router.get("/ingestion/{job_id}/status")
+def get_ingestion_job_status_route(job_id: str, db: Session = Depends(get_db)):
+    from app.ingestion.job_tracker import get_job_status
+    status = get_job_status(job_id, db=db)
+    if not status:
+        raise HTTPException(status_code=404, detail=f"Ingestion job '{job_id}' not found.")
+    return status
+
+
 @router.post("/upload")
 async def upload_datasets(
+    background_tasks: BackgroundTasks,
     files: list[UploadFile] = File(...),
+    job_id: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """
     Upload one or more CSV/Excel files (Phase A).
-
-    Returns status field indicating next step:
-      - "confirmed"            → dataset is active, no further action needed
-      - "pending_confirmation" → ask user to confirm the detected period
-      - "period_unknown"       → ask user to select the period
-      - "conflict"             → ask user how to handle duplicate period
+    If job_id is provided, files are saved immediately to disk and processing
+    runs in the background, returning 202 Accepted immediately.
     """
     if not files:
         raise HTTPException(status_code=400, detail="At least one file is required.")
@@ -299,21 +461,57 @@ async def upload_datasets(
                 detail=f"Unsupported file type: {file.filename}. Supported: CSV, XLSX, XLS, XLSB.",
             )
 
-    uploaded_files = []
+    saved_files_info = []
     file_paths: list[Path] = []
 
     try:
+        import shutil
         for file in files:
-            result = _process_single_file(file, db)
+            dataset_id = uuid4()
+            original_filename = file.filename or "unknown"
+            safe_filename = f"{dataset_id}_{original_filename}"
+            file_path = UPLOAD_DIRECTORY / safe_filename
+            with file_path.open("wb") as buf:
+                shutil.copyfileobj(file.file, buf)
 
-            # If duplicate file detected, skip period detection
+            saved_files_info.append({
+                "dataset_id": dataset_id,
+                "filename": original_filename,
+                "file_path": str(file_path),
+            })
+            file_paths.append(file_path)
+
+        if job_id:
+            from app.ingestion.job_tracker import create_job
+            create_job(
+                job_id=job_id,
+                filename=saved_files_info[0]["filename"],
+                dataset_id=str(saved_files_info[0]["dataset_id"]),
+                db=db,
+            )
+            db.commit()
+            background_tasks.add_task(_process_job_background, job_id, saved_files_info)
+            return {
+                "status": "processing",
+                "job_id": job_id,
+                "message": "Ingestion started in background",
+                "file_count": len(saved_files_info),
+            }
+
+        # Synchronous fallback if no job_id provided
+        uploaded_files = []
+        for info in saved_files_info:
+            result = _process_single_file(
+                db=db,
+                pre_saved_path=Path(info["file_path"]),
+                pre_saved_filename=info["filename"],
+                pre_saved_dataset_id=info["dataset_id"],
+            )
+
             if result.get("upload_status") == "duplicate_file":
                 uploaded_files.append(result)
                 continue
 
-            file_paths.append(Path(result["file_path"]))
-
-            # Period detection + conflict check
             period_situation = _detect_and_check(
                 db=db,
                 dataset_id=result["dataset_id"],
@@ -323,14 +521,12 @@ async def upload_datasets(
             result.update(period_situation)
             uploaded_files.append(result)
 
-        # Auto-activate datasets that resolved without conflict/ambiguity
         for f in uploaded_files:
             if f["upload_status"] == "confirmed":
                 set_active_dataset(db, f["dataset_id"])
 
         db.commit()
 
-        # If any file has an overlap conflict, return HTTP 400 with detail
         overlap_conflicts = [f for f in uploaded_files if f.get("upload_status") == "overlap_conflict"]
         if overlap_conflicts:
             raise HTTPException(
@@ -338,7 +534,6 @@ async def upload_datasets(
                 detail="This session overlaps an existing dataset. Please choose a non-overlapping historical session or replace the existing session.",
             )
 
-        # If any file has a conflict, return 409 for that file
         conflicts = [f for f in uploaded_files if f["upload_status"] == "conflict"]
         if conflicts and len(uploaded_files) == 1:
             return {
@@ -366,6 +561,7 @@ async def upload_datasets(
             if fp.exists():
                 fp.unlink()
         raise HTTPException(status_code=500, detail=f"Failed to process uploaded files: {error}")
+
 
 
 @router.post("/upload/confirm")

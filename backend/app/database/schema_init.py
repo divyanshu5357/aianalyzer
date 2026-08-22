@@ -260,8 +260,32 @@ def ensure_all_database_tables(db: Session) -> None:
                 """
             )
         )
+        db.execute(
+            text(
+                """
+                CREATE TABLE IF NOT EXISTS system.ingestion_jobs (
+                    job_id VARCHAR(255) PRIMARY KEY,
+                    dataset_id VARCHAR(255),
+                    filename VARCHAR(550),
+                    stage VARCHAR(100) NOT NULL DEFAULT 'parsing',
+                    status VARCHAR(50) NOT NULL DEFAULT 'processing',
+                    progress_percent NUMERIC(5,2) NOT NULL DEFAULT 0.0,
+                    total_rows BIGINT NOT NULL DEFAULT 0,
+                    processed_rows BIGINT NOT NULL DEFAULT 0,
+                    message TEXT,
+                    error TEXT,
+                    result_data JSONB,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                ALTER TABLE system.ingestion_jobs ADD COLUMN IF NOT EXISTS result_data JSONB;
+                """
+            )
+        )
+
 
         # 11. staging.records
+
         db.execute(
             text(
                 """
@@ -376,7 +400,6 @@ def ensure_all_database_tables(db: Session) -> None:
                 logger.debug("Column analytics.uploaded_metrics.%s add notice: %s", col_name, e)
                 db.rollback()
 
-        # Ensure UNIQUE constraint on (dataset_id, row_number)
         try:
             db.execute(
                 text(

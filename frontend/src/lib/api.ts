@@ -231,14 +231,33 @@ export async function getSourceDetail(
   return response.json();
 }
 
-export async function uploadFiles(files: File[]): Promise<FileUploadResponse> {
+export interface IngestionJobStatus {
+  job_id: string;
+  dataset_id: string | null;
+  filename: string;
+  stage: "parsing" | "staging" | "validation" | "normalization" | "finalization" | "completed" | "failed" | string;
+  status: "processing" | "completed" | "failed" | string;
+  progress_percent: number;
+  total_rows: number;
+  processed_rows: number;
+  message: string;
+  error: string | null;
+  result_data?: FileUploadResponse;
+  updated_at: string;
+}
+
+export async function uploadFiles(files: File[], jobId?: string): Promise<FileUploadResponse> {
   const formData = new FormData();
 
   files.forEach((file) => {
     formData.append("files", file);
   });
 
-  const response = await fetch(`${API_BASE_URL}/api/data/upload`, {
+  const url = jobId
+    ? `${API_BASE_URL}/api/data/upload?job_id=${encodeURIComponent(jobId)}`
+    : `${API_BASE_URL}/api/data/upload`;
+
+  const response = await fetch(url, {
     method: "POST",
     body: formData,
   });
@@ -262,6 +281,20 @@ export async function uploadFiles(files: File[]): Promise<FileUploadResponse> {
 
   return response.json();
 }
+
+export async function getIngestionJobStatus(jobId: string): Promise<IngestionJobStatus> {
+  const response = await fetch(
+    `${API_BASE_URL}/api/data/ingestion/${encodeURIComponent(jobId)}/status`
+  );
+
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to fetch ingestion job status");
+  }
+
+  return response.json();
+}
+
 
 export async function askAgent(question: string, conversationId?: string, periodA?: string, periodB?: string): Promise<ChatResponse> {
   const response = await fetch(`${API_BASE_URL}/api/chat`, {
