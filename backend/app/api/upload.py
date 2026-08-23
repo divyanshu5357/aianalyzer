@@ -394,7 +394,12 @@ def _process_job_background(job_id: str, saved_files_info: list[dict]):
                 
                 # Fetching from S3 to local disk for Pandas pipeline
                 logger.info(f"Downloading from S3: {s3_key} to {file_path}")
+                from app.ingestion.job_tracker import update_job_progress
+                update_job_progress(job_id, "parsing", message=f"Downloading {info['filename']} from secure storage to EC2 worker...", db=db)
+                
                 download_file(s3_key, str(file_path))
+                
+                update_job_progress(job_id, "parsing", message="Parsing file and profiling columns...", db=db)
                 fp = file_path
             else:
                 fp = Path(info["file_path"])

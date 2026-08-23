@@ -57,6 +57,12 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
   const [jobStatus, setJobStatus] = useState<IngestionJobStatus | null>(null);
 
+  // S3 Upload specific state
+  const [uploadPercentage, setUploadPercentage] = useState<number>(0);
+  const [uploadSpeed, setUploadSpeed] = useState<string>("");
+  const [timeRemaining, setTimeRemaining] = useState<string>("");
+  const uploadSpeedMetrics = useRef({ lastBytes: 0, lastTime: 0 });
+
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   // On mount: Check if there was an active ingestion job stored in localStorage
@@ -206,6 +212,9 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setUploadStep("idle");
     setActiveJobId(null);
     setJobStatus(null);
+    setUploadPercentage(0);
+    setUploadSpeed("");
+    setTimeRemaining("");
     localStorage.removeItem("active_ingestion_job_id");
     if (fileInputRef.current) {
       fileInputRef.current.value = "";
@@ -220,12 +229,46 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setActiveJobId(newJobId);
 
     setUploadStep("uploading");
+    setUploadPercentage(0);
+    setUploadSpeed("");
+    setTimeRemaining("");
     setError(null);
     setUploadResult(null);
 
     try {
       setUploadStep("uploading");
-      const result = await uploadFiles(selectedFiles, newJobId) as FileUploadResponseExtended;
+      
+      uploadSpeedMetrics.current = { lastBytes: 0, lastTime: Date.now() };
+
+      const result = await uploadFiles(selectedFiles, newJobId, (e) => {
+        const now = Date.now();
+        const { lastBytes, lastTime } = uploadSpeedMetrics.current;
+        const timeDiff = (now - lastTime) / 1000;
+        
+        if (timeDiff > 0.5) {
+          const bytesDiff = e.loaded - lastBytes;
+          const speedBps = bytesDiff / timeDiff;
+          
+          const speedMbs = (speedBps / (1024 * 1024)).toFixed(1);
+          setUploadSpeed(`${speedMbs} MB/s`);
+          
+          if (speedBps > 0) {
+            const remainingBytes = e.total - e.loaded;
+            const remainingSeconds = Math.round(remainingBytes / speedBps);
+            if (remainingSeconds > 60) {
+              const mins = Math.floor(remainingSeconds / 60);
+              const secs = remainingSeconds % 60;
+              setTimeRemaining(`${mins}m ${secs}s left`);
+            } else {
+              setTimeRemaining(`${remainingSeconds}s left`);
+            }
+          }
+          
+          uploadSpeedMetrics.current = { lastBytes: e.loaded, lastTime: now };
+        }
+        
+        setUploadPercentage(Math.round((e.loaded / e.total) * 100));
+      }) as FileUploadResponseExtended;
       
       if (result.status !== "processing") {
         setUploadStep("success");
@@ -421,38 +464,52 @@ export const FileUpload: React.FC<FileUploadProps> = ({
                 <span className="text-slate-800 font-semibold">
                   {jobStatus?.message ||
                     (uploadStep === "uploading"
-                      ? "Uploading files to server..."
+                      ? "Uploading files securely to storage..."
                       : uploadStep === "staging"
                       ? "Staging records into database..."
                       : "Processing & normalizing metrics...")}
                 </span>
               </span>
               <span className="text-blue-700 font-extrabold text-sm font-mono">
-                {jobStatus ? `${jobStatus.progress_percent.toFixed(0)}%` : "0%"}
+                {uploadStep === "uploading" && !jobStatus 
+                   ? `${uploadPercentage}%`
+                   : `${jobStatus?.progress_percent || 5.0}%`}
               </span>
             </div>
 
-            <div className="w-full bg-slate-200/80 rounded-full h-2.5 overflow-hidden p-0.5">
+            {/* Progress Bar Container */}
+            <div className="w-full h-2 bg-slate-200 rounded-full overflow-hidden relative shadow-inner">
               <div
-                className="h-full bg-gradient-to-r from-blue-600 to-indigo-600 rounded-full transition-all duration-300 shadow-xs"
+                className="absolute top-0 left-0 h-full transition-all duration-300 rounded-full bg-gradient-to-r from-blue-400 to-indigo-600 shadow-[0_0_8px_rgba(79,70,229,0.3)]"
                 style={{
-                  width: `${Math.max(5, Math.min(100, jobStatus?.progress_percent || 5))}%`,
+                  width: `${uploadStep === "uploading" && !jobStatus ? uploadPercentage : (jobStatus?.progress_percent || 5.0)}%`,
                 }}
               />
             </div>
 
-            <div className="flex items-center justify-between text-[11px] text-slate-500 pt-0.5 font-medium">
-              <span className="uppercase tracking-wider font-bold text-blue-800/80 text-[10px]">
-                Stage: {jobStatus?.stage ? jobStatus.stage.toUpperCase() : uploadStep.toUpperCase()}
+            {/* Context Metrics Footer */}
+            <div className="flex justify-between items-center text-[10px] uppercase font-bold tracking-wider text-slate-500">
+              <span className="flex items-center text-blue-600 bg-blue-100/50 px-2 py-0.5 rounded-md border border-blue-200">
+                Stage: {jobStatus?.stage ? jobStatus.stage : uploadStep}
               </span>
+              
+              {uploadStep === "uploading" && !jobStatus && uploadSpeed && (
+                <div className="flex space-x-3 text-slate-600">
+                   <span>{uploadSpeed}</span>
+                   <span>{timeRemaining}</span>
+                </div>
+              )}
+              
               {jobStatus && jobStatus.total_rows > 0 && (
                 <span className="font-mono text-slate-700 font-semibold">
-                  {jobStatus.processed_rows.toLocaleString()} / {jobStatus.total_rows.toLocaleString()} rows
+                  {jobStatus.processed_rows.toLocaleString()} /{" "}
+                  {jobStatus.total_rows.toLocaleString()} rows
                 </span>
               )}
             </div>
           </div>
         )}
+
 
 
         {/* Error Alert */}

@@ -246,7 +246,17 @@ export interface IngestionJobStatus {
   updated_at: string;
 }
 
-export async function uploadFiles(files: File[], jobId?: string): Promise<FileUploadResponse> {
+export interface UploadProgressEvent {
+  filename: string;
+  loaded: number;
+  total: number;
+}
+
+export async function uploadFiles(
+  files: File[], 
+  jobId?: string,
+  onProgress?: (event: UploadProgressEvent) => void
+): Promise<FileUploadResponse> {
   if (files.length === 0) {
     throw new Error("No files selected.");
   }
@@ -284,16 +294,32 @@ export async function uploadFiles(files: File[], jobId?: string): Promise<FileUp
     const s3Info = initFiles.find((f: any) => f.filename === file.name);
     if (!s3Info) throw new Error(`Missing S3 URL for file ${file.name}`);
 
-    // Direct PUT to S3
-    const s3Response = await fetch(s3Info.upload_url, {
-      method: "PUT",
-      headers: { "Content-Type": file.type || "application/octet-stream" },
-      body: file,
-    });
+    // Direct PUT to S3 using XHR to track upload progress byte-by-byte
+    await new Promise<void>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open("PUT", s3Info.upload_url, true);
+      xhr.setRequestHeader("Content-Type", file.type || "application/octet-stream");
 
-    if (!s3Response.ok) {
-      throw new Error(`Failed to upload ${file.name} to storage. Please check your network.`);
-    }
+      if (onProgress) {
+        xhr.upload.onprogress = (e) => {
+          if (e.lengthComputable) {
+            onProgress({ filename: file.name, loaded: e.loaded, total: e.total });
+          }
+        };
+      }
+
+      xhr.onload = () => {
+        if (xhr.status >= 200 && xhr.status < 300) {
+          resolve();
+        } else {
+          reject(new Error(`Failed to upload ${file.name} to storage. Status ${xhr.status}.`));
+        }
+      };
+
+      xhr.onerror = () => reject(new Error(`Network error while uploading ${file.name}.`));
+
+      xhr.send(file);
+    });
 
     uploadedFilesInfo.push({
       dataset_id: s3Info.dataset_id,
