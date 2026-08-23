@@ -226,25 +226,29 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     try {
       setUploadStep("uploading");
       const result = await uploadFiles(selectedFiles, newJobId) as FileUploadResponseExtended;
-      setUploadStep("success");
-      setUploadResult(result);
-      setSelectedFiles([]); // clear queue on success
-      localStorage.removeItem("active_ingestion_job_id");
-      setActiveJobId(null);
+      
+      if (result.status !== "processing") {
+        setUploadStep("success");
+        setUploadResult(result);
+        setSelectedFiles([]); // clear queue on success
+        localStorage.removeItem("active_ingestion_job_id");
+        setActiveJobId(null);
 
-      // Check if any file needs period confirmation
-      const needsConfirmation = result.files?.find(
-        (f) =>
-          f.upload_status === "pending_confirmation" ||
-          f.upload_status === "period_unknown" ||
-          f.upload_status === "conflict"
-      ) as UploadedFileItemExtended | undefined;
+        // Check if any file needs period confirmation
+        const needsConfirmation = result.files?.find(
+          (f) =>
+            f.upload_status === "pending_confirmation" ||
+            f.upload_status === "period_unknown" ||
+            f.upload_status === "conflict"
+        ) as UploadedFileItemExtended | undefined;
 
-      if (needsConfirmation) {
-        setPendingPeriodFile(needsConfirmation);
-      } else if (onUploadSuccess) {
-        onUploadSuccess(result);
+        if (needsConfirmation) {
+          setPendingPeriodFile(needsConfirmation);
+        } else if (onUploadSuccess) {
+          onUploadSuccess(result);
+        }
       }
+      // If processing in background, do nothing here. The useEffect polling handles completion.
     } catch (err) {
       localStorage.removeItem("active_ingestion_job_id");
       setActiveJobId(null);
