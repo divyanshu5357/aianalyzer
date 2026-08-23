@@ -224,12 +224,11 @@ export const FileUpload: React.FC<FileUploadProps> = ({
     setUploadResult(null);
 
     try {
-      setUploadStep("staging");
+      setUploadStep("uploading");
       const result = await uploadFiles(selectedFiles, newJobId) as FileUploadResponseExtended;
-      setUploadStep("normalizing");
+      setUploadStep("success");
       setUploadResult(result);
       setSelectedFiles([]); // clear queue on success
-      setUploadStep("success");
       localStorage.removeItem("active_ingestion_job_id");
       setActiveJobId(null);
 

@@ -73,6 +73,24 @@ class UploadConfirmRequest(BaseModel):
     academic_label: str   # user-confirmed label, e.g. "2025-26"
 
 
+class InitiateFile(BaseModel):
+    filename: str
+    content_type: str
+
+class UploadInitiateRequest(BaseModel):
+    files: list[InitiateFile]
+
+class UploadCompleteFile(BaseModel):
+    dataset_id: str
+    filename: str
+    s3_key: str
+
+class UploadCompleteRequest(BaseModel):
+    job_id: str
+    files: list[UploadCompleteFile]
+
+
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
@@ -360,10 +378,27 @@ def _process_job_background(job_id: str, saved_files_info: list[dict]):
 
     db = SessionLocal()
     file_paths: list[Path] = []
+    s3_keys_to_delete: list[str] = []
+    
     try:
         uploaded_files = []
         for info in saved_files_info:
-            fp = Path(info["file_path"])
+            s3_key = info.get("s3_key")
+            
+            if s3_key:
+                from app.services.s3_storage import download_file
+                s3_keys_to_delete.append(s3_key)
+                
+                safe_filename = f"{info['dataset_id']}_{info['filename']}"
+                file_path = UPLOAD_DIRECTORY / safe_filename
+                
+                # Fetching from S3 to local disk for Pandas pipeline
+                logger.info(f"Downloading from S3: {s3_key} to {file_path}")
+                download_file(s3_key, str(file_path))
+                fp = file_path
+            else:
+                fp = Path(info["file_path"])
+                
             file_paths.append(fp)
 
             result = _process_single_file(
@@ -408,12 +443,22 @@ def _process_job_background(job_id: str, saved_files_info: list[dict]):
     except Exception as e:
         logger.exception("Background ingestion failed for job %s: %s", job_id, e)
         db.rollback()
-        for fp in file_paths:
-            if fp.exists():
-                fp.unlink(missing_ok=True)
         mark_job_failed(job_id, error=str(e), db=db)
     finally:
         db.close()
+        
+        # Cleanup temporary files downloaded from S3 or directly uploaded
+        for fp in file_paths:
+            if fp.exists():
+                logger.info(f"Cleaning up local file: {fp}")
+                fp.unlink(missing_ok=True)
+                
+        # Cleanup S3 objects to avoid ballooning storage bill
+        for s3_key in s3_keys_to_delete:
+            from app.services.s3_storage import delete_file
+            logger.info(f"Cleaning up S3 object: {s3_key}")
+            delete_file(s3_key)
+
 
 
 # ---------------------------------------------------------------------------
@@ -646,4 +691,100 @@ def confirm_upload(
         "academic_label": academic_label,
         "upload_version": next_version,
         "action_applied": action,
+    }
+
+
+@router.post("/upload/initiate")
+def initiate_upload(body: UploadInitiateRequest):
+    """
+    Generate presigned URLs for direct browser-to-S3 upload.
+    """
+    from app.services.s3_storage import generate_upload_url
+    
+    if not body.files:
+        raise HTTPException(status_code=400, detail="At least one file is required.")
+
+    job_id = f"job_{uuid4().hex[:8]}"
+    result_files = []
+
+    for file_info in body.files:
+        if not file_info.filename:
+            raise HTTPException(status_code=400, detail="Every uploaded file must have a filename.")
+        
+        extension = Path(file_info.filename).suffix.lower()
+        if extension not in ALLOWED_EXTENSIONS:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unsupported file type: {file_info.filename}. Supported: CSV, XLSX, XLS, XLSB.",
+            )
+
+        dataset_id = str(uuid4())
+        
+        import re
+        safe_filename = re.sub(r'[^a-zA-Z0-9.-]', '_', file_info.filename)
+        object_key = f"uploads/{dataset_id}/{safe_filename}"
+        
+        upload_url = generate_upload_url(object_key, file_info.content_type)
+        
+        result_files.append({
+            "dataset_id": dataset_id,
+            "filename": file_info.filename,
+            "s3_key": object_key,
+            "upload_url": upload_url,
+        })
+        
+    return {
+        "job_id": job_id,
+        "files": result_files
+    }
+
+
+@router.post("/upload/complete")
+def complete_upload(
+    body: UploadCompleteRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Called after frontend successfully uploads files to S3.
+    Verifies S3 object exists and starts background ingestion.
+    """
+    from app.services.s3_storage import check_object_exists
+    from app.ingestion.job_tracker import create_job
+
+    if not body.files:
+        raise HTTPException(status_code=400, detail="No files provided to complete.")
+        
+    for file_info in body.files:
+        exists = check_object_exists(file_info.s3_key)
+        if not exists:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"File not found in S3 for {file_info.filename}. Did the upload succeed?"
+            )
+            
+    # Create the job picking the first file as representative for tracking
+    create_job(
+        job_id=body.job_id,
+        filename=body.files[0].filename,
+        dataset_id=body.files[0].dataset_id,
+        db=db,
+    )
+    db.commit()
+    
+    saved_files_info = []
+    for f in body.files:
+        saved_files_info.append({
+            "dataset_id": f.dataset_id,
+            "filename": f.filename,
+            "s3_key": f.s3_key
+        })
+
+    background_tasks.add_task(_process_job_background, body.job_id, saved_files_info)
+    
+    return {
+        "status": "processing",
+        "job_id": body.job_id,
+        "message": "Ingestion started in background",
+        "file_count": len(saved_files_info),
     }

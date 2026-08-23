@@ -247,39 +247,81 @@ export interface IngestionJobStatus {
 }
 
 export async function uploadFiles(files: File[], jobId?: string): Promise<FileUploadResponse> {
-  const formData = new FormData();
+  if (files.length === 0) {
+    throw new Error("No files selected.");
+  }
 
-  files.forEach((file) => {
-    formData.append("files", file);
-  });
+  // Step 1: Initiate Uploads
+  const initiatePayload = {
+    files: files.map(file => ({
+      filename: file.name,
+      content_type: file.type || "application/octet-stream",
+    }))
+  };
 
-  const url = jobId
-    ? `${API_BASE_URL}/api/data/upload?job_id=${encodeURIComponent(jobId)}`
-    : `${API_BASE_URL}/api/data/upload`;
-
-  const response = await fetch(url, {
+  const initResponse = await fetch(`${API_BASE_URL}/api/data/upload/initiate`, {
     method: "POST",
-    body: formData,
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(initiatePayload),
   });
 
-  if (!response.ok) {
-    let errorMessage = "Failed to upload files";
+  if (!initResponse.ok) {
+    let errorMessage = "Failed to initiate upload";
     try {
-      const errorJson = await response.json();
-      if (errorJson.detail) {
-        errorMessage =
-          typeof errorJson.detail === "string"
-            ? errorJson.detail
-            : JSON.stringify(errorJson.detail);
-      }
-    } catch {
-      const errorText = await response.text();
-      if (errorText) errorMessage = errorText;
-    }
+      const errorJson = await initResponse.json();
+      if (errorJson.detail) errorMessage = typeof errorJson.detail === "string" ? errorJson.detail : JSON.stringify(errorJson.detail);
+    } catch { /* ignore */ }
     throw new Error(errorMessage);
   }
 
-  return response.json();
+  const { job_id: initiatedJobId, files: initFiles } = await initResponse.json();
+  const targetJobId = jobId || initiatedJobId;
+
+  // Step 2: Upload Files directly to S3
+  const uploadedFilesInfo = [];
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+    const s3Info = initFiles.find((f: any) => f.filename === file.name);
+    if (!s3Info) throw new Error(`Missing S3 URL for file ${file.name}`);
+
+    // Direct PUT to S3
+    const s3Response = await fetch(s3Info.upload_url, {
+      method: "PUT",
+      headers: { "Content-Type": file.type || "application/octet-stream" },
+      body: file,
+    });
+
+    if (!s3Response.ok) {
+      throw new Error(`Failed to upload ${file.name} to storage. Please check your network.`);
+    }
+
+    uploadedFilesInfo.push({
+      dataset_id: s3Info.dataset_id,
+      filename: s3Info.filename,
+      s3_key: s3Info.s3_key,
+    });
+  }
+
+  // Step 3: Complete Upload
+  const completeResponse = await fetch(`${API_BASE_URL}/api/data/upload/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_id: targetJobId,
+      files: uploadedFilesInfo,
+    }),
+  });
+
+  if (!completeResponse.ok) {
+    let errorMessage = "Failed to complete upload";
+    try {
+      const errorJson = await completeResponse.json();
+      if (errorJson.detail) errorMessage = typeof errorJson.detail === "string" ? errorJson.detail : JSON.stringify(errorJson.detail);
+    } catch { /* ignore */ }
+    throw new Error(errorMessage);
+  }
+
+  return completeResponse.json();
 }
 
 export async function getIngestionJobStatus(jobId: string): Promise<IngestionJobStatus> {
