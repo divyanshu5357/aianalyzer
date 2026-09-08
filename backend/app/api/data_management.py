@@ -10,11 +10,11 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
 
-from app.database.connection import SessionLocal
+from app.database.connection import SessionLocal, get_db
 from app.database.repository import (
     get_active_dataset,
     get_active_dataset_info,
@@ -66,7 +66,7 @@ def get_admin_config() -> dict[str, Any]:
 def list_all_datasets() -> dict[str, Any]:
     """
     List all datasets with category (production / test / benchmark),
-    active status, period info, and row counts.
+    analytics enablement, period/campus info, and row counts.
     """
     db = SessionLocal()
     try:
@@ -83,13 +83,17 @@ def list_all_datasets() -> dict[str, Any]:
                     d.is_active,
                     d.is_period_active,
                     d.academic_label,
+                    d.academic_year,
+                    d.campus_name,
+                    d.workbook_type,
+                    d.is_analytics_enabled,
                     d.upload_version,
                     d.file_checksum,
                     d.created_at,
                     q.quality_score
                 FROM system.datasets d
                 LEFT JOIN system.data_quality_reports q ON q.dataset_id = d.id
-                ORDER BY d.created_at DESC
+                ORDER BY d.academic_year DESC NULLS LAST, d.campus_name ASC, d.created_at DESC
                 """
             )
         ).mappings().all()
@@ -98,6 +102,7 @@ def list_all_datasets() -> dict[str, Any]:
         for r in rows:
             name = r["dataset_name"] or ""
             category = "test_benchmark" if is_benchmark_dataset(name) else "production"
+            wb_type = str(r.get("workbook_type") or "RAW").upper()
             datasets.append(
                 {
                     "id": str(r["id"]),
@@ -107,8 +112,12 @@ def list_all_datasets() -> dict[str, Any]:
                     "column_count": r["column_count"],
                     "status": r["status"],
                     "is_active": bool(r["is_active"]),
+                    "is_analytics_enabled": bool(r.get("is_analytics_enabled")),
                     "is_period_active": bool(r.get("is_period_active")),
-                    "academic_label": r.get("academic_label"),
+                    "academic_label": str(r.get("academic_year")) if r.get("academic_year") else r.get("academic_label"),
+                    "academic_year": r.get("academic_year"),
+                    "campus_name": r.get("campus_name"),
+                    "workbook_type": wb_type,
                     "upload_version": r.get("upload_version"),
                     "file_checksum": r.get("file_checksum"),
                     "quality_score": (
@@ -201,10 +210,7 @@ def reset_all(req: ResetAllRequest) -> dict[str, Any]:
 @router.post("/datasets/{dataset_id}/activate")
 def activate_dataset(dataset_id: str) -> dict[str, Any]:
     """
-    Explicitly set a specific dataset as the active analysis dataset.
-
-    Benchmark/test datasets are rejected unless `allow_benchmark=true`
-    is passed as a query parameter (future extension — not exposed to UI).
+    Explicitly set a specific dataset as active for legacy compatibility and enable its analytics.
     """
     db = SessionLocal()
     try:
@@ -230,6 +236,7 @@ def activate_dataset(dataset_id: str) -> dict[str, Any]:
             )
 
         set_active_dataset(db, dataset_id)
+        db.execute(text("UPDATE system.datasets SET is_analytics_enabled = TRUE WHERE id = :id"), {"id": dataset_id})
         db.commit()
 
         return {
@@ -237,6 +244,7 @@ def activate_dataset(dataset_id: str) -> dict[str, Any]:
             "dataset_id": dataset_id,
             "dataset_name": ds_name,
             "academic_label": row.get("academic_label"),
+            "is_analytics_enabled": True,
         }
     except HTTPException:
         raise
@@ -246,12 +254,72 @@ def activate_dataset(dataset_id: str) -> dict[str, Any]:
         db.close()
 
 
+class EnableDatasetRequest(BaseModel):
+    force: bool = False
+
+
+@router.post("/datasets/{dataset_id}/enable")
+def enable_dataset(dataset_id: str, req: EnableDatasetRequest | None = None) -> dict[str, Any]:
+    """Enable analytics for a dataset with duplicate active version warning."""
+    db = SessionLocal()
+    try:
+        from app.database.repository import enable_dataset_analytics
+        force = req.force if req else False
+        res = enable_dataset_analytics(db, dataset_id, force=force)
+        if not res.get("success"):
+            return res
+        return {"status": "enabled", **res}
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    finally:
+        db.close()
+
+
+@router.post("/datasets/{dataset_id}/disable")
+def disable_dataset(dataset_id: str) -> dict[str, Any]:
+    """Disable analytics for a dataset without deleting historical data."""
+    db = SessionLocal()
+    try:
+        from app.database.repository import disable_dataset_analytics
+        res = disable_dataset_analytics(db, dataset_id)
+        return {"status": "disabled", **res}
+    finally:
+        db.close()
+
+
+class UpdateMetadataRequest(BaseModel):
+    academic_year: int
+    campus_name: str
+    dataset_name: str | None = None
+
+
+@router.patch("/datasets/{dataset_id}/metadata")
+def update_dataset_metadata_endpoint(dataset_id: str, req: UpdateMetadataRequest) -> dict[str, Any]:
+    """
+    Edit dataset Academic Year and Campus metadata.
+    Does NOT rewrite or modify underlying metrics or historical records.
+    """
+    db = SessionLocal()
+    try:
+        from app.database.repository import update_dataset_metadata
+        res = update_dataset_metadata(
+            db,
+            dataset_id,
+            academic_year=req.academic_year,
+            campus_name=req.campus_name,
+            dataset_name=req.dataset_name,
+        )
+        return {"status": "updated", **res}
+    finally:
+        db.close()
+
+
 class DeleteDatasetRequest(BaseModel):
     confirm: bool = False
 
 
 @router.delete("/datasets/{dataset_id}")
-def delete_single_dataset(dataset_id: str, confirm: bool = False) -> dict[str, Any]:
+def delete_single_dataset(dataset_id: str, confirm: bool = False, db: Session = Depends(get_db)) -> dict[str, Any]:
     """
     Delete a single dataset and all its dependent data (staging, analytics,
     mappings, quality reports, conversation context).
@@ -268,11 +336,16 @@ def delete_single_dataset(dataset_id: str, confirm: bool = False) -> dict[str, A
             detail="Pass ?confirm=true to confirm deletion.",
         )
 
-    db = SessionLocal()
+    should_close = False
+    if db is None:
+        db = SessionLocal()
+        should_close = True
     try:
-        # Verify dataset exists
         row = db.execute(
-            text("SELECT id, dataset_name, is_active FROM system.datasets WHERE id = :id"),
+            text("""
+                SELECT id, dataset_name, is_active, is_analytics_enabled, academic_year, campus_name, workbook_type
+                FROM system.datasets WHERE id = :id
+            """),
             {"id": dataset_id},
         ).mappings().first()
 
@@ -280,16 +353,33 @@ def delete_single_dataset(dataset_id: str, confirm: bool = False) -> dict[str, A
             raise HTTPException(status_code=404, detail=f"Dataset '{dataset_id}' not found.")
 
         ds_name = row["dataset_name"] or ""
-        was_active = bool(row["is_active"])
+        was_active = bool(row["is_active"] or row["is_analytics_enabled"])
+        del_year = row.get("academic_year")
+        del_campus = row.get("campus_name")
+        del_wb_type = str(row.get("workbook_type") or "RAW").upper()
 
         counts = delete_dataset_cascade(db, [dataset_id])
 
-        # If we deleted the active dataset, don't auto-promote anything
+        # If deleted dataset was active or enabled, promote next dataset for the exact scope if available
         if was_active:
-            logger.warning(
-                "Deleted active dataset '%s' (%s). Active dataset is now None.",
-                ds_name, dataset_id,
-            )
+            cand_id = db.execute(
+                text("""
+                    SELECT id FROM system.datasets
+                    WHERE id != :del_id
+                      AND UPPER(COALESCE(workbook_type, 'RAW')) = :wb_type
+                      AND (academic_year = :yr OR (:yr IS NULL AND academic_year IS NULL))
+                      AND (campus_name = :cmp OR (:cmp IS NULL AND campus_name IS NULL))
+                    ORDER BY upload_version DESC, created_at DESC
+                    LIMIT 1
+                """),
+                {"del_id": dataset_id, "wb_type": del_wb_type, "yr": del_year, "cmp": del_campus},
+            ).scalar()
+
+            if cand_id:
+                from app.database.repository import set_active_dataset, enable_dataset_analytics
+                enable_dataset_analytics(db, str(cand_id), force=True)
+                set_active_dataset(db, str(cand_id), allow_benchmark=True)
+                logger.info("Auto-promoted dataset '%s' for scope year=%s campus=%s", cand_id, del_year, del_campus)
 
         db.commit()
 
@@ -302,5 +392,6 @@ def delete_single_dataset(dataset_id: str, confirm: bool = False) -> dict[str, A
             "deleted_analytics_rows": counts["analytics"],
         }
     finally:
-        db.close()
+        if should_close:
+            db.close()
 

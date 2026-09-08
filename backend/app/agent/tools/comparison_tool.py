@@ -22,7 +22,7 @@ class ComparisonTool(BaseAnalyticsTool):
             )
 
         explicit_dim = request.dimension or (request.dimensions[0] if request.dimensions else None)
-        cols_to_check = ["main_source", "source", "campus_name", "program_name", "state", "owner", "lead_type", "cluster"]
+        cols_to_check = ["program_code", "program_name", "main_source", "source", "campus_name", "state", "owner", "lead_type", "cluster"]
         if explicit_dim and explicit_dim in cols_to_check:
             cols_to_check = [explicit_dim] + [c for c in cols_to_check if c != explicit_dim]
 
@@ -95,21 +95,23 @@ class ComparisonTool(BaseAnalyticsTool):
             
         # Build reverse map of matched db value -> original user display casing
         reverse_map = {}
+        display_names = getattr(request, "metadata", {}).get("display_names", {}) if getattr(request, "metadata", None) else {}
         for req_val, mapped in resolved_mapping.items():
             if isinstance(mapped, tuple):
                 col, db_val = mapped
             else:
                 db_val = mapped
-            reverse_map[db_val] = req_val
+            reverse_map[db_val] = display_names.get(req_val) or req_val
 
         sql = " UNION ALL ".join(queries)
         rows = db.execute(text(sql), params).mappings().all()
 
+        display_dim = "program_name" if best_dim == "program_code" else best_dim
         data_rows = []
         for r in rows:
             db_val = r["dim_val"]
             display_val = reverse_map.get(db_val, db_val)
-            data_rows.append({best_dim: display_val, metric: int(r["metric_val"] or 0)})
+            data_rows.append({display_dim: display_val, metric: int(r["metric_val"] or 0)})
 
         response_type = request.response_type
         if response_type == "text" and len(data_rows) > 1:
@@ -118,7 +120,7 @@ class ComparisonTool(BaseAnalyticsTool):
         return ToolResult(
             success=True,
             operation="comparison",
-            columns=[best_dim, metric],
+            columns=[display_dim, metric],
             data=data_rows,
             response_type=response_type,
             chart_type=request.chart_type or ("pie" if response_type == "chart" else None),
@@ -130,3 +132,4 @@ class ComparisonTool(BaseAnalyticsTool):
                 "resolved_values": stored_vals,
             },
         )
+

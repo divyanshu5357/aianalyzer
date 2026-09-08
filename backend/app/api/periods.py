@@ -18,7 +18,7 @@ from app.database.repository import (
     get_active_period_for_label,
     get_period_pair,
 )
-from app.analytics.period_resolver import compare_periods, get_historical_trend, VALID_DIMENSIONS
+from app.analytics.period_resolver import compare_periods, VALID_DIMENSIONS
 from app.analytics.workspace import (
     get_workspace_filter_options,
     query_workspace_comparison,
@@ -29,7 +29,6 @@ router = APIRouter(prefix="/api/periods", tags=["Periods"])
 
 from app.analytics.period_resolver import (
     compare_periods,
-    get_historical_trend,
     list_all_analytical_years,
     VALID_DIMENSIONS,
 )
@@ -107,32 +106,6 @@ def compare_two_periods(
         raise HTTPException(status_code=400, detail=str(exc))
 
 
-@router.get("/trend")
-def get_trend(
-    metric: str = Query("admissions", description="Metric: leads | admissions | cucet | conversion_rate"),
-    dimension: str = Query("program_name", description="Grouping dimension"),
-    db: Session = Depends(get_db),
-):
-    """
-    Get historical trend for a metric across all active periods by dimension.
-    """
-    if dimension not in VALID_DIMENSIONS:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid dimension '{dimension}'. Valid: {sorted(VALID_DIMENSIONS)}",
-        )
-
-    valid_metrics = {"leads", "admissions", "admission", "cucet", "conversion_rate"}
-    if metric not in valid_metrics:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Invalid metric '{metric}'. Valid: {sorted(valid_metrics)}",
-        )
-
-    try:
-        return get_historical_trend(db, metric, dimension)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
 
 
 @router.get("/workspace")

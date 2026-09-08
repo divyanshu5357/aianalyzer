@@ -1,0 +1,2618 @@
+{
+  "Mohali_2025": {
+    "campus": "Mohali",
+    "year": 2025,
+    "kpis": {
+      "leads": 940981,
+      "cucet": 940981,
+      "admission": 930115,
+      "conversion_rate": 98.85
+    },
+    "monthly_totals": [
+      {
+        "month": "November",
+        "cy_leads": 18819,
+        "cy_cucet": 18819,
+        "cy_admission": 18602
+      },
+      {
+        "month": "December",
+        "cy_leads": 28229,
+        "cy_cucet": 28229,
+        "cy_admission": 27903
+      },
+      {
+        "month": "January",
+        "cy_leads": 47049,
+        "cy_cucet": 47049,
+        "cy_admission": 46505
+      },
+      {
+        "month": "February",
+        "cy_leads": 75278,
+        "cy_cucet": 75278,
+        "cy_admission": 74409
+      },
+      {
+        "month": "March",
+        "cy_leads": 131737,
+        "cy_cucet": 131737,
+        "cy_admission": 130216
+      },
+      {
+        "month": "April",
+        "cy_leads": 169376,
+        "cy_cucet": 169376,
+        "cy_admission": 167420
+      },
+      {
+        "month": "May",
+        "cy_leads": 131737,
+        "cy_cucet": 131737,
+        "cy_admission": 130216
+      },
+      {
+        "month": "June",
+        "cy_leads": 188196,
+        "cy_cucet": 188196,
+        "cy_admission": 186023
+      },
+      {
+        "month": "July",
+        "cy_leads": 94098,
+        "cy_cucet": 94098,
+        "cy_admission": 93011
+      },
+      {
+        "month": "August",
+        "cy_leads": 37639,
+        "cy_cucet": 37639,
+        "cy_admission": 37204
+      },
+      {
+        "month": "September",
+        "cy_leads": 9409,
+        "cy_cucet": 9409,
+        "cy_admission": 9301
+      },
+      {
+        "month": "October",
+        "cy_leads": 9414,
+        "cy_cucet": 9414,
+        "cy_admission": 9305
+      }
+    ],
+    "program_rankings": {
+      "top_drivers": [],
+      "decline_areas": []
+    },
+    "source_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Publisher-API",
+          "cy_leads": 548816,
+          "cy_admission": 547045,
+          "cy_rate": 99.68,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F86",
+          "cy_leads": 140291,
+          "cy_admission": 135846,
+          "cy_rate": 96.83,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F88",
+          "cy_leads": 129631,
+          "cy_admission": 128387,
+          "cy_rate": 99.04,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Widget",
+          "cy_leads": 80328,
+          "cy_admission": 79837,
+          "cy_rate": 99.39,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F58",
+          "cy_leads": 21063,
+          "cy_admission": 19369,
+          "cy_rate": 91.96,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "F134",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "918068368494",
+          "cy_leads": 11,
+          "cy_admission": 9,
+          "cy_rate": 81.82,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mobile Form",
+          "cy_leads": 18,
+          "cy_admission": 17,
+          "cy_rate": 94.44,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "WhatsApp Inbound",
+          "cy_leads": 185,
+          "cy_admission": 184,
+          "cy_rate": 99.46,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "918068368496",
+          "cy_leads": 261,
+          "cy_admission": 211,
+          "cy_rate": 80.84,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "state_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Punjab",
+          "cy_leads": 192415,
+          "cy_admission": 189669,
+          "cy_rate": 98.57,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Chandigarh",
+          "cy_leads": 110218,
+          "cy_admission": 109823,
+          "cy_rate": 99.64,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Uttar Pradesh",
+          "cy_leads": 107958,
+          "cy_admission": 106720,
+          "cy_rate": 98.85,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Haryana",
+          "cy_leads": 96669,
+          "cy_admission": 94515,
+          "cy_rate": 97.77,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Delhi",
+          "cy_leads": 71184,
+          "cy_admission": 70722,
+          "cy_rate": 99.35,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Ajay bhai",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "261505",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "ACCRA",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "250000000",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Abneesh yadav g",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "owner_rankings": {
+      "top_drivers": [
+        {
+          "entity": "HAMANDEEP SINGH E2828",
+          "cy_leads": 18744,
+          "cy_admission": 18743,
+          "cy_rate": 99.99,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Shallu Rani E10630",
+          "cy_leads": 11824,
+          "cy_admission": 11663,
+          "cy_rate": 98.64,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Aniya Ahuja NL06",
+          "cy_leads": 11011,
+          "cy_admission": 10938,
+          "cy_rate": 99.34,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mansi Sharma E17574",
+          "cy_leads": 10430,
+          "cy_admission": 10319,
+          "cy_rate": 98.94,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mansi Kumari E15662",
+          "cy_leads": 10375,
+          "cy_admission": 10230,
+          "cy_rate": 98.6,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Kanwalpreet Singh E14876",
+          "cy_leads": 3554,
+          "cy_admission": 3506,
+          "cy_rate": 98.65,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Sajid E18620",
+          "cy_leads": 3558,
+          "cy_admission": 3509,
+          "cy_rate": 98.62,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Karan E18561",
+          "cy_leads": 3571,
+          "cy_admission": 3538,
+          "cy_rate": 99.08,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Priyanka Jain E18592",
+          "cy_leads": 3576,
+          "cy_admission": 3550,
+          "cy_rate": 99.27,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Sonal Jerath E18075",
+          "cy_leads": 3610,
+          "cy_admission": 3578,
+          "cy_rate": 99.11,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    }
+  },
+  "Mohali_2026": {
+    "campus": "Mohali",
+    "year": 2026,
+    "kpis": {
+      "leads": 974328,
+      "cucet": 52107,
+      "admission": 22546,
+      "conversion_rate": 2.31
+    },
+    "monthly_totals": [
+      {
+        "month": "November",
+        "cy_leads": 19486,
+        "cy_cucet": 1042,
+        "cy_admission": 450
+      },
+      {
+        "month": "December",
+        "cy_leads": 29229,
+        "cy_cucet": 1563,
+        "cy_admission": 676
+      },
+      {
+        "month": "January",
+        "cy_leads": 48716,
+        "cy_cucet": 2605,
+        "cy_admission": 1127
+      },
+      {
+        "month": "February",
+        "cy_leads": 77946,
+        "cy_cucet": 4168,
+        "cy_admission": 1803
+      },
+      {
+        "month": "March",
+        "cy_leads": 136405,
+        "cy_cucet": 7294,
+        "cy_admission": 3156
+      },
+      {
+        "month": "April",
+        "cy_leads": 175379,
+        "cy_cucet": 9379,
+        "cy_admission": 4058
+      },
+      {
+        "month": "May",
+        "cy_leads": 136405,
+        "cy_cucet": 7294,
+        "cy_admission": 3156
+      },
+      {
+        "month": "June",
+        "cy_leads": 194865,
+        "cy_cucet": 10421,
+        "cy_admission": 4509
+      },
+      {
+        "month": "July",
+        "cy_leads": 97432,
+        "cy_cucet": 5210,
+        "cy_admission": 2254
+      },
+      {
+        "month": "August",
+        "cy_leads": 38973,
+        "cy_cucet": 2084,
+        "cy_admission": 901
+      },
+      {
+        "month": "September",
+        "cy_leads": 9743,
+        "cy_cucet": 521,
+        "cy_admission": 225
+      },
+      {
+        "month": "October",
+        "cy_leads": 9749,
+        "cy_cucet": 526,
+        "cy_admission": 231
+      }
+    ],
+    "program_rankings": {
+      "top_drivers": [],
+      "decline_areas": []
+    },
+    "source_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Google",
+          "cy_leads": 261723,
+          "cy_admission": 7065,
+          "cy_rate": 2.7,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Quick Add Form",
+          "cy_leads": 24869,
+          "cy_admission": 3934,
+          "cy_rate": 15.82,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Website",
+          "cy_leads": 33496,
+          "cy_admission": 2604,
+          "cy_rate": 7.77,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Direct",
+          "cy_leads": 13076,
+          "cy_admission": 1358,
+          "cy_rate": 10.39,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "collegekampus",
+          "cy_leads": 5699,
+          "cy_admission": 916,
+          "cy_rate": 16.07,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "FB Lead Ads",
+          "cy_leads": 106,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "MAT2026",
+          "cy_leads": 96,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "facebook",
+          "cy_leads": 73,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "shribalaji",
+          "cy_leads": 51,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "betterstudy",
+          "cy_leads": 21,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "state_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Punjab",
+          "cy_leads": 201528,
+          "cy_admission": 5284,
+          "cy_rate": 2.62,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Haryana",
+          "cy_leads": 128005,
+          "cy_admission": 3991,
+          "cy_rate": 3.12,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Uttar Pradesh",
+          "cy_leads": 106749,
+          "cy_admission": 2748,
+          "cy_rate": 2.57,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Bihar",
+          "cy_leads": 59480,
+          "cy_admission": 1916,
+          "cy_rate": 3.22,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Himachal Pradesh",
+          "cy_leads": 34879,
+          "cy_admission": 1801,
+          "cy_rate": 5.16,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Jammu and Kashmir",
+          "cy_leads": 556,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Orissa",
+          "cy_leads": 208,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "DELHI",
+          "cy_leads": 159,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Delhi NCR",
+          "cy_leads": 127,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "N.A.",
+          "cy_leads": 121,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "owner_rankings": {
+      "top_drivers": [
+        {
+          "entity": "HAMANDEEP SINGH E2828",
+          "cy_leads": 46363,
+          "cy_admission": 321,
+          "cy_rate": 0.69,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Kanchan NL19",
+          "cy_leads": 1170,
+          "cy_admission": 310,
+          "cy_rate": 26.5,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Jaspreet Kaur E10683",
+          "cy_leads": 9232,
+          "cy_admission": 309,
+          "cy_rate": 3.35,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Rajvinder Kour E10720",
+          "cy_leads": 7777,
+          "cy_admission": 308,
+          "cy_rate": 3.96,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Navdeep Kaur E9772",
+          "cy_leads": 10360,
+          "cy_admission": 307,
+          "cy_rate": 2.96,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Madhuri Sharma E16832",
+          "cy_leads": 4881,
+          "cy_admission": 79,
+          "cy_rate": 1.62,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Ashwell E19920",
+          "cy_leads": 3181,
+          "cy_admission": 80,
+          "cy_rate": 2.51,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Richa Nee E17118",
+          "cy_leads": 274,
+          "cy_admission": 80,
+          "cy_rate": 29.2,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Adarsh Singh E18589",
+          "cy_leads": 4784,
+          "cy_admission": 83,
+          "cy_rate": 1.73,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "ANKIT GUPTA E12523",
+          "cy_leads": 108,
+          "cy_admission": 84,
+          "cy_rate": 77.78,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    }
+  },
+  "Unnao_2025": {
+    "campus": "Unnao",
+    "year": 2025,
+    "kpis": {
+      "leads": 302968,
+      "cucet": 302968,
+      "admission": 301970,
+      "conversion_rate": 99.67
+    },
+    "monthly_totals": [
+      {
+        "month": "November",
+        "cy_leads": 6059,
+        "cy_cucet": 6059,
+        "cy_admission": 6039
+      },
+      {
+        "month": "December",
+        "cy_leads": 9089,
+        "cy_cucet": 9089,
+        "cy_admission": 9059
+      },
+      {
+        "month": "January",
+        "cy_leads": 15148,
+        "cy_cucet": 15148,
+        "cy_admission": 15098
+      },
+      {
+        "month": "February",
+        "cy_leads": 24237,
+        "cy_cucet": 24237,
+        "cy_admission": 24157
+      },
+      {
+        "month": "March",
+        "cy_leads": 42415,
+        "cy_cucet": 42415,
+        "cy_admission": 42275
+      },
+      {
+        "month": "April",
+        "cy_leads": 54534,
+        "cy_cucet": 54534,
+        "cy_admission": 54354
+      },
+      {
+        "month": "May",
+        "cy_leads": 42415,
+        "cy_cucet": 42415,
+        "cy_admission": 42275
+      },
+      {
+        "month": "June",
+        "cy_leads": 60593,
+        "cy_cucet": 60593,
+        "cy_admission": 60394
+      },
+      {
+        "month": "July",
+        "cy_leads": 30296,
+        "cy_cucet": 30296,
+        "cy_admission": 30197
+      },
+      {
+        "month": "August",
+        "cy_leads": 12118,
+        "cy_cucet": 12118,
+        "cy_admission": 12078
+      },
+      {
+        "month": "September",
+        "cy_leads": 3029,
+        "cy_cucet": 3029,
+        "cy_admission": 3019
+      },
+      {
+        "month": "October",
+        "cy_leads": 3035,
+        "cy_cucet": 3035,
+        "cy_admission": 3025
+      }
+    ],
+    "program_rankings": {
+      "top_drivers": [],
+      "decline_areas": []
+    },
+    "source_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Publisher-API",
+          "cy_leads": 151677,
+          "cy_admission": 151515,
+          "cy_rate": 99.89,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F86",
+          "cy_leads": 59069,
+          "cy_admission": 58768,
+          "cy_rate": 99.49,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F89",
+          "cy_leads": 54845,
+          "cy_admission": 54684,
+          "cy_rate": 99.71,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Widget",
+          "cy_leads": 30902,
+          "cy_admission": 30814,
+          "cy_rate": 99.72,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F58",
+          "cy_leads": 2929,
+          "cy_admission": 2749,
+          "cy_rate": 93.85,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "F107",
+          "cy_leads": 1,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F123",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F21",
+          "cy_leads": 2,
+          "cy_admission": 2,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "918068368496",
+          "cy_leads": 14,
+          "cy_admission": 11,
+          "cy_rate": 78.57,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Quick Add Form",
+          "cy_leads": 12,
+          "cy_admission": 12,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "state_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Uttar Pradesh",
+          "cy_leads": 135320,
+          "cy_admission": 134586,
+          "cy_rate": 99.46,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Bihar",
+          "cy_leads": 22884,
+          "cy_admission": 22810,
+          "cy_rate": 99.68,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Delhi",
+          "cy_leads": 18684,
+          "cy_admission": 18665,
+          "cy_rate": 99.9,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "West Bengal",
+          "cy_leads": 14786,
+          "cy_admission": 14764,
+          "cy_rate": 99.85,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Punjab",
+          "cy_leads": 14617,
+          "cy_admission": 14614,
+          "cy_rate": 99.98,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "ali",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Budaun",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Akhilesh Yadav",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "6395130328",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Bp1111",
+          "cy_leads": 1,
+          "cy_admission": 1,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "owner_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Aniya Ahuja NL06",
+          "cy_leads": 13514,
+          "cy_admission": 13495,
+          "cy_rate": 99.86,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Preeti L100041",
+          "cy_leads": 9556,
+          "cy_admission": 9554,
+          "cy_rate": 99.98,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Sunpreet Kaur L100045",
+          "cy_leads": 8528,
+          "cy_admission": 8511,
+          "cy_rate": 99.8,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Anjana Thakur L100061",
+          "cy_leads": 7893,
+          "cy_admission": 7885,
+          "cy_rate": 99.9,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mandeep Kaur L100053",
+          "cy_leads": 7854,
+          "cy_admission": 7836,
+          "cy_rate": 99.77,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Neelam Verma L100315",
+          "cy_leads": 404,
+          "cy_admission": 402,
+          "cy_rate": 99.5,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Shahjahan Khatoon E18848",
+          "cy_leads": 427,
+          "cy_admission": 426,
+          "cy_rate": 99.77,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Ayushi L100249",
+          "cy_leads": 435,
+          "cy_admission": 431,
+          "cy_rate": 99.08,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Pooja NL16",
+          "cy_leads": 466,
+          "cy_admission": 463,
+          "cy_rate": 99.36,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Faiyajul Haque L100234",
+          "cy_leads": 489,
+          "cy_admission": 480,
+          "cy_rate": 98.16,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    }
+  },
+  "Unnao_2026": {
+    "campus": "Unnao",
+    "year": 2026,
+    "kpis": {
+      "leads": 390874,
+      "cucet": 10545,
+      "admission": 5706,
+      "conversion_rate": 1.46
+    },
+    "monthly_totals": [
+      {
+        "month": "November",
+        "cy_leads": 7817,
+        "cy_cucet": 210,
+        "cy_admission": 114
+      },
+      {
+        "month": "December",
+        "cy_leads": 11726,
+        "cy_cucet": 316,
+        "cy_admission": 171
+      },
+      {
+        "month": "January",
+        "cy_leads": 19543,
+        "cy_cucet": 527,
+        "cy_admission": 285
+      },
+      {
+        "month": "February",
+        "cy_leads": 31269,
+        "cy_cucet": 843,
+        "cy_admission": 456
+      },
+      {
+        "month": "March",
+        "cy_leads": 54722,
+        "cy_cucet": 1476,
+        "cy_admission": 798
+      },
+      {
+        "month": "April",
+        "cy_leads": 70357,
+        "cy_cucet": 1898,
+        "cy_admission": 1027
+      },
+      {
+        "month": "May",
+        "cy_leads": 54722,
+        "cy_cucet": 1476,
+        "cy_admission": 798
+      },
+      {
+        "month": "June",
+        "cy_leads": 78174,
+        "cy_cucet": 2109,
+        "cy_admission": 1141
+      },
+      {
+        "month": "July",
+        "cy_leads": 39087,
+        "cy_cucet": 1054,
+        "cy_admission": 570
+      },
+      {
+        "month": "August",
+        "cy_leads": 15634,
+        "cy_cucet": 421,
+        "cy_admission": 228
+      },
+      {
+        "month": "September",
+        "cy_leads": 3908,
+        "cy_cucet": 105,
+        "cy_admission": 57
+      },
+      {
+        "month": "October",
+        "cy_leads": 3915,
+        "cy_cucet": 110,
+        "cy_admission": 61
+      }
+    ],
+    "program_rankings": {
+      "top_drivers": [],
+      "decline_areas": []
+    },
+    "source_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Widget",
+          "cy_leads": 178959,
+          "cy_admission": 2966,
+          "cy_rate": 1.66,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F58",
+          "cy_leads": 5688,
+          "cy_admission": 1583,
+          "cy_rate": 27.83,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Publisher-API",
+          "cy_leads": 199518,
+          "cy_admission": 580,
+          "cy_rate": 0.29,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Quick Add Form",
+          "cy_leads": 2877,
+          "cy_admission": 209,
+          "cy_rate": 7.26,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Portal",
+          "cy_leads": 1920,
+          "cy_admission": 133,
+          "cy_rate": 6.93,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Lead Ads",
+          "cy_leads": 493,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Google Lead Forms",
+          "cy_leads": 36,
+          "cy_admission": 1,
+          "cy_rate": 2.78,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Lead Add Form",
+          "cy_leads": 5,
+          "cy_admission": 1,
+          "cy_rate": 20.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mobile Form",
+          "cy_leads": 3,
+          "cy_admission": 2,
+          "cy_rate": 66.67,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "918068368493",
+          "cy_leads": 3,
+          "cy_admission": 2,
+          "cy_rate": 66.67,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "state_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Uttar Pradesh",
+          "cy_leads": 257740,
+          "cy_admission": 5052,
+          "cy_rate": 1.96,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Bihar",
+          "cy_leads": 32348,
+          "cy_admission": 250,
+          "cy_rate": 0.77,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Jharkhand",
+          "cy_leads": 11582,
+          "cy_admission": 80,
+          "cy_rate": 0.69,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Madhya Pradesh",
+          "cy_leads": 5450,
+          "cy_admission": 42,
+          "cy_rate": 0.77,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "West Bengal",
+          "cy_leads": 4949,
+          "cy_admission": 35,
+          "cy_rate": 0.71,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "UTTAR PRADESH",
+          "cy_leads": 229,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Uttar Pardesh",
+          "cy_leads": 89,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Manipur",
+          "cy_leads": 85,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Jammu and Kashmir",
+          "cy_leads": 57,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Goa",
+          "cy_leads": 57,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "owner_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Vaibhav Singh L100261",
+          "cy_leads": 820,
+          "cy_admission": 378,
+          "cy_rate": 46.1,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Alisha E19111",
+          "cy_leads": 382,
+          "cy_admission": 354,
+          "cy_rate": 92.67,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Shagun Thakur L100496",
+          "cy_leads": 6812,
+          "cy_admission": 223,
+          "cy_rate": 3.27,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Shaveta Verma L100038",
+          "cy_leads": 9140,
+          "cy_admission": 207,
+          "cy_rate": 2.26,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Swaty L100054",
+          "cy_leads": 9346,
+          "cy_admission": 185,
+          "cy_rate": 1.98,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Manali Bhatia L100592",
+          "cy_leads": 925,
+          "cy_admission": 9,
+          "cy_rate": 0.97,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Prerna Puri NL109",
+          "cy_leads": 808,
+          "cy_admission": 9,
+          "cy_rate": 1.11,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Sukhjit Kaur NL11",
+          "cy_leads": 659,
+          "cy_admission": 9,
+          "cy_rate": 1.37,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Samreen Naaz L100844",
+          "cy_leads": 348,
+          "cy_admission": 9,
+          "cy_rate": 2.59,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Amanpreet kaur NL186",
+          "cy_leads": 4942,
+          "cy_admission": 10,
+          "cy_rate": 0.2,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    }
+  },
+  "All_Campuses_2025": {
+    "campus": "All Campuses",
+    "year": 2025,
+    "kpis": {
+      "leads": 1243949,
+      "cucet": 1243949,
+      "admission": 1232085,
+      "conversion_rate": 99.05
+    },
+    "monthly_totals": [
+      {
+        "month": "November",
+        "cy_leads": 24878,
+        "cy_cucet": 24878,
+        "cy_admission": 24641
+      },
+      {
+        "month": "December",
+        "cy_leads": 37318,
+        "cy_cucet": 37318,
+        "cy_admission": 36962
+      },
+      {
+        "month": "January",
+        "cy_leads": 62197,
+        "cy_cucet": 62197,
+        "cy_admission": 61604
+      },
+      {
+        "month": "February",
+        "cy_leads": 99515,
+        "cy_cucet": 99515,
+        "cy_admission": 98566
+      },
+      {
+        "month": "March",
+        "cy_leads": 174152,
+        "cy_cucet": 174152,
+        "cy_admission": 172491
+      },
+      {
+        "month": "April",
+        "cy_leads": 223910,
+        "cy_cucet": 223910,
+        "cy_admission": 221775
+      },
+      {
+        "month": "May",
+        "cy_leads": 174152,
+        "cy_cucet": 174152,
+        "cy_admission": 172491
+      },
+      {
+        "month": "June",
+        "cy_leads": 248789,
+        "cy_cucet": 248789,
+        "cy_admission": 246417
+      },
+      {
+        "month": "July",
+        "cy_leads": 124394,
+        "cy_cucet": 124394,
+        "cy_admission": 123208
+      },
+      {
+        "month": "August",
+        "cy_leads": 49757,
+        "cy_cucet": 49757,
+        "cy_admission": 49283
+      },
+      {
+        "month": "September",
+        "cy_leads": 12439,
+        "cy_cucet": 12439,
+        "cy_admission": 12320
+      },
+      {
+        "month": "October",
+        "cy_leads": 12448,
+        "cy_cucet": 12448,
+        "cy_admission": 12327
+      }
+    ],
+    "program_rankings": {
+      "top_drivers": [],
+      "decline_areas": []
+    },
+    "source_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Publisher-API",
+          "cy_leads": 700493,
+          "cy_admission": 698560,
+          "cy_rate": 99.72,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F86",
+          "cy_leads": 199360,
+          "cy_admission": 194614,
+          "cy_rate": 97.62,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F88",
+          "cy_leads": 130140,
+          "cy_admission": 128867,
+          "cy_rate": 99.02,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Widget",
+          "cy_leads": 111230,
+          "cy_admission": 110651,
+          "cy_rate": 99.48,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F89",
+          "cy_leads": 56732,
+          "cy_admission": 56345,
+          "cy_rate": 99.32,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "F107",
+          "cy_leads": 1,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F21",
+          "cy_leads": 2,
+          "cy_admission": 2,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mobile Form",
+          "cy_leads": 18,
+          "cy_admission": 17,
+          "cy_rate": 94.44,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "918068368494",
+          "cy_leads": 44,
+          "cy_admission": 37,
+          "cy_rate": 84.09,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F134",
+          "cy_leads": 45,
+          "cy_admission": 44,
+          "cy_rate": 97.78,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "state_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Uttar Pradesh",
+          "cy_leads": 243278,
+          "cy_admission": 241306,
+          "cy_rate": 99.19,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Punjab",
+          "cy_leads": 207032,
+          "cy_admission": 204283,
+          "cy_rate": 98.67,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Chandigarh",
+          "cy_leads": 121393,
+          "cy_admission": 120997,
+          "cy_rate": 99.67,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Haryana",
+          "cy_leads": 100575,
+          "cy_admission": 98405,
+          "cy_rate": 97.84,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Delhi",
+          "cy_leads": 89868,
+          "cy_admission": 89387,
+          "cy_rate": 99.46,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Daman And Diu",
+          "cy_leads": 2,
+          "cy_admission": 2,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Madhya predesh",
+          "cy_leads": 2,
+          "cy_admission": 2,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Kanpur",
+          "cy_leads": 2,
+          "cy_admission": 2,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Pilibhit",
+          "cy_leads": 2,
+          "cy_admission": 2,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Ajay",
+          "cy_leads": 2,
+          "cy_admission": 2,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "owner_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Aniya Ahuja NL06",
+          "cy_leads": 24525,
+          "cy_admission": 24433,
+          "cy_rate": 99.62,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "HAMANDEEP SINGH E2828",
+          "cy_leads": 20048,
+          "cy_admission": 20047,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Shallu Rani E10630",
+          "cy_leads": 12069,
+          "cy_admission": 11904,
+          "cy_rate": 98.63,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mansi Sharma E17574",
+          "cy_leads": 10663,
+          "cy_admission": 10546,
+          "cy_rate": 98.9,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Mansi Kumari E15662",
+          "cy_leads": 10583,
+          "cy_admission": 10432,
+          "cy_rate": 98.57,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Rahul Dhawan",
+          "cy_leads": 4748,
+          "cy_admission": 4748,
+          "cy_rate": 100.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "PAWAN KUMAR E18157",
+          "cy_leads": 4912,
+          "cy_admission": 4879,
+          "cy_rate": 99.33,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Sunaksh Sapra E12683",
+          "cy_leads": 4987,
+          "cy_admission": 4928,
+          "cy_rate": 98.82,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Manpreet Kaur NL35",
+          "cy_leads": 4975,
+          "cy_admission": 4944,
+          "cy_rate": 99.38,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Simranjeet Kaur NL18",
+          "cy_leads": 4992,
+          "cy_admission": 4960,
+          "cy_rate": 99.36,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    }
+  },
+  "All_Campuses_2026": {
+    "campus": "All Campuses",
+    "year": 2026,
+    "kpis": {
+      "leads": 1365202,
+      "cucet": 62652,
+      "admission": 28252,
+      "conversion_rate": 2.07
+    },
+    "monthly_totals": [
+      {
+        "month": "November",
+        "cy_leads": 27304,
+        "cy_cucet": 1253,
+        "cy_admission": 565
+      },
+      {
+        "month": "December",
+        "cy_leads": 40956,
+        "cy_cucet": 1879,
+        "cy_admission": 847
+      },
+      {
+        "month": "January",
+        "cy_leads": 68260,
+        "cy_cucet": 3132,
+        "cy_admission": 1412
+      },
+      {
+        "month": "February",
+        "cy_leads": 109216,
+        "cy_cucet": 5012,
+        "cy_admission": 2260
+      },
+      {
+        "month": "March",
+        "cy_leads": 191128,
+        "cy_cucet": 8771,
+        "cy_admission": 3955
+      },
+      {
+        "month": "April",
+        "cy_leads": 245736,
+        "cy_cucet": 11277,
+        "cy_admission": 5085
+      },
+      {
+        "month": "May",
+        "cy_leads": 191128,
+        "cy_cucet": 8771,
+        "cy_admission": 3955
+      },
+      {
+        "month": "June",
+        "cy_leads": 273040,
+        "cy_cucet": 12530,
+        "cy_admission": 5650
+      },
+      {
+        "month": "July",
+        "cy_leads": 136520,
+        "cy_cucet": 6265,
+        "cy_admission": 2825
+      },
+      {
+        "month": "August",
+        "cy_leads": 54608,
+        "cy_cucet": 2506,
+        "cy_admission": 1130
+      },
+      {
+        "month": "September",
+        "cy_leads": 13652,
+        "cy_cucet": 626,
+        "cy_admission": 282
+      },
+      {
+        "month": "October",
+        "cy_leads": 13654,
+        "cy_cucet": 630,
+        "cy_admission": 286
+      }
+    ],
+    "program_rankings": {
+      "top_drivers": [],
+      "decline_areas": []
+    },
+    "source_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Google",
+          "cy_leads": 261723,
+          "cy_admission": 7065,
+          "cy_rate": 2.7,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Quick Add Form",
+          "cy_leads": 27746,
+          "cy_admission": 4143,
+          "cy_rate": 14.93,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Widget",
+          "cy_leads": 178959,
+          "cy_admission": 2966,
+          "cy_rate": 1.66,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Website",
+          "cy_leads": 33496,
+          "cy_admission": 2604,
+          "cy_rate": 7.77,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "F58",
+          "cy_leads": 5688,
+          "cy_admission": 1583,
+          "cy_rate": 27.83,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Low_Running",
+          "cy_leads": 1925,
+          "cy_admission": 1,
+          "cy_rate": 0.05,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "SRV-helpline",
+          "cy_leads": 237,
+          "cy_admission": 1,
+          "cy_rate": 0.42,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Superbot",
+          "cy_leads": 226,
+          "cy_admission": 1,
+          "cy_rate": 0.44,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "careerforum",
+          "cy_leads": 76,
+          "cy_admission": 1,
+          "cy_rate": 1.32,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Adroll",
+          "cy_leads": 63,
+          "cy_admission": 1,
+          "cy_rate": 1.59,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "state_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Uttar Pradesh",
+          "cy_leads": 364489,
+          "cy_admission": 7800,
+          "cy_rate": 2.14,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Punjab",
+          "cy_leads": 215301,
+          "cy_admission": 5298,
+          "cy_rate": 2.46,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Haryana",
+          "cy_leads": 132505,
+          "cy_admission": 4013,
+          "cy_rate": 3.03,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Bihar",
+          "cy_leads": 91828,
+          "cy_admission": 2166,
+          "cy_rate": 2.36,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Himachal Pradesh",
+          "cy_leads": 36163,
+          "cy_admission": 1807,
+          "cy_rate": 5.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Jammu and Kashmir",
+          "cy_leads": 613,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "UTTAR PRADESH",
+          "cy_leads": 246,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Orissa",
+          "cy_leads": 209,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "DELHI",
+          "cy_leads": 160,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "N.A.",
+          "cy_leads": 132,
+          "cy_admission": 0,
+          "cy_rate": 0.0,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    },
+    "owner_rankings": {
+      "top_drivers": [
+        {
+          "entity": "Alisha E19111",
+          "cy_leads": 485,
+          "cy_admission": 442,
+          "cy_rate": 91.13,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Kanchan NL19",
+          "cy_leads": 1493,
+          "cy_admission": 406,
+          "cy_rate": 27.19,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Vaibhav Singh L100261",
+          "cy_leads": 828,
+          "cy_admission": 380,
+          "cy_rate": 45.89,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Updesh E8334",
+          "cy_leads": 6884,
+          "cy_admission": 326,
+          "cy_rate": 4.74,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Rajvinder Kour E10720",
+          "cy_leads": 7937,
+          "cy_admission": 325,
+          "cy_rate": 4.09,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ],
+      "decline_areas": [
+        {
+          "entity": "Bhanupriya L100233",
+          "cy_leads": 1751,
+          "cy_admission": 106,
+          "cy_rate": 6.05,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Adarsh Singh E18589",
+          "cy_leads": 4854,
+          "cy_admission": 107,
+          "cy_rate": 2.2,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Prayarna Sharma E20023",
+          "cy_leads": 6897,
+          "cy_admission": 109,
+          "cy_rate": 1.58,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Nikhil E19990",
+          "cy_leads": 3108,
+          "cy_admission": 109,
+          "cy_rate": 3.51,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        },
+        {
+          "entity": "Aakanksha Malhotra l100404",
+          "cy_leads": 7861,
+          "cy_admission": 111,
+          "cy_rate": 1.41,
+          "py_leads": null,
+          "py_admission": null,
+          "py_rate": null,
+          "admission_change": null,
+          "growth_pct": null
+        }
+      ]
+    }
+  }
+}

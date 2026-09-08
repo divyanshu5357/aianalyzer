@@ -1,12 +1,112 @@
 import csv
 import io
 import json
+import re
 from pathlib import Path
 from typing import Any, Iterator, Dict, Callable, Optional
 import pandas as pd
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 import openpyxl
+
+STANDARD_CRM_39_COLUMNS = [
+    "mx_Campus",
+    "CreatedOn",
+    "ProspectID",
+    "mx_FastTrackId",
+    "FirstName",
+    "Source",
+    "SourceMedium",
+    "Origin",
+    "mx_State",
+    "mx_State_New",
+    "mx_Gender_New",
+    "mx_Category_Backend",
+    "mx_City",
+    "mx_City_New",
+    "mx_First_Allocation_Date_and_Time",
+    "mx_First_Call_Disposition_Date",
+    "mx_First_Call_Disposition",
+    "mx_First_Call_Sub_Disposition",
+    "mx_Latest_Follow_Up_Date",
+    "mx_Call_Disposition",
+    "mx_Call_Sub_Disposition",
+    "mx_Last_Call_Date_and_Time",
+    "mx_CUCET_First_Payment_Date",
+    "mx_CUCET_Booked_Slot_Date",
+    "mx_CUCET_Exam_Status",
+    "mx_CUCET_Percentile",
+    "mx_CUCET_Score",
+    "mx_CUCET_Attempt_Counter",
+    "mx_Slot_Date_CUCET",
+    "mx_Scholarship_Perentage",
+    "mx_Admission_done",
+    "mx_AdmissionDate",
+    "mx_Account_No",
+    "ProspectStage",
+    "OwnerIdName",
+    "mx_Total_Call_Attempt",
+    "mx_Refund_Initiated_On",
+    "mx_Refund_Status",
+    "Program Code",
+]
+
+STANDARD_CRM_41_COLUMNS = [
+    "mx_Campus",
+    "CreatedOn",
+    "ProspectID",
+    "mx_FastTrackId",
+    "FirstName",
+    "Source",
+    "SourceMedium",
+    "Origin",
+    "mx_State",
+    "mx_State_New",
+    "mx_Gender_New",
+    "mx_Category_Backend",
+    "mx_City",
+    "mx_City_New",
+    "mx_State_dup",
+    "mx_State_New_dup",
+    "mx_First_Allocation_Date_and_Time",
+    "mx_First_Call_Disposition_Date",
+    "mx_First_Call_Disposition",
+    "mx_First_Call_Sub_Disposition",
+    "mx_Latest_Follow_Up_Date",
+    "mx_Call_Disposition",
+    "mx_Call_Sub_Disposition",
+    "mx_Last_Call_Date_and_Time",
+    "mx_CUCET_First_Payment_Date",
+    "mx_CUCET_Booked_Slot_Date",
+    "mx_CUCET_Exam_Status",
+    "mx_CUCET_Percentile",
+    "mx_CUCET_Score",
+    "mx_CUCET_Attempt_Counter",
+    "mx_Slot_Date_CUCET",
+    "mx_Scholarship_Perentage",
+    "mx_Admission_done",
+    "mx_AdmissionDate",
+    "mx_Account_No",
+    "ProspectStage",
+    "OwnerIdName",
+    "mx_Total_Call_Attempt",
+    "mx_Refund_Initiated_On",
+    "mx_Refund_Status",
+    "Program Code",
+]
+
+
+def is_headerless_crm_row(row: list) -> bool:
+    """Detect if a row from a CSV is actually a CRM data record instead of a header."""
+    if not row or len(row) < 30:
+        return False
+    col1 = str(row[1]).strip() if len(row) > 1 and row[1] else ""
+    has_date_col1 = bool(re.match(r"^\d{4}-\d{2}-\d{2}", col1))
+    col2 = str(row[2]).strip() if len(row) > 2 and row[2] else ""
+    has_uuid_col2 = bool(re.match(r"^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$", col2))
+    col0 = str(row[0]).strip().lstrip("\ufeff") if len(row) > 0 and row[0] else ""
+    is_not_header_col0 = not col0.lower().startswith("mx_") and not ("campus" in col0.lower() and "_" in col0.lower())
+    return (has_date_col1 or has_uuid_col2) and is_not_header_col0
 
 
 def clean_value_for_json(value: Any) -> Any:
@@ -32,7 +132,22 @@ def stream_file_records(file_path: str, chunk_size: int = 20000) -> Iterator[lis
     extension = path.suffix.lower()
 
     if extension == ".csv":
-        for chunk in pd.read_csv(file_path, chunksize=chunk_size):
+        # Check if first line is headerless CRM data
+        read_kwargs: Dict[str, Any] = {"chunksize": chunk_size}
+        try:
+            with open(file_path, "r", encoding="utf-8-sig", errors="replace") as f_check:
+                first_row = next(csv.reader(f_check), None)
+                if first_row and is_headerless_crm_row(first_row):
+                    if len(first_row) == 39:
+                        read_kwargs["names"] = STANDARD_CRM_39_COLUMNS
+                        read_kwargs["header"] = None
+                    elif len(first_row) == 41:
+                        read_kwargs["names"] = STANDARD_CRM_41_COLUMNS
+                        read_kwargs["header"] = None
+        except Exception:
+            pass
+
+        for chunk in pd.read_csv(file_path, **read_kwargs):
             chunk_records = []
             for _, row in chunk.iterrows():
                 rec = {str(col): clean_value_for_json(row[col]) for col in chunk.columns}
@@ -41,33 +156,38 @@ def stream_file_records(file_path: str, chunk_size: int = 20000) -> Iterator[lis
 
     elif extension == ".xlsx":
         wb = openpyxl.load_workbook(file_path, read_only=True)
-        ws = wb.active
-        rows = ws.iter_rows(values_only=True)
-        header = None
         current_chunk = []
-        for r in rows:
-            if not header:
-                header = [str(cell) if cell is not None else f"col_{i}" for i, cell in enumerate(r)]
-                continue
-            rec = {header[i]: clean_value_for_json(r[i]) if i < len(r) else None for i in range(len(header))}
-            current_chunk.append(rec)
-            if len(current_chunk) >= chunk_size:
-                yield current_chunk
-                current_chunk = []
+        for sheetname in wb.sheetnames:
+            ws = wb[sheetname]
+            header = None
+            rows = ws.iter_rows(values_only=True)
+            for r in rows:
+                if not header:
+                    header = [str(cell) if cell is not None else f"col_{i}" for i, cell in enumerate(r)]
+                    continue
+                rec = {header[i]: clean_value_for_json(r[i]) if i < len(r) else None for i in range(len(header))}
+                rec["sheet_name"] = sheetname
+                current_chunk.append(rec)
+                if len(current_chunk) >= chunk_size:
+                    yield current_chunk
+                    current_chunk = []
         if current_chunk:
             yield current_chunk
         wb.close()
 
     elif extension in [".xls", ".xlsb"]:
         engine = "pyxlsb" if extension == ".xlsb" else "xlrd"
-        df = pd.read_excel(file_path, engine=engine)
+        xl = pd.ExcelFile(file_path, engine=engine)
         current_chunk = []
-        for _, row in df.iterrows():
-            rec = {str(col): clean_value_for_json(row[col]) for col in df.columns}
-            current_chunk.append(rec)
-            if len(current_chunk) >= chunk_size:
-                yield current_chunk
-                current_chunk = []
+        for sheetname in xl.sheet_names:
+            df = pd.read_excel(xl, sheet_name=sheetname)
+            for _, row in df.iterrows():
+                rec = {str(col): clean_value_for_json(row[col]) for col in df.columns}
+                rec["sheet_name"] = sheetname
+                current_chunk.append(rec)
+                if len(current_chunk) >= chunk_size:
+                    yield current_chunk
+                    current_chunk = []
         if current_chunk:
             yield current_chunk
 
@@ -96,9 +216,23 @@ class CsvToStagingStream(io.TextIOBase):
         self.progress_callback = progress_callback
         self.total_rows = total_rows
         self.row_counter = 1
+        self.pending_first_row: Optional[list] = None
+
         header_row = next(self.reader, None)
         if header_row:
-            self.header = [str(h).strip() if h else f"col_{i}" for i, h in enumerate(header_row)]
+            if is_headerless_crm_row(header_row):
+                if len(header_row) == 39:
+                    self.header = list(STANDARD_CRM_39_COLUMNS)
+                elif len(header_row) == 41:
+                    self.header = list(STANDARD_CRM_41_COLUMNS)
+                else:
+                    self.header = [
+                        STANDARD_CRM_39_COLUMNS[i] if i < len(STANDARD_CRM_39_COLUMNS) else f"col_{i}"
+                        for i in range(len(header_row))
+                    ]
+                self.pending_first_row = header_row
+            else:
+                self.header = [str(h).strip() if h else f"col_{i}" for i, h in enumerate(header_row)]
         else:
             self.header = []
         self.buffer = io.StringIO()
@@ -112,7 +246,26 @@ class CsvToStagingStream(io.TextIOBase):
             return chunk
 
         self.buffer = io.StringIO()
+        writer = csv.writer(
+            self.buffer,
+            delimiter="\t",
+            quotechar='"',
+            quoting=csv.QUOTE_ALL,
+            lineterminator="\n",
+        )
         count = 0
+
+        # Emit the first record if line 1 was detected as data (headerless CRM CSV)
+        if self.pending_first_row:
+            rec = {
+                self.header[i]: self.pending_first_row[i] if i < len(self.pending_first_row) else None
+                for i in range(len(self.header))
+            }
+            rec_json = json.dumps(rec, ensure_ascii=False)
+            writer.writerow([self.dataset_id, self.row_counter, rec_json, "pending"])
+            self.row_counter += 1
+            count += 1
+            self.pending_first_row = None
         for row in self.reader:
             if not row:
                 continue
@@ -120,8 +273,8 @@ class CsvToStagingStream(io.TextIOBase):
                 self.header[i]: row[i] if i < len(row) else None
                 for i in range(len(self.header))
             }
-            rec_json = json.dumps(rec).replace("\\", "\\\\").replace("\t", " ").replace("\r", "").replace("\n", " ")
-            self.buffer.write(f"{self.dataset_id}\t{self.row_counter}\t{rec_json}\tpending\n")
+            rec_json = json.dumps(rec, ensure_ascii=False)
+            writer.writerow([self.dataset_id, self.row_counter, rec_json, "pending"])
             self.row_counter += 1
             count += 1
             if count >= self.chunk_size:
@@ -164,6 +317,7 @@ def load_to_staging(
     raw_conn = engine.raw_connection()
     try:
         cursor = raw_conn.cursor()
+        copy_sql = "COPY staging.records (dataset_id, row_number, raw_data, cleaning_status) FROM STDIN WITH (FORMAT csv, DELIMITER E'\\t', QUOTE '\"', ESCAPE '\"')"
 
         if extension == ".csv":
             stream_buf = CsvToStagingStream(
@@ -173,12 +327,10 @@ def load_to_staging(
                 progress_callback=progress_callback,
                 total_rows=total_rows,
             )
-            copy_sql = "COPY staging.records (dataset_id, row_number, raw_data, cleaning_status) FROM STDIN WITH (FORMAT csv, DELIMITER E'\\t', QUOTE E'\\b')"
             cursor.copy_expert(copy_sql, stream_buf)
             staged = stream_buf.row_counter - 1
             stream_buf.close()
             raw_conn.commit()
-
 
             if progress_callback:
                 try:
@@ -189,12 +341,19 @@ def load_to_staging(
 
         else:
             row_counter = 1
-            copy_sql = "COPY staging.records (dataset_id, row_number, raw_data, cleaning_status) FROM STDIN WITH (FORMAT csv, DELIMITER E'\\t', QUOTE E'\\b')"
             for chunk in stream_file_records(file_path, chunk_size=batch_size):
                 buf = io.StringIO()
+                writer = csv.writer(
+                    buf,
+                    delimiter="\t",
+                    quotechar='"',
+                    quoting=csv.QUOTE_ALL,
+                    doublequote=True,
+                    lineterminator="\n",
+                )
                 for record in chunk:
-                    rec_json = json.dumps(record).replace("\\", "\\\\").replace("\t", " ").replace("\r", "").replace("\n", " ")
-                    buf.write(f"{dataset_id_str}\t{row_counter}\t{rec_json}\tpending\n")
+                    rec_json = json.dumps(record, ensure_ascii=False)
+                    writer.writerow([dataset_id_str, row_counter, rec_json, "pending"])
                     row_counter += 1
                 buf.seek(0)
                 cursor.copy_expert(copy_sql, buf)

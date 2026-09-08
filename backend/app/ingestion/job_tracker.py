@@ -220,6 +220,9 @@ def mark_job_completed(
         "result_data": res_data,
         "updated_at": _format_now(),
     }
+    if isinstance(res_data, dict):
+        for k, v in res_data.items():
+            updated_data.setdefault(k, v)
 
     with _CACHE_LOCK:
         _JOBS_CACHE[job_id] = updated_data.copy()
@@ -349,6 +352,9 @@ def get_job_status(job_id: str, db: Optional[Session] = None) -> Optional[Dict[s
                     "result_data": res_data,
                     "updated_at": row["updated_at"].isoformat() if hasattr(row["updated_at"], "isoformat") else str(row["updated_at"]),
                 }
+                if isinstance(res_data, dict):
+                    for k, v in res_data.items():
+                        res.setdefault(k, v)
                 with _CACHE_LOCK:
                     _JOBS_CACHE[job_id] = res.copy()
                 return res

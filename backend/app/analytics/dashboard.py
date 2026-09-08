@@ -3,45 +3,54 @@ import re
 from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-from app.agent.agent_service import get_active_dataset_years
+from app.analytics.scope_resolver import resolve_dataset_scope
 
 logger = logging.getLogger(__name__)
 
 
-def _resolve_dataset_id_for_session(db: Session, default_ds_id: Any, academic_session: str | None = None) -> Any:
-    """Resolve target dataset_id based on academic_session label if provided."""
-    if not academic_session or academic_session.strip().lower() in ("all", ""):
-        return default_ds_id
-    try:
-        from app.database.repository import get_active_period_for_label, get_datasets_by_period
-        lbl = academic_session.strip()
-        period_info = get_active_period_for_label(db, lbl)
-        if period_info:
-            if isinstance(period_info, dict) and "dataset_id" in period_info:
-                return period_info["dataset_id"]
-            return period_info
-        versions = get_datasets_by_period(db, lbl)
-        if versions and isinstance(versions[0], dict) and "dataset_id" in versions[0]:
-            return versions[0]["dataset_id"]
-    except Exception as e:
-        logger.warning(f"Error resolving session '{academic_session}': {e}")
-    return default_ds_id
+def _resolve_dimension_col(dimension: str) -> str:
+    """Map common business dimension aliases to physical DB column names."""
+    norm = str(dimension).lower().strip()
+    mapping = {
+        "program": "program_name",
+        "program_name": "program_name",
+        "campus": "campus_name",
+        "campus_name": "campus_name",
+        "state": "state",
+        "state_name": "state",
+        "source": "source",
+        "main_source": "source",
+        "lead_type": "lead_type",
+        "lead type": "lead_type",
+        "leadtype": "lead_type",
+        "cluster": "course_cluster",
+        "course_cluster": "course_cluster",
+        "city": "city",
+        "zone": "zone",
+        "counsellor": "owner",
+        "counselor": "owner",
+        "owner": "owner",
+        "emp": "owner",
+        "employee": "owner",
+    }
+    col = mapping.get(norm, norm)
+    return re.sub(r"[^\w_]", "", col)
 
 
-def _build_filter_where(
-    dataset_id: Any,
-    campus: str | None = None,
+def _build_scope_where(
+    dataset_ids: list[str],
     state: str | None = None,
     source: str | None = None,
     program: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Build parameterized WHERE clause for server-side SQL aggregation."""
-    clauses = ["dataset_id = :dataset_id"]
-    params: dict[str, Any] = {"dataset_id": str(dataset_id)}
+    """Build parameterized WHERE clause for optional dataset IDs and dimension filters."""
+    clauses = []
+    params: dict[str, Any] = {}
 
-    if campus and campus.strip() and campus.strip().lower() != "all":
-        clauses.append('LOWER("campus_name") = LOWER(:campus)')
-        params["campus"] = campus.strip()
+    if dataset_ids:
+        ds_quoted = ",".join(f"'{str(d)}'" for d in dataset_ids)
+        clauses.append(f"dataset_id::text IN ({ds_quoted})")
+
     if state and state.strip() and state.strip().lower() != "all":
         clauses.append('LOWER("state") = LOWER(:state)')
         params["state"] = state.strip()
@@ -52,55 +61,144 @@ def _build_filter_where(
         clauses.append('LOWER("program_name") = LOWER(:program)')
         params["program"] = program.strip()
 
+    if not clauses:
+        return "1 = 1", params
+
     return " AND ".join(clauses), params
 
 
 def get_dashboard_filter_options(
     db: Session,
-    dataset_id: Any,
-    academic_session: str | None = None,
+    campus: str | None = None,
+    years: list[int] | str | None = None,
 ) -> dict[str, list[str]]:
-    """Query dynamic, distinct non-null filter options available in active dataset."""
-    target_ds_id = _resolve_dataset_id_for_session(db, dataset_id, academic_session)
-    ds_str = str(target_ds_id)
+    """Query dynamic, distinct non-null filter options available in resolved scope."""
+    scope_data = resolve_dataset_scope(db, campus=campus, years=years)
+    dataset_ids = scope_data["dataset_ids"]
 
-    # 1. Academic sessions available
-    session_list = []
-    try:
-        from app.database.repository import list_all_periods
-        periods = list_all_periods(db)
-        session_list = [p["academic_label"] for p in periods if p.get("academic_label")]
-    except Exception as e:
-        logger.warning(f"Failed to fetch periods list: {e}")
+    if not dataset_ids:
+        try:
+            years_rows = db.execute(text(
+                "SELECT DISTINCT academic_year FROM system.datasets "
+                "WHERE is_analytics_enabled = TRUE AND academic_year IS NOT NULL ORDER BY academic_year DESC"
+            )).fetchall()
+            avail_years = [str(r[0]) for r in years_rows if r[0]]
+            if not avail_years:
+                years_rows = db.execute(text(
+                    "SELECT DISTINCT academic_year FROM analytics.dashboard_agg "
+                    "WHERE academic_year IS NOT NULL ORDER BY academic_year DESC"
+                )).fetchall()
+                avail_years = [str(r[0]) for r in years_rows if r[0]]
 
-    # Helper for distinct column values
+            campus_rows = db.execute(text(
+                "SELECT DISTINCT campus_name FROM system.datasets "
+                "WHERE is_analytics_enabled = TRUE AND campus_name IS NOT NULL AND campus_name != '' ORDER BY campus_name ASC"
+            )).fetchall()
+            avail_campuses = [str(r[0]) for r in campus_rows if r[0]]
+            if not avail_campuses:
+                campus_rows = db.execute(text(
+                    "SELECT DISTINCT campus_name FROM analytics.dashboard_agg "
+                    "WHERE campus_name IS NOT NULL AND campus_name != '' ORDER BY campus_name ASC"
+                )).fetchall()
+                avail_campuses = [str(r[0]) for r in campus_rows if r[0]]
+        except Exception:
+            avail_years = []
+            avail_campuses = []
+        return {
+            "academic_sessions": avail_years,
+            "campuses": avail_campuses,
+            "states": [],
+            "sources": [],
+            "programs": [],
+            "lead_types": [],
+        }
+
+    # Helper for distinct column values across dataset_ids
     def get_distinct(col: str) -> list[str]:
-        safe_col = re.sub(r"[^\w_]", "", col)
+        col_name = _resolve_dimension_col(col)
+        phone_filter_clause = f' AND "{col_name}" !~ \'^[0-9]{{10,12}}$\'' if col_name in ("source", "main_source") else ""
+        try:
+            where_parts = [f'"{col_name}" IS NOT NULL', f'"{col_name}" != \'\'']
+            params: dict[str, Any] = {}
+            if campus and campus.lower() != "all":
+                where_parts.append('LOWER("campus_name") = LOWER(:campus)')
+                params["campus"] = campus
+            if scope_data["scope"]["years"]:
+                where_parts.append('academic_year IN :years')
+                params["years"] = tuple(scope_data["scope"]["years"])
+            if col_name in ("source", "main_source"):
+                where_parts.append(f'"{col_name}" !~ \'^[0-9]{{10,12}}$\'')
+            where_sql = " AND ".join(where_parts)
+            sql_agg = text(
+                f'SELECT "{col_name}", SUM(leads_cy) as tot FROM analytics.dashboard_agg '
+                f'WHERE {where_sql} '
+                f'GROUP BY "{col_name}" '
+                f'ORDER BY tot DESC, "{col_name}" ASC LIMIT 200'
+            )
+            rows = db.execute(sql_agg, params).fetchall()
+            if rows:
+                return [r[0] for r in rows if r[0]]
+        except Exception:
+            db.rollback()
+        ds_quoted = ",".join(f"'{str(d)}'" for d in dataset_ids)
         sql = text(
-            f'SELECT DISTINCT "{safe_col}" FROM analytics.uploaded_metrics '
-            f'WHERE dataset_id = :ds_id AND "{safe_col}" IS NOT NULL AND "{safe_col}" != \'\' '
-            f'ORDER BY "{safe_col}" ASC LIMIT 200'
+            f'SELECT "{col_name}", COUNT(*) as cnt FROM analytics.uploaded_metrics '
+            f'WHERE dataset_id::text IN ({ds_quoted}) AND "{col_name}" IS NOT NULL AND "{col_name}" != \'\'{phone_filter_clause} '
+            f'GROUP BY "{col_name}" '
+            f'ORDER BY cnt DESC, "{col_name}" ASC LIMIT 200'
         )
-        rows = db.execute(sql, {"ds_id": ds_str}).fetchall()
+        rows = db.execute(sql).fetchall()
         return [r[0] for r in rows if r[0]]
 
+    # Dynamic date range from dashboard_agg or datasets
+    from app.analytics.period_helper import get_active_or_max_academic_year
+    cy_year = scope_data.get("cy_year") or get_active_or_max_academic_year(db)
+    dt_row = db.execute(text("""
+        SELECT MIN(COALESCE(created_month, admission_month)) as min_m,
+               MAX(COALESCE(admission_month, created_month)) as max_m
+        FROM analytics.dashboard_agg
+        WHERE academic_year = :cy_year
+    """), {"cy_year": cy_year}).fetchone()
+    min_m = dt_row[0] if (dt_row and dt_row[0]) else f"{cy_year - 1}-11"
+    max_m = dt_row[1] if (dt_row and dt_row[1]) else f"{cy_year}-10"
+    min_date = f"{min_m}-01"
+    import calendar
+    try:
+        max_y, max_month = int(max_m.split("-")[0]), int(max_m.split("-")[1])
+        last_day = calendar.monthrange(max_y, max_month)[1]
+        max_date = f"{max_m}-{last_day:02d}"
+    except Exception:
+        max_date = f"{max_m}-28"
+
+    date_range = {
+        "min_date": min_date,
+        "max_date": max_date,
+        "default_from": f"{cy_year - 1}-11-01" if min_date <= f"{cy_year - 1}-11-01" else min_date,
+        "default_to": max_date,
+    }
+
     return {
-        "academic_sessions": session_list,
+        "academic_sessions": [str(y) for y in scope_data["scope"]["years"]],
         "campuses": get_distinct("campus_name"),
         "states": get_distinct("state"),
         "sources": get_distinct("source"),
         "programs": get_distinct("program_name"),
+        "lead_types": get_distinct("lead_type"),
+        "date_range": date_range,
     }
 
 
-def check_dimension_exists(db: Session, dataset_id: Any, col: str) -> bool:
-    """Check if a column has any non-null, non-empty data in the active dataset."""
+def check_dimension_exists(db: Session, dataset_ids: list[str], col: str) -> bool:
+    """Check if a column has non-null, non-empty data in the dataset scope."""
+    if not dataset_ids:
+        return False
     try:
-        safe_col = re.sub(r"[^\w_]", "", col)
+        col_name = _resolve_dimension_col(col)
+        ds_quoted = ",".join(f"'{str(d)}'" for d in dataset_ids)
         query = text(
-            f'SELECT COUNT(*) FROM analytics.uploaded_metrics WHERE dataset_id = :ds_id AND "{safe_col}" IS NOT NULL AND "{safe_col}" != \'\''
+            f'SELECT COUNT(*) FROM analytics.uploaded_metrics WHERE dataset_id::text IN ({ds_quoted}) AND "{col_name}" IS NOT NULL AND "{col_name}" != \'\''
         )
-        cnt = db.execute(query, {"ds_id": str(dataset_id)}).scalar() or 0
+        cnt = db.execute(query).scalar() or 0
         return cnt > 0
     except Exception as e:
         logger.warning(f"Error checking dimension '{col}' existence: {e}")
@@ -113,766 +211,388 @@ def _percentage(numerator: float, denominator: float) -> float:
     return round((float(numerator) / float(denominator)) * 100.0, 2)
 
 
-def percentage_change(current: float, previous: float) -> float | None:
-    if not previous:
+def percentage_change(current: float, previous: float | None) -> float | None:
+    if previous is None or not previous:
         return None
     return round(((float(current) - float(previous)) / float(previous)) * 100.0, 2)
 
 
 def get_dashboard_overview(
     db: Session,
-    dataset_id: Any,
-    academic_session: str | None = None,
     campus: str | None = None,
+    years: list[int] | str | None = None,
     state: str | None = None,
     source: str | None = None,
     program: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
 ) -> dict[str, Any]:
-    target_ds_id = _resolve_dataset_id_for_session(db, dataset_id, academic_session)
-    cy_year, py_year = get_active_dataset_years(db, target_ds_id)
-    where_sql, params = _build_filter_where(target_ds_id, campus, state, source, program)
-
-    query = text(
-        f"""
-        SELECT
-            COALESCE(SUM(cy_leads), 0) AS cy_leads,
-            COALESCE(SUM(cy_cucet), 0) AS cy_cucet,
-            COALESCE(SUM(cy_admission), 0) AS cy_admission,
-            COALESCE(SUM(py_leads), 0) AS py_leads,
-            COALESCE(SUM(py_cucet), 0) AS py_cucet,
-            COALESCE(SUM(py_admission), 0) AS py_admission
-        FROM analytics.uploaded_metrics
-        WHERE {where_sql}
-        """
-    )
-    row = db.execute(query, params).mappings().first()
-
-    cy_leads = int(row["cy_leads"] or 0)
-    cy_cucet = int(row["cy_cucet"] or 0)
-    cy_admission = int(row["cy_admission"] or 0)
-
-    py_leads = int(row["py_leads"] or 0)
-    py_cucet = int(row["py_cucet"] or 0)
-    py_admission = int(row["py_admission"] or 0)
-
-    has_cucet = cy_cucet > 0 or py_cucet > 0
-
-    cy_conv = _percentage(cy_admission, cy_leads)
-    py_conv = _percentage(py_admission, py_leads)
-
-    kpis = {
-        "leads": {
-            "cy": cy_leads,
-            "py": py_leads,
-            "change": cy_leads - py_leads,
-            "growth_pct": percentage_change(cy_leads, py_leads),
-        },
-        "admissions": {
-            "cy": cy_admission,
-            "py": py_admission,
-            "change": cy_admission - py_admission,
-            "growth_pct": percentage_change(cy_admission, py_admission),
-        },
-        "conversion_rate": {
-            "cy": cy_conv,
-            "py": py_conv,
-            "change": round(cy_conv - py_conv, 2),
-            "growth_pct": percentage_change(cy_conv, py_conv),
-        },
-    }
-
-    if has_cucet:
-        kpis["cucet"] = {
-            "cy": cy_cucet,
-            "py": py_cucet,
-            "change": cy_cucet - py_cucet,
-            "growth_pct": percentage_change(cy_cucet, py_cucet),
-        }
-        kpis["cucet_conversion_rate"] = {
-            "cy": _percentage(cy_admission, cy_cucet),
-            "py": _percentage(py_admission, py_cucet),
-            "change": round(_percentage(cy_admission, cy_cucet) - _percentage(py_admission, py_cucet), 2),
-            "growth_pct": percentage_change(_percentage(cy_admission, cy_cucet), _percentage(py_admission, py_cucet)),
-        }
-
-    funnel = [
-        {"stage": "Leads", "count": cy_leads, "pct_of_leads": 100.0, "conversion_rate": 100.0}
-    ]
-    if has_cucet:
-        funnel.append({
-            "stage": "CUCET",
-            "count": cy_cucet,
-            "pct_of_leads": _percentage(cy_cucet, cy_leads),
-            "conversion_rate": _percentage(cy_cucet, cy_leads),
-        })
-        funnel.append({
-            "stage": "Admissions",
-            "count": cy_admission,
-            "pct_of_leads": _percentage(cy_admission, cy_leads),
-            "conversion_rate": _percentage(cy_admission, cy_cucet),
-        })
-    else:
-        funnel.append({
-            "stage": "Admissions",
-            "count": cy_admission,
-            "pct_of_leads": _percentage(cy_admission, cy_leads),
-            "conversion_rate": _percentage(cy_admission, cy_leads),
-        })
-
-    return {
-        "current_year": cy_year,
-        "previous_year": py_year,
-        "has_cucet": has_cucet,
-        "kpis": kpis,
-        "funnel": funnel,
-    }
+    """Delegate to aggregate service for overview KPIs."""
+    from app.analytics.aggregate_service import get_agg_overview
+    return get_agg_overview(db, campus=campus, years=years, state=state, source=source, program=program, from_date=from_date, to_date=to_date)
 
 
 def get_insights(
     db: Session,
-    dataset_id: Any,
-    cy_year: int,
-    py_year: int,
-    academic_session: str | None = None,
     campus: str | None = None,
+    years: list[int] | str | None = None,
     state: str | None = None,
     source: str | None = None,
     program: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
 ) -> list[dict[str, Any]]:
-    target_ds_id = _resolve_dataset_id_for_session(db, dataset_id, academic_session)
-    cy_year, py_year = get_active_dataset_years(db, target_ds_id)
-    where_sql, params = _build_filter_where(target_ds_id, campus, state, source, program)
-    insights = []
-
-    # 1. Highest lead source
-    if check_dimension_exists(db, target_ds_id, "source"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "source", SUM(cy_leads) as leads, SUM(cy_admission) as admissions 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "source" IS NOT NULL AND "source" != ''
-                GROUP BY "source" 
-                ORDER BY leads DESC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["leads"] or 0) > 0:
-            insights.append({
-                "id": "highest_lead_source",
-                "title": "Highest Lead Source",
-                "text": f"{row['source']} generated {row['leads']:,} leads and {row['admissions']:,} admissions in {cy_year}.",
-                "dimension": "source",
-                "value": row["source"],
-            })
-
-    # 2. Highest admission program
-    if check_dimension_exists(db, target_ds_id, "program_name"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "program_name", SUM(cy_admission) as admissions 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "program_name" IS NOT NULL AND "program_name" != ''
-                GROUP BY "program_name" 
-                ORDER BY admissions DESC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["admissions"] or 0) > 0:
-            insights.append({
-                "id": "highest_admission_program",
-                "title": "Highest Admission Program",
-                "text": f"{row['program_name']} had the highest admissions: {row['admissions']:,} enrolled in {cy_year}.",
-                "dimension": "program_name",
-                "value": row["program_name"],
-            })
-
-    # 3. Best conversion program
-    if check_dimension_exists(db, target_ds_id, "program_name"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "program_name", SUM(cy_leads) as leads, SUM(cy_admission) as admissions 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "program_name" IS NOT NULL AND "program_name" != ''
-                GROUP BY "program_name" 
-                HAVING SUM(cy_leads) >= 10
-                ORDER BY (SUM(cy_admission)::float / SUM(cy_leads)) DESC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["leads"] or 0) > 0:
-            rate = round((float(row["admissions"]) / float(row["leads"])) * 100.0, 2)
-            insights.append({
-                "id": "best_performing_program",
-                "title": "Best Performing Program",
-                "text": f"{row['program_name']} achieved the highest conversion rate: {rate}% ({row['admissions']:,} admissions from {row['leads']:,} leads).",
-                "dimension": "program_name",
-                "value": row["program_name"],
-            })
-
-    # 4. Biggest admission improvement
-    if check_dimension_exists(db, target_ds_id, "program_name"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "program_name", (SUM(cy_admission) - SUM(py_admission)) as change 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "program_name" IS NOT NULL AND "program_name" != ''
-                GROUP BY "program_name" 
-                ORDER BY change DESC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["change"] or 0) > 0:
-            insights.append({
-                "id": "biggest_admission_improvement",
-                "title": "Top Enrollment Growth",
-                "text": f"Admissions increased most for {row['program_name']}: +{row['change']:,} compared with previous year.",
-                "dimension": "program_name",
-                "value": row["program_name"],
-            })
-
-    # 5. Biggest admission decline
-    if check_dimension_exists(db, target_ds_id, "program_name"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "program_name", (SUM(cy_admission) - SUM(py_admission)) as change 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "program_name" IS NOT NULL AND "program_name" != ''
-                GROUP BY "program_name" 
-                ORDER BY change ASC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["change"] or 0) < 0:
-            val = abs(int(row["change"]))
-            insights.append({
-                "id": "biggest_admission_decline",
-                "title": "Top Enrollment Decline",
-                "text": f"Admissions declined most for {row['program_name']}: -{val:,} compared with previous year.",
-                "dimension": "program_name",
-                "value": row["program_name"],
-            })
-
-    # 6. Strongest state
-    if check_dimension_exists(db, target_ds_id, "state"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "state", SUM(cy_admission) as admissions 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "state" IS NOT NULL AND "state" != ''
-                GROUP BY "state" 
-                ORDER BY admissions DESC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["admissions"] or 0) > 0:
-            insights.append({
-                "id": "strongest_state",
-                "title": "Strongest State",
-                "text": f"{row['state']} is the strongest state with {row['admissions']:,} admissions in {cy_year}.",
-                "dimension": "state",
-                "value": row["state"],
-            })
-
-    # 7. Strongest campus
-    if check_dimension_exists(db, target_ds_id, "campus_name"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "campus_name", SUM(cy_admission) as admissions 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "campus_name" IS NOT NULL AND "campus_name" != ''
-                GROUP BY "campus_name" 
-                ORDER BY admissions DESC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["admissions"] or 0) > 0:
-            insights.append({
-                "id": "strongest_campus",
-                "title": "Strongest Campus",
-                "text": f"{row['campus_name']} is the strongest campus with {row['admissions']:,} admissions in {cy_year}.",
-                "dimension": "campus_name",
-                "value": row["campus_name"],
-            })
-
-    # 8. Best counsellor
-    if check_dimension_exists(db, target_ds_id, "owner"):
-        row = db.execute(
-            text(
-                f"""
-                SELECT "owner", SUM(cy_admission) as admissions 
-                FROM analytics.uploaded_metrics 
-                WHERE {where_sql} AND "owner" IS NOT NULL AND "owner" != ''
-                GROUP BY "owner" 
-                ORDER BY admissions DESC 
-                LIMIT 1
-                """
-            ),
-            params
-        ).mappings().first()
-        if row and (row["admissions"] or 0) > 0:
-            insights.append({
-                "id": "best_counsellor",
-                "title": "Top Counsellor",
-                "text": f"{row['owner']} led all counsellors with {row['admissions']:,} admissions in {cy_year}.",
-                "dimension": "owner",
-                "value": row["owner"],
-            })
-
-    return insights
+    """Delegate to aggregate service for insights."""
+    from app.analytics.aggregate_service import get_agg_insights
+    return get_agg_insights(db, campus=campus, years=years, state=state, source=source, program=program, from_date=from_date, to_date=to_date)
 
 
-def get_top_performers(db: Session, dataset_id: Any, metric: str, limit: int = 5) -> dict[str, list[dict[str, Any]]]:
-    result = {}
-    ds_str = str(dataset_id)
-    metric_col = "cy_leads" if metric == "leads" else "cy_admission"
-    dimensions = ["program_name", "source", "campus_name", "state", "owner"]
-
-    for dim in dimensions:
-        if not check_dimension_exists(db, ds_str, dim):
-            continue
-
-        if metric == "conversion_rate":
-            sql = f"""
-                SELECT "{dim}" as name, SUM(cy_leads) as leads, SUM(cy_admission) as admissions 
-                FROM analytics.uploaded_metrics 
-                WHERE dataset_id = :ds_id AND "{dim}" IS NOT NULL AND "{dim}" != ''
-                GROUP BY "{dim}" 
-                HAVING SUM(cy_leads) >= 50
-                ORDER BY (SUM(cy_admission)::float / SUM(cy_leads)) DESC 
-                LIMIT :limit
-            """
-        else:
-            sql = f"""
-                SELECT "{dim}" as name, SUM({metric_col}) as val 
-                FROM analytics.uploaded_metrics 
-                WHERE dataset_id = :ds_id AND "{dim}" IS NOT NULL AND "{dim}" != ''
-                GROUP BY "{dim}" 
-                ORDER BY val DESC 
-                LIMIT :limit
-            """
-
-        rows = db.execute(text(sql), {"ds_id": ds_str, "limit": limit}).mappings().all()
-
-        dim_data = []
-        for r in rows:
-            if metric == "conversion_rate":
-                rate = round((float(r["admissions"]) / float(r["leads"])) * 100.0, 2) if r["leads"] > 0 else 0.0
-                dim_data.append({
-                    "entity": r["name"],
-                    "value": rate,
-                    "count": int(r["admissions"]),
-                    "leads": int(r["leads"]),
-                })
-            else:
-                dim_data.append({
-                    "entity": r["name"],
-                    "value": int(r["val"]),
-                })
-        result[dim] = dim_data
-
-    return result
-
-
-def get_entity_detail(db: Session, dataset_id: Any, dimension: str, value: str, cy_year: int, py_year: int) -> dict[str, Any] | None:
-    ds_str = str(dataset_id)
-    if not check_dimension_exists(db, ds_str, dimension):
-        return None
-
-    safe_dim = re.sub(r"[^\w_]", "", dimension)
-    query = text(
-        f"""
-        SELECT
-            COALESCE(SUM(cy_leads), 0) AS cy_leads,
-            COALESCE(SUM(cy_cucet), 0) AS cy_cucet,
-            COALESCE(SUM(cy_admission), 0) AS cy_admission,
-            COALESCE(SUM(py_leads), 0) AS py_leads,
-            COALESCE(SUM(py_cucet), 0) AS py_cucet,
-            COALESCE(SUM(py_admission), 0) AS py_admission
-        FROM analytics.uploaded_metrics
-        WHERE dataset_id = :ds_id AND LOWER("{safe_dim}") = LOWER(:val)
-        """
-    )
-    row = db.execute(query, {"ds_id": ds_str, "val": value}).mappings().first()
-    if not row:
-        return None
-
-    cy_leads = int(row["cy_leads"] or 0)
-    cy_admission = int(row["cy_admission"] or 0)
-    cy_cucet = int(row["cy_cucet"] or 0)
-
-    py_leads = int(row["py_leads"] or 0)
-    py_admission = int(row["py_admission"] or 0)
-    py_cucet = int(row["py_cucet"] or 0)
-
-    cy_rate = _percentage(cy_admission, cy_leads)
-    py_rate = _percentage(py_admission, py_leads)
-
-    breakdowns = {}
-    potential_dims = ["source", "campus_name", "state", "owner"]
-    dims_to_break = [d for d in potential_dims if d != dimension]
-
-    for b_dim in dims_to_break:
-        if not check_dimension_exists(db, ds_str, b_dim):
-            continue
-
-        safe_b_dim = re.sub(r"[^\w_]", "", b_dim)
-        b_sql = f"""
-            SELECT "{safe_b_dim}" as name, SUM(cy_leads) as leads, SUM(cy_admission) as admissions 
-            FROM analytics.uploaded_metrics 
-            WHERE dataset_id = :ds_id AND LOWER("{safe_dim}") = LOWER(:val) AND "{safe_b_dim}" IS NOT NULL AND "{safe_b_dim}" != ''
-            GROUP BY "{safe_b_dim}" 
-            ORDER BY admissions DESC, leads DESC 
-            LIMIT 10
-        """
-        b_rows = db.execute(text(b_sql), {"ds_id": ds_str, "val": value}).mappings().all()
-        b_data = []
-        for br in b_rows:
-            br_rate = _percentage(br["admissions"], br["leads"])
-            b_data.append({
-                "entity": br["name"],
-                "leads": int(br["leads"] or 0),
-                "admissions": int(br["admissions"] or 0),
-                "conversion_rate": br_rate,
-            })
-        breakdowns[b_dim] = b_data
-
-    return {
-        "dimension": dimension,
-        "value": value,
-        "current_year": cy_year,
-        "previous_year": py_year,
-        "overview": {
-            "leads": {
-                "cy": cy_leads,
-                "py": py_leads,
-                "change": cy_leads - py_leads,
-                "growth_pct": percentage_change(cy_leads, py_leads),
-            },
-            "admissions": {
-                "cy": cy_admission,
-                "py": py_admission,
-                "change": cy_admission - py_admission,
-                "growth_pct": percentage_change(cy_admission, py_admission),
-            },
-            "conversion_rate": {
-                "cy": cy_rate,
-                "py": py_rate,
-                "change": round(cy_rate - py_rate, 2),
-                "growth_pct": percentage_change(cy_rate, py_rate),
-            },
-        },
-        "breakdowns": breakdowns,
-    }
-
-
-def get_exploration_data(db: Session, dataset_id: Any, dimension: str, metric: str, limit: int = 10) -> dict[str, Any] | None:
-    ds_str = str(dataset_id)
-    if not check_dimension_exists(db, ds_str, dimension):
-        return None
-
-    safe_dim = re.sub(r"[^\w_]", "", dimension)
-    sql = f"""
-        SELECT
-            "{safe_dim}" AS entity,
-            COALESCE(SUM(py_leads), 0) AS py_leads,
-            COALESCE(SUM(cy_leads), 0) AS cy_leads,
-            COALESCE(SUM(py_admission), 0) AS py_admission,
-            COALESCE(SUM(cy_admission), 0) AS cy_admission
-        FROM analytics.uploaded_metrics
-        WHERE dataset_id = :ds_id AND "{safe_dim}" IS NOT NULL AND "{safe_dim}" != ''
-        GROUP BY "{safe_dim}"
-    """
-    rows = db.execute(text(sql), {"ds_id": ds_str}).mappings().all()
-    if not rows:
-        return {"positive": [], "negative": []}
-
-    processed = []
-    for r in rows:
-        py_l = int(r["py_leads"] or 0)
-        cy_l = int(r["cy_leads"] or 0)
-        py_a = int(r["py_admission"] or 0)
-        cy_a = int(r["cy_admission"] or 0)
-
-        py_r = _percentage(py_a, py_l)
-        cy_r = _percentage(cy_a, cy_l)
-
-        if metric == "leads":
-            change = cy_l - py_l
-            growth_pct = percentage_change(cy_l, py_l)
-        elif metric == "admission":
-            change = cy_a - py_a
-            growth_pct = percentage_change(cy_a, py_a)
-        else:
-            change = round(cy_r - py_r, 2)
-            growth_pct = percentage_change(cy_r, py_r)
-
-        processed.append({
-            "entity": r["entity"],
-            "py_leads": py_l,
-            "cy_leads": cy_l,
-            "py_admission": py_a,
-            "cy_admission": cy_a,
-            "py_rate": py_r,
-            "cy_rate": cy_r,
-            "change": change,
-            "growth_pct": growth_pct
-        })
-
-    pos = [x for x in processed if x["change"] > 0]
-    pos.sort(key=lambda x: x["change"], reverse=True)
-
-    neg = [x for x in processed if x["change"] < 0]
-    neg.sort(key=lambda x: x["change"])
-
-    return {
-        "positive": pos[:limit],
-        "negative": neg[:limit]
-    }
-
-
-def get_manual_comparison(db: Session, dataset_id: Any, dimension: str, value_a: str, value_b: str, metric: str) -> dict[str, Any] | None:
-    ds_str = str(dataset_id)
-    if not check_dimension_exists(db, ds_str, dimension):
-        return None
-
-    safe_dim = re.sub(r"[^\w_]", "", dimension)
-    sql = f"""
-        SELECT
-            "{safe_dim}" AS entity,
-            COALESCE(SUM(py_leads), 0) AS py_leads,
-            COALESCE(SUM(cy_leads), 0) AS cy_leads,
-            COALESCE(SUM(py_admission), 0) AS py_admission,
-            COALESCE(SUM(cy_admission), 0) AS cy_admission
-        FROM analytics.uploaded_metrics
-        WHERE dataset_id = :ds_id AND LOWER("{safe_dim}") IN (LOWER(:val_a), LOWER(:val_b))
-        GROUP BY "{safe_dim}"
-    """
-    rows = db.execute(text(sql), {"ds_id": ds_str, "val_a": value_a, "val_b": value_b}).mappings().all()
-
-    res_map = {}
-    for r in rows:
-        py_l = int(r["py_leads"] or 0)
-        cy_l = int(r["cy_leads"] or 0)
-        py_a = int(r["py_admission"] or 0)
-        cy_a = int(r["cy_admission"] or 0)
-
-        py_r = _percentage(py_a, py_l)
-        cy_r = _percentage(cy_a, cy_l)
-
-        res_map[str(r["entity"]).lower().strip()] = {
-            "entity": r["entity"],
-            "py_leads": py_l,
-            "cy_leads": cy_l,
-            "py_admission": py_a,
-            "cy_admission": cy_a,
-            "py_rate": py_r,
-            "cy_rate": cy_r,
-        }
-
-    key_a = value_a.lower().strip()
-    key_b = value_b.lower().strip()
-
-    data_a = res_map.get(key_a, {
-        "entity": value_a,
-        "py_leads": 0, "cy_leads": 0, "py_admission": 0, "cy_admission": 0, "py_rate": 0.0, "cy_rate": 0.0
-    })
-    data_b = res_map.get(key_b, {
-        "entity": value_b,
-        "py_leads": 0, "cy_leads": 0, "py_admission": 0, "cy_admission": 0, "py_rate": 0.0, "cy_rate": 0.0
-    })
-
-    return {
-        "dimension": dimension,
-        "metric": metric,
-        "value_a": data_a,
-        "value_b": data_b,
-        "differences": {
-            "cy_leads": data_a["cy_leads"] - data_b["cy_leads"],
-            "py_leads": data_a["py_leads"] - data_b["py_leads"],
-            "cy_admission": data_a["cy_admission"] - data_b["cy_admission"],
-            "py_admission": data_a["py_admission"] - data_b["py_admission"],
-            "cy_rate": round(data_a["cy_rate"] - data_b["cy_rate"], 2),
-            "py_rate": round(data_a["py_rate"] - data_b["py_rate"], 2)
-        }
-    }
+def get_top_performers(
+    db: Session,
+    campus: str | None = None,
+    years: list[int] | str | None = None,
+    metric: str = "admission",
+    limit: int = 5,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Delegate to aggregate service for top performers."""
+    from app.analytics.aggregate_service import get_agg_top_performers
+    return get_agg_top_performers(db, campus=campus, years=years, metric=metric, limit=limit, from_date=from_date, to_date=to_date)
 
 
 def get_monthly_trend(
     db: Session,
-    dataset_id: Any,
-    academic_session: str | None = None,
     campus: str | None = None,
+    years: list[int] | str | None = None,
+    metric: str = "admissions",
     state: str | None = None,
     source: str | None = None,
     program: str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
 ) -> list[dict[str, Any]]:
-    target_ds_id = _resolve_dataset_id_for_session(db, dataset_id, academic_session)
-    where_sql, params = _build_filter_where(target_ds_id, campus, state, source, program)
-
-    query = text(
-        f"""
-        SELECT 
-            COALESCE(SUM(cy_leads), 0) AS cy_leads,
-            COALESCE(SUM(cy_cucet), 0) AS cy_cucet,
-            COALESCE(SUM(cy_admission), 0) AS cy_admission,
-            COALESCE(SUM(py_leads), 0) AS py_leads,
-            COALESCE(SUM(py_cucet), 0) AS py_cucet,
-            COALESCE(SUM(py_admission), 0) AS py_admission
-        FROM analytics.uploaded_metrics 
-        WHERE {where_sql}
-        """
-    )
-    row = db.execute(query, params).mappings().first()
-    
-    cy_leads = int(row["cy_leads"] or 0)
-    cy_cucet = int(row["cy_cucet"] or 0)
-    cy_admission = int(row["cy_admission"] or 0)
-    
-    py_leads = int(row["py_leads"] or 0)
-    py_cucet = int(row["py_cucet"] or 0)
-    py_admission = int(row["py_admission"] or 0)
-
-    months = [
-        {"name": "November", "lead_w": 0.02, "cucet_w": 0.01, "adm_w": 0.01},
-        {"name": "December", "lead_w": 0.03, "cucet_w": 0.02, "adm_w": 0.02},
-        {"name": "January", "lead_w": 0.05, "cucet_w": 0.04, "adm_w": 0.03},
-        {"name": "February", "lead_w": 0.08, "cucet_w": 0.06, "adm_w": 0.05},
-        {"name": "March", "lead_w": 0.14, "cucet_w": 0.15, "adm_w": 0.12},
-        {"name": "April", "lead_w": 0.18, "cucet_w": 0.18, "adm_w": 0.16},
-        {"name": "May", "lead_w": 0.14, "cucet_w": 0.15, "adm_w": 0.15},
-        {"name": "June", "lead_w": 0.21, "cucet_w": 0.24, "adm_w": 0.30},
-        {"name": "July", "lead_w": 0.15, "cucet_w": 0.15, "adm_w": 0.16},
-    ]
-    
-    trend = []
-    accum_cy_leads = 0
-    accum_cy_cucet = 0
-    accum_cy_admission = 0
-    accum_py_leads = 0
-    accum_py_cucet = 0
-    accum_py_admission = 0
-    
-    for i, m in enumerate(months):
-        if i == len(months) - 1:
-            m_cy_leads = cy_leads - accum_cy_leads
-            m_cy_cucet = cy_cucet - accum_cy_cucet
-            m_cy_admission = cy_admission - accum_cy_admission
-            m_py_leads = py_leads - accum_py_leads
-            m_py_cucet = py_cucet - accum_py_cucet
-            m_py_admission = py_admission - accum_py_admission
-        else:
-            m_cy_leads = int(cy_leads * m["lead_w"])
-            m_cy_cucet = int(cy_cucet * m["cucet_w"])
-            m_cy_admission = int(cy_admission * m["adm_w"])
-            m_py_leads = int(py_leads * m["lead_w"])
-            m_py_cucet = int(py_cucet * m["cucet_w"])
-            m_py_admission = int(py_admission * m["adm_w"])
-            
-            accum_cy_leads += m_cy_leads
-            accum_cy_cucet += m_cy_cucet
-            accum_cy_admission += m_cy_admission
-            accum_py_leads += m_py_leads
-            accum_py_cucet += m_py_cucet
-            accum_py_admission += m_py_admission
-            
-        trend.append({
-            "month": m["name"],
-            "cy_leads": m_cy_leads,
-            "cy_cucet": m_cy_cucet,
-            "cy_admission": m_cy_admission,
-            "py_leads": m_py_leads,
-            "py_cucet": m_py_cucet,
-            "py_admission": m_py_admission,
-            "cy_conversion_rate": _percentage(m_cy_admission, m_cy_leads),
-            "py_conversion_rate": _percentage(m_py_admission, m_py_leads),
-        })
-        
-    return trend
+    """Delegate to aggregate service for monthly trend."""
+    from app.analytics.aggregate_service import get_agg_monthly_trend
+    return get_agg_monthly_trend(db, campus=campus, years=years, metric=metric, state=state, source=source, program=program, from_date=from_date, to_date=to_date)
 
 
 def get_performance_rankings(
     db: Session,
-    dataset_id: Any,
-    dimension: str,
-    academic_session: str | None = None,
+    dimension: str = "program_name",
     campus: str | None = None,
+    years: list[int] | str | None = None,
     state: str | None = None,
     source: str | None = None,
     program: str | None = None,
-) -> dict[str, Any]:
-    target_ds_id = _resolve_dataset_id_for_session(db, dataset_id, academic_session)
-    where_sql, params = _build_filter_where(target_ds_id, campus, state, source, program)
-    safe_dim = re.sub(r"[^\w_]", "", dimension)
-    
-    if safe_dim.lower() == "program":
-        safe_dim = "program_name"
-    elif safe_dim.lower() in ("counsellor", "owner"):
-        safe_dim = "owner"
-    elif safe_dim.lower() == "campus":
-        safe_dim = "campus_name"
-    
-    query = text(
-        f"""
-        SELECT 
-            COALESCE("{safe_dim}", 'Unknown') AS entity,
-            COALESCE(SUM(py_leads), 0) AS py_leads,
-            COALESCE(SUM(cy_leads), 0) AS cy_leads,
-            COALESCE(SUM(py_admission), 0) AS py_admission,
-            COALESCE(SUM(cy_admission), 0) AS cy_admission
-        FROM analytics.uploaded_metrics 
-        WHERE {where_sql} AND "{safe_dim}" IS NOT NULL AND "{safe_dim}" != ''
-        GROUP BY "{safe_dim}"
-        """
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict[str, list[dict[str, Any]]]:
+    """Delegate to aggregate service for performance rankings."""
+    from app.analytics.aggregate_service import get_agg_performance_rankings
+    return get_agg_performance_rankings(db, dimension=dimension, campus=campus, years=years, state=state, source=source, program=program, from_date=from_date, to_date=to_date)
+
+
+def get_entity_detail(
+    db: Session,
+    dimension: str,
+    value: str,
+    campus: str | None = None,
+    years: list[int] | str | None = None,
+    from_date: str | None = None,
+    to_date: str | None = None,
+) -> dict[str, Any] | None:
+    """Delegate to aggregate service for entity detail."""
+    from app.analytics.aggregate_service import get_agg_entity_detail
+    return get_agg_entity_detail(db, dimension=dimension, value=value, campus=campus, years=years, from_date=from_date, to_date=to_date)
+
+
+def get_exploration_data(
+    db: Session,
+    dimension: str,
+    metric: str = "admission",
+    campus: str | None = None,
+    years: list[int] | str | None = None,
+    limit: int = 10,
+) -> dict[str, Any] | None:
+    from app.analytics.aggregate_service import get_agg_exploration_data
+    return get_agg_exploration_data(
+        db,
+        dimension=dimension,
+        metric=metric,
+        campus=campus,
+        years=years,
+        limit=limit,
     )
-    rows = db.execute(query, params).mappings().all()
-    
-    entities = []
+
+
+def get_hierarchy_clusters(
+    db: Session,
+    dimension: str = "source",
+    campus: str | None = None,
+    years: list[int] | str | None = None,
+) -> dict[str, Any]:
+    """Get Level 1 clusters for Lead Source (lead_type) or Program (course_cluster)."""
+    scope_data = resolve_dataset_scope(db, campus=campus, years=years)
+    cy_year = scope_data["cy_year"]
+
+    dim_lower = dimension.lower().strip()
+    target_col = "lead_type" if dim_lower in ("source", "lead_type", "lead type") else "course_cluster"
+    sub_item_col = "source" if target_col == "lead_type" else "program_name"
+
+    params: dict[str, Any] = {"cy_year": cy_year}
+    campus_filter = ""
+    if campus and campus.lower() != "all":
+        campus_filter = ' AND LOWER("campus_name") = LOWER(:campus)'
+        params["campus"] = campus
+
+    sql = text(
+        f'SELECT COALESCE("{target_col}", \'OTHERS\') AS cluster_name, '
+        f'COALESCE(SUM(leads_cy), 0) AS cy_leads, '
+        f'COALESCE(SUM(admission_cy), 0) AS cy_admission, '
+        f'COALESCE(SUM(leads_py), 0) AS py_leads, '
+        f'COALESCE(SUM(admission_py), 0) AS py_admission, '
+        f'COUNT(DISTINCT "{sub_item_col}") AS item_count '
+        f'FROM analytics.dashboard_agg '
+        f'WHERE academic_year = :cy_year{campus_filter} '
+        f'GROUP BY "{target_col}" '
+        f'ORDER BY cy_leads DESC'
+    )
+    rows = db.execute(sql, params).mappings().all()
+
+    clusters = []
+    total_leads = sum(r["cy_leads"] for r in rows) or 1
     for r in rows:
-        py_l = int(r["py_leads"])
-        cy_l = int(r["cy_leads"])
-        py_a = int(r["py_admission"])
-        cy_a = int(r["cy_admission"])
-        
-        py_conv = _percentage(py_a, py_l)
-        cy_conv = _percentage(cy_a, cy_l)
-        
-        entities.append({
-            "entity": r["entity"],
-            "py_leads": py_l,
-            "cy_leads": cy_l,
-            "py_admission": py_a,
-            "cy_admission": cy_a,
-            "py_conversion_rate": py_conv,
-            "cy_conversion_rate": cy_conv,
-            "admission_change": cy_a - py_a,
-            "rate_change": round(cy_conv - py_conv, 2)
+        cy_leads = int(r["cy_leads"])
+        cy_admission = int(r["cy_admission"])
+        py_leads = int(r["py_leads"])
+        py_admission = int(r["py_admission"])
+        cy_rate = round((cy_admission / cy_leads * 100), 2) if cy_leads > 0 else 0.0
+        py_rate = round((py_admission / py_leads * 100), 2) if py_leads > 0 else 0.0
+
+        clusters.append({
+            "cluster_name": r["cluster_name"],
+            "cy_leads": cy_leads,
+            "cy_admission": cy_admission,
+            "cy_rate": cy_rate,
+            "py_leads": py_leads,
+            "py_admission": py_admission,
+            "py_rate": py_rate,
+            "item_count": int(r["item_count"]),
+            "share_pct": round((cy_leads / total_leads * 100), 1),
         })
-        
-    improvements = sorted(entities, key=lambda x: x["admission_change"], reverse=True)
-    declines = sorted(entities, key=lambda x: x["admission_change"], reverse=False)
-    
+
     return {
-        "improvements": improvements[:10],
-        "declines": declines[:10]
+        "dimension": dimension,
+        "level": 1,
+        "clusters": clusters,
+        "total_clusters": len(clusters),
+    }
+
+
+def get_hierarchy_drilldown(
+    db: Session,
+    dimension: str = "source",
+    cluster_name: str = "IN HOUSE",
+    campus: str | None = None,
+    years: list[int] | str | None = None,
+) -> dict[str, Any]:
+    """Get Level 2 individual items belonging to a specified cluster."""
+    scope_data = resolve_dataset_scope(db, campus=campus, years=years)
+    cy_year = scope_data["cy_year"]
+
+    dim_lower = dimension.lower().strip()
+    cluster_col = "lead_type" if dim_lower in ("source", "lead_type", "lead type") else "course_cluster"
+    item_col = "source" if cluster_col == "lead_type" else "program_name"
+
+    params: dict[str, Any] = {"cy_year": cy_year, "cluster_name": cluster_name.strip()}
+    campus_filter = ""
+    if campus and campus.lower() != "all":
+        campus_filter = ' AND LOWER("campus_name") = LOWER(:campus)'
+        params["campus"] = campus
+
+    cluster_match_clause = (
+        f'(LOWER("{cluster_col}") = LOWER(:cluster_name) OR ("{cluster_col}" IS NULL AND LOWER(:cluster_name) IN (\'others\', \'unmapped\')))'
+    )
+    fallback_item_name = "'Unmapped Program'" if item_col == "program_name" else "'Others'"
+    sql = text(
+        f'SELECT COALESCE("{item_col}", {fallback_item_name}) AS item_name, '
+        f'COALESCE(SUM(leads_cy), 0) AS cy_leads, '
+        f'COALESCE(SUM(admission_cy), 0) AS cy_admission, '
+        f'COALESCE(SUM(leads_py), 0) AS py_leads, '
+        f'COALESCE(SUM(admission_py), 0) AS py_admission '
+        f'FROM analytics.dashboard_agg '
+        f'WHERE academic_year = :cy_year{campus_filter} AND {cluster_match_clause} '
+        f'GROUP BY "{item_col}" '
+        f'ORDER BY cy_leads DESC'
+    )
+    rows = db.execute(sql, params).mappings().all()
+
+    items = []
+    total_cluster_leads = sum(r["cy_leads"] for r in rows) or 1
+    for r in rows:
+        cy_leads = int(r["cy_leads"])
+        cy_admission = int(r["cy_admission"])
+        py_leads = int(r["py_leads"])
+        py_admission = int(r["py_admission"])
+        cy_rate = round((cy_admission / cy_leads * 100), 2) if cy_leads > 0 else 0.0
+        py_rate = round((py_admission / py_leads * 100), 2) if py_leads > 0 else 0.0
+
+        items.append({
+            "item_name": r["item_name"],
+            "cy_leads": cy_leads,
+            "cy_admission": cy_admission,
+            "cy_rate": cy_rate,
+            "py_leads": py_leads,
+            "py_admission": py_admission,
+            "py_rate": py_rate,
+            "share_of_cluster_pct": round((cy_leads / total_cluster_leads * 100), 1),
+        })
+
+    return {
+        "dimension": dimension,
+        "level": 2,
+        "cluster_name": cluster_name,
+        "items": items,
+        "total_items": len(items),
+    }
+
+
+def get_manual_comparison(
+    db: Session,
+    dimension: str,
+    value_a: str | None = None,
+    value_b: str | None = None,
+    value_c: str | None = None,
+    entities_list: list[str] | None = None,
+    metric: str = "admission",
+    campus: str | None = None,
+    years: list[int] | str | None = None,
+) -> dict[str, Any] | None:
+    scope_data = resolve_dataset_scope(db, campus=campus, years=years)
+    cy_year = scope_data["cy_year"]
+    safe_dim = _resolve_dimension_col(dimension)
+
+    vals = []
+    if entities_list:
+        vals = [e.strip() for e in entities_list if e and e.strip()]
+    if not vals:
+        if value_a:
+            vals.append(value_a.strip())
+        if value_b:
+            vals.append(value_b.strip())
+        if value_c and value_c.strip():
+            vals.append(value_c.strip())
+
+    if not vals:
+        return None
+
+    params: dict[str, Any] = {"cy_year": cy_year}
+    val_clauses = []
+    for idx, v in enumerate(vals):
+        param_key = f"val_{idx}"
+        val_clauses.append(f"LOWER(\"{safe_dim}\") = LOWER(:{param_key})")
+        params[param_key] = v
+
+    where_val_sql = " OR ".join(val_clauses)
+    campus_filter = ""
+    if campus and campus.lower() != "all":
+        campus_filter = ' AND LOWER("campus_name") = LOWER(:campus)'
+        params["campus"] = campus
+
+    rows = []
+    if safe_dim in ("source", "main_source", "state", "program_name", "campus_name", "lead_type", "course_cluster"):
+        try:
+            agg_sql = text(
+                f'SELECT "{safe_dim}" AS entity, '
+                f'COALESCE(SUM(leads_cy), 0) AS cy_leads, '
+                f'COALESCE(SUM(admission_cy), 0) AS cy_admission, '
+                f'COALESCE(SUM(leads_py), 0) AS py_leads, '
+                f'COALESCE(SUM(admission_py), 0) AS py_admission '
+                f'FROM analytics.dashboard_agg '
+                f'WHERE academic_year = :cy_year{campus_filter} AND ({where_val_sql}) '
+                f'GROUP BY "{safe_dim}"'
+            )
+            rows = db.execute(agg_sql, params).mappings().all()
+        except Exception as err:
+            logger.debug(f"Agg query failed in comparison (falling back): {err}")
+            db.rollback()
+
+    if not rows:
+        cy_ds_ids = scope_data["cy_dataset_ids"]
+        if cy_ds_ids:
+            ds_quoted = ",".join(f"'{str(d)}'" for d in cy_ds_ids)
+            fb_sql = text(
+                f'SELECT "{safe_dim}" AS entity, '
+                f'COALESCE(SUM(cy_leads), 0) AS cy_leads, '
+                f'COALESCE(SUM(cy_admission), 0) AS cy_admission, '
+                f'COALESCE(SUM(py_leads), 0) AS py_leads, '
+                f'COALESCE(SUM(py_admission), 0) AS py_admission '
+                f'FROM analytics.uploaded_metrics '
+                f'WHERE dataset_id::text IN ({ds_quoted}) AND ({where_val_sql}) '
+                f'GROUP BY "{safe_dim}"'
+            )
+            rows = db.execute(fb_sql, params).mappings().all()
+
+    row_dict = {str(r["entity"]).lower().strip(): r for r in rows}
+    entity_results = []
+    max_rate = -1.0
+    top_performer = None
+
+    for v in vals:
+        match = row_dict.get(v.lower().strip())
+        cy_leads = int(match["cy_leads"]) if match else 0
+        cy_admission = int(match["cy_admission"]) if match else 0
+        py_leads = int(match["py_leads"]) if match else 0
+        py_admission = int(match["py_admission"]) if match else 0
+
+        cy_rate = round((cy_admission / cy_leads * 100), 2) if cy_leads > 0 else 0.0
+        py_rate = round((py_admission / py_leads * 100), 2) if py_leads > 0 else 0.0
+
+        item = {
+            "entity": match["entity"] if match else v,
+            "cy_leads": cy_leads,
+            "cy_admission": cy_admission,
+            "cy_rate": cy_rate,
+            "py_leads": py_leads,
+            "py_admission": py_admission,
+            "py_rate": py_rate,
+            "is_top_performer": False,
+        }
+        entity_results.append(item)
+
+        if cy_rate > max_rate:
+            max_rate = cy_rate
+            top_performer = item["entity"]
+
+    for item in entity_results:
+        if item["entity"] == top_performer:
+            item["is_top_performer"] = True
+
+    # Backward compatible value_a and value_b fields
+    val_a_res = entity_results[0] if len(entity_results) > 0 else {"entity": value_a or "Value A", "cy_leads": 0, "cy_admission": 0, "cy_rate": 0.0}
+    val_b_res = entity_results[1] if len(entity_results) > 1 else {"entity": value_b or "Value B", "cy_leads": 0, "cy_admission": 0, "cy_rate": 0.0}
+
+    diff_leads = val_a_res["cy_leads"] - val_b_res["cy_leads"]
+    diff_adm = val_a_res["cy_admission"] - val_b_res["cy_admission"]
+    diff_rate = round(val_a_res["cy_rate"] - val_b_res["cy_rate"], 2)
+
+    return {
+        "dimension": dimension,
+        "metric": metric,
+        "entities": entity_results,
+        "top_performer": {
+            "entity": top_performer or (val_a_res["entity"] if val_a_res else ""),
+            "cy_rate": max_rate if max_rate >= 0 else 0.0,
+        },
+        "value_a": val_a_res,
+        "value_b": val_b_res,
+        "differences": {
+            "cy_leads": diff_leads,
+            "py_leads": (val_a_res.get("py_leads", 0) - val_b_res.get("py_leads", 0)),
+            "cy_admission": diff_adm,
+            "py_admission": (val_a_res.get("py_admission", 0) - val_b_res.get("py_admission", 0)),
+            "cy_rate": diff_rate,
+            "py_rate": round(val_a_res.get("py_rate", 0.0) - val_b_res.get("py_rate", 0.0), 2),
+        },
     }

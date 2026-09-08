@@ -49,7 +49,9 @@ def format_tool_response(tool_res: ToolResult, question: str) -> dict[str, Any]:
     meta = tool_res.metadata
     year = tool_res.year
 
-    if not data:
+    if meta and meta.get("summary"):
+        answer = meta["summary"]
+    elif not data:
         answer = "No matching records were found in the active dataset."
     elif op == "ranking":
         dim = meta.get("dimension", "entity")
@@ -123,24 +125,45 @@ def format_tool_response(tool_res: ToolResult, question: str) -> dict[str, Any]:
 
     elif op == "metric":
         metric = meta.get("metric", "metric")
-        val = data[0].get(metric, 0)
-        answer = f"There were {val} {metric} records in {year}."
+        is_ratio = meta.get("is_ratio", False)
+        val = data[0].get(metric, 0) if data else 0
+
+        if is_ratio or "rate" in metric or "conversion" in metric:
+            if metric in ("conversion_rate", "lead_admission_rate"):
+                answer = f"The lead-to-admission conversion rate in {year} is {val}%."
+            elif metric == "lead_cucet_rate":
+                answer = f"The lead-to-CUCET conversion rate in {year} is {val}%."
+            elif metric == "cucet_admission_rate":
+                answer = f"The CUCET-to-admission conversion rate in {year} is {val}%."
+            else:
+                answer = f"The {metric.replace('_', ' ')} in {year} is {val}%."
+        elif metric == "cucet":
+            answer = f"There were {val:,} CUCET registration records in {year}."
+        elif metric == "leads":
+            answer = f"There were {val:,} leads in {year}."
+        elif metric == "admission":
+            answer = f"There were {val:,} admissions in {year}."
+        elif metric == "gross_admission":
+            answer = f"There were {val:,} gross admissions in {year}."
+        elif metric == "refunded":
+            answer = f"There were {val:,} refunded records in {year}."
+        else:
+            answer = f"There were {val:,} {metric.replace('_', ' ')} records in {year}."
 
     elif op == "breakdown":
-        dims = meta.get("dimensions", ["dimension"])
+        dims = meta.get("dimensions", [meta.get("dimension", "dimension")])
         metric = meta.get("metric", "metric")
-        if len(dims) == 1:
-            top_item = data[0].get(dims[0], "Item")
+        dim_name = dims[0] if dims else "dimension"
+        if len(data) == 0:
+            answer = f"No matching records found by {dim_name.replace('_', ' ')}."
+        elif len(dims) == 1:
+            top_item = data[0].get(dim_name, "Item")
             top_val = data[0].get(metric, 0)
-            total = sum(r.get(metric, 0) for r in data if isinstance(r.get(metric), (int, float)))
-            dim_label = dims[0].replace("_name", "").replace("_", " ")
-            if top_val <= 0:
-                if "admission" in metric.lower():
-                    answer = f"No admissions were recorded for any matching {dim_label} in the selected period."
-                else:
-                    answer = f"No {metric}s were recorded for any matching {dim_label} in the selected period."
+            dim_label = dim_name.replace("_name", "").replace("_", " ")
+            if isinstance(top_val, (int, float)) and top_val <= 0:
+                answer = f"No {metric.replace('_', ' ')} recorded by {dim_label}."
             else:
-                answer = f"The {dims[0].replace('_', ' ')} with the highest {metric} in {year} is {top_item} with {top_val} {metric} (total: {total})."
+                answer = f"Here is the breakdown of {metric.replace('_', ' ')} by {dim_label} for {year}. {top_item} generated the highest with {top_val:,}."
         else:
             answer = f"Here is the multi-level breakdown across {', '.join(dims)} for {year}."
 

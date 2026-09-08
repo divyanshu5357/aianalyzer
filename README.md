@@ -1,109 +1,49 @@
-                    ┌─────────────────────┐
-                    │      Next.js        │
-                    │   Chat + Dashboard  │
-                    │   Voice Interface   │
-                    └──────────┬──────────┘
-                               │
-                            REST API
-                               │
-                               ▼
-                    ┌─────────────────────┐
-                    │      FastAPI        │
-                    │   Backend / API     │
-                    └──────────┬──────────┘
-                               │
-                         ┌─────┴─────┐
-                         │ AI AGENT  │
-                         └─────┬─────┘
-                               │
-            ┌──────────────────┼──────────────────┐
-            │                  │                  │
-            ▼                  ▼                  ▼
-       SQL ANALYST          RAG AGENT         ML ENGINE
-            │                  │                  │
-            │                  │            ┌─────┴─────┐
-            │                  │            │ XGBoost   │
-            │                  │            │ SHAP      │
-            │                  │            │ Forecast  │
-            │                  │            └───────────┘
-            │                  │
-            ▼                  ▼
-       PostgreSQL          pgvector
-            │
-            │
-     ┌──────┴────────┐
-     │               │
-     ▼               ▼
- RAW DATA       CLEAN DATA
-
- ✅ Data ingestion
-✅ Profiling
-✅ Staging
-✅ Cleaning
-✅ Semantic inference
-✅ Semantic registry
-
-| Component                  | Status now                   | What remains                                             |
-| -------------------------- | ---------------------------- | -------------------------------------------------------- |
-| Metric definitions         | 🟡 Partial                   | Central metric registry + consistent definitions         |
-| Time-context understanding | 🟢 **Done for 2-year model** | Must extend to arbitrary historical periods              |
-| Business aliases           | 🟡 Partial                   | Better fuzzy/entity aliases: `B.E CSE` → actual program  |
-| Canonical entities         | 🟢 Mostly done               | Strengthen cross-year/entity resolution                  |
-| SQL planner                | 🟢 **Done**                  | Local + Gemini fallback                                  |
-| SQL generation             | 🟢 **Done**                  | Tool-based                                               |
-| SQL safety/validation      | 🟢 **Done**                  | Canonical validation                                     |
-| Result interpretation      | 🟢 **Done**                  | Grounded results                                         |
-| Chat agent                 | 🟢 Mostly done               | Driver analysis + better clarification/entity resolution |
-| Voice input                | 🔴 Not started               | Later                                                    |
-| Voice output               | 🔴 Not started               | Later                                                    |
-| Prediction                 | 🔴 Not started               | Later                                                    |
-| SHAP/XGBoost               | 🔴 Not started               | After prediction                                         |
-| Frontend                   | 🟡 **In progress**           | Workspace separation, stability, historical UI           |
-| Client SQL connector       | 🔴 Not started               | Later                                                    |
-✅ Agent hardening
-🟡 Metric Registry + Entity Resolution
-⬜ Historical multi-year data model        ← NEXT
-⬜ Upload period detection
-⬜ Year/version/conflict management
-⬜ Multi-year analytics
-⬜ 5M/10M+ historical benchmark
-⬜ Analytics workspace refinement
-⬜ Comparison workspace
-⬜ Driver/reason analysis
-⬜ Multi-year Dashboard trends
-⬜ Program/Specialization hierarchy
-⬜ Detail views
-⬜ Prediction / ML
-⬜ SHAP/XGBoost
-⬜ Voice
-⬜ Client SQL connector
-                         USER
-                           │
-                           ↓
-                     Vercel Frontend
-                           │
-               ┌───────────┴───────────┐
-               │                       │
-               ↓                       ↓
-        Render API                S3 Upload
-       Node + Express           100 MB Excel
-               │                       │
-               │                       ↓
-               │                    S3
-               │                       │
-               ↓                       ↓
-          Job Creation              File Ready
-               │                       │
-               └──────────┬────────────┘
-                          ↓
-                       Queue
-                          ↓
-                       Worker
-                          ↓
-                    Excel Parser
-                          ↓
-                     AI Agent
-                          ↓
-                   Database
-                          ↓
-                    Frontend
+🔴 Phase A — Dynamic/Data Audit
+Scan entire frontend for hardcoded business/data values
+Scan backend for hardcoded years/campuses/states/sources
+Remove them
+Verify all metrics originate from PostgreSQL
+Verify target uses current year
+Verify one target master
+Verify one dimension master
+🔴 Phase B — Performance
+Fix 404
+Fix infinite/loading requests
+Implement lazy Program hierarchy
+Implement lazy State hierarchy
+Simplify Counsellor page
+Audit duplicate API calls
+Split api.ts
+Check PostgreSQL query plans
+Clean Docker storage safely
+🟠 Phase C — Dashboard Completion
+Global From/To date
+Dynamic Gender monthly chart
+Dynamic India state map
+Verify every dashboard number changes with data
+🟠 Phase D — ML
+Keep 2026_canonical_v2
+Collect more historical data
+Build canonical training dataset pipeline
+Retrain when sufficient historical data exists
+Compare candidate vs production
+Promote only if governance thresholds pass
+🟢 Phase E — Final Client QA
+Fresh database/data test
+Upload 2025
+Upload 2026
+Replace 2026
+Delete 2026
+Re-upload
+Change dates
+Change campus
+Test Programs
+Test States
+Test Counsellors
+Test AI
+Test Reports
+Test exports
+Test ML
+Test with large dataset
+Final security check
+Client demo

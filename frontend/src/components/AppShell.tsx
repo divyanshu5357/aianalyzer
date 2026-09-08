@@ -19,8 +19,13 @@ import {
   Database,
   Menu,
   X,
-  TrendingUp,
   User,
+  Calendar,
+  RotateCcw,
+  AlertCircle,
+  Building2,
+  GraduationCap,
+  MapPin,
 } from "lucide-react";
 
 export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) => {
@@ -29,6 +34,9 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     theme,
     toggleTheme,
     activeDataset,
+    selectedCampus,
+    setSelectedCampus,
+    availableCampuses,
     year,
     setYear,
     triggerRefresh,
@@ -36,12 +44,21 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
     periods,
     activePeriodLabel,
     setActivePeriodLabel,
+    fromDate,
+    setFromDate,
+    toDate,
+    setToDate,
+    appliedFromDate,
+    appliedToDate,
+    dateRangeLimits,
+    dateRangeError,
+    applyDateRange,
+    resetDateRange,
   } = useApp();
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isDark = theme === "dark";
 
-  // Mapping paths to titles
   const getPageTitle = () => {
     switch (pathname) {
       case "/":
@@ -49,24 +66,16 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
         return "Executive Dashboard";
       case "/upload":
         return "Data Ingestion Center";
-      case "/analytics":
-        return "Analytical Exploration";
-      case "/source-analytics":
-        return "Source Analytics";
-      case "/program-analytics":
-        return "Program Analytics";
-      case "/comparisons":
-        return "Comparisons Workspace";
-      case "/insights":
-        return "Automated Data Insights";
+      case "/counsellor-operations":
+        return "Counsellor & Lead Operations";
       case "/ai-analyst":
-        return "AI Agent Analyst";
-      case "/historical-trends":
-        return "Historical Trends";
-      case "/source-performance":
-        return "Source Performance";
+        return "AI Agent Analyst Desk";
+      case "/programs":
+        return "Program Performance Report";
+      case "/state-analysis":
+        return "State Wise Analysis";
       default:
-        return "Admissions Intelligence";
+        return "Admissions Intelligence Engine";
     }
   };
 
@@ -77,44 +86,25 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
       icon: <LayoutDashboard className="w-5 h-5" />,
     },
     {
+      path: "/programs",
+      label: "Programs",
+      icon: <GraduationCap className="w-5 h-5" />,
+      badge: "NEW",
+    },
+    {
+      path: "/state-analysis",
+      label: "State Wise Analysis",
+      icon: <MapPin className="w-5 h-5" />,
+    },
+    {
       path: "/upload",
       label: "Data Ingestion",
       icon: <UploadCloud className="w-5 h-5" />,
     },
     {
-      path: "/analytics",
-      label: "Detailed Explore",
-      icon: <BarChart3 className="w-5 h-5" />,
-    },
-    {
-      path: "/historical-trends",
-      label: "Historical Trends",
-      icon: <TrendingUp className="w-5 h-5" />,
-    },
-    {
-      path: "/source-analytics",
-      label: "Source Analytics",
-      icon: <Layers className="w-5 h-5" />,
-    },
-    {
-      path: "/program-analytics",
-      label: "Program Analytics",
-      icon: <TrendingUp className="w-5 h-5" />,
-    },
-    {
-      path: "/comparisons",
-      label: "Comparisons",
-      icon: <TrendingUp className="w-5 h-5" />,
-    },
-    {
-      path: "/insights",
-      label: "Insights Engine",
-      icon: <Sparkles className="w-5 h-5" />,
-    },
-    {
-      path: "/source-performance",
-      label: "Source Performance",
-      icon: <Layers className="w-5 h-5" />,
+      path: "/counsellor-operations",
+      label: "Counsellor Ops",
+      icon: <User className="w-5 h-5" />,
     },
     {
       path: "/ai-analyst",
@@ -286,78 +276,142 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
           {/* Action Row */}
           <div className="flex items-center gap-2">
-            {/* Dynamic period/year selector — driven by /api/periods */}
-            {activeDataset && (
-              <div className="relative">
+            {/* Global Campus Selector */}
+            <div className="relative">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                isDark 
+                  ? "bg-[#131B2E] border-[#1E293B] text-slate-200 hover:border-indigo-500/50" 
+                  : "bg-white border-slate-200 text-slate-700 hover:border-indigo-400 shadow-xs"
+              }`}>
+                <Building2 className="w-3.5 h-3.5 text-indigo-500 shrink-0" />
                 <select
-                  id="appshell-period-selector"
-                  value={activePeriodLabel ?? String(year)}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const period = periods.find((p) => p.academic_label === val);
-                    if (period) {
-                      setActivePeriodLabel(val);
-                      if (period.period_end_year) setYear(period.period_end_year);
-                    } else {
-                      setYear(Number(val));
-                    }
-                  }}
-                  className={`px-3 py-1.5 text-xs font-bold rounded-lg border appearance-none pr-8 cursor-pointer focus:outline-none transition-all ${
-                    isDark
-                      ? "bg-[#131B2E] border-[#1E293B] text-slate-200 focus:border-blue-500/50"
-                      : "bg-white border-slate-200 text-slate-700 focus:border-blue-500"
-                  }`}
+                  id="appshell-campus-selector"
+                  value={selectedCampus}
+                  onChange={(e) => setSelectedCampus(e.target.value)}
+                  className="bg-transparent text-xs font-bold focus:outline-none cursor-pointer pr-4 appearance-none"
                 >
-                  {periods.filter(p => /^\d{4}-\d{2}$/.test(p.academic_label ?? "")).length > 0 ? (
-                    periods
-                      .filter(p => /^\d{4}-\d{2}$/.test(p.academic_label ?? ""))
-                      .map((p) => (
-                      <option key={p.academic_label} value={p.academic_label}>
-                        {p.academic_label}{p.active_dataset_id ? " ✓" : ""}
-                      </option>
-                    ))
-                  ) : (
-                    // Fallback while periods are loading
-                    [year, year - 1, year - 2].map((y) => (
-                      <option key={y} value={y}>Year {y}</option>
-                    ))
-                  )}
+                  <option value="all" className={isDark ? "bg-[#131B2E] text-white" : "bg-white text-slate-800"}>
+                    All Campuses
+                  </option>
+                  {availableCampuses.map((c) => (
+                    <option key={c} value={c} className={isDark ? "bg-[#131B2E] text-white" : "bg-white text-slate-800"}>
+                      {c} Campus
+                    </option>
+                  ))}
                 </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center px-2 text-slate-400">
-                  <ChevronRight className="w-3 h-3 rotate-90" />
-                </div>
+                <ChevronRight className="w-3 h-3 rotate-90 text-slate-400 pointer-events-none -ml-3" />
               </div>
-            )}
+            </div>
+
+            {/* Global Date Range Filter */}
+            <div className="relative flex items-center">
+              <div
+                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                  dateRangeError
+                    ? "border-rose-500/80 bg-rose-500/10 text-rose-300"
+                    : (appliedFromDate || appliedToDate)
+                    ? isDark
+                      ? "bg-indigo-950/40 border-indigo-500/50 shadow-xs shadow-indigo-500/10"
+                      : "bg-indigo-50/80 border-indigo-200 shadow-xs shadow-indigo-500/10"
+                    : isDark
+                    ? "bg-[#131B2E] border-[#1E293B] hover:border-slate-700"
+                    : "bg-white border-slate-200 hover:border-slate-300 shadow-xs"
+                }`}
+              >
+                <Calendar className={`w-3.5 h-3.5 shrink-0 ${(appliedFromDate || appliedToDate) ? "text-indigo-500" : "text-slate-400"}`} />
+                
+                {/* From Date Input */}
+                <input
+                  type="date"
+                  id="global-from-date"
+                  value={fromDate}
+                  min={dateRangeLimits?.min_date}
+                  max={dateRangeLimits?.max_date}
+                  onChange={(e) => setFromDate(e.target.value)}
+                  className={`px-1 py-0.5 text-xs font-semibold rounded bg-transparent focus:outline-none cursor-pointer ${
+                    isDark ? "text-slate-200" : "text-slate-800"
+                  }`}
+                  title="From Date"
+                />
+                
+                <span className="text-slate-400 text-xs font-bold select-none">→</span>
+                
+                {/* To Date Input */}
+                <input
+                  type="date"
+                  id="global-to-date"
+                  value={toDate}
+                  min={dateRangeLimits?.min_date}
+                  max={dateRangeLimits?.max_date}
+                  onChange={(e) => setToDate(e.target.value)}
+                  className={`px-1 py-0.5 text-xs font-semibold rounded bg-transparent focus:outline-none cursor-pointer ${
+                    isDark ? "text-slate-200" : "text-slate-800"
+                  }`}
+                  title="To Date"
+                />
+
+                {/* Apply Button */}
+                <button
+                  id="global-date-apply-btn"
+                  onClick={() => applyDateRange()}
+                  className="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                  title="Apply date range filter"
+                >
+                  Apply
+                </button>
+
+                {/* Reset / Clear Button */}
+                {(appliedFromDate || appliedToDate || fromDate || toDate) && (
+                  <button
+                    id="global-date-reset-btn"
+                    onClick={() => resetDateRange()}
+                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
+                    title="Reset to full period"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+
+              {/* Validation Error Tooltip */}
+              {dateRangeError && (
+                <div className="absolute top-full left-0 mt-1.5 z-50 px-2.5 py-1 text-[11px] font-semibold text-rose-300 bg-slate-900 border border-rose-500/50 rounded-lg shadow-xl flex items-center gap-1.5 whitespace-nowrap animate-in fade-in slide-in-from-top-1">
+                  <AlertCircle className="w-3.5 h-3.5 text-rose-400 shrink-0" />
+                  <span>{dateRangeError}</span>
+                </div>
+              )}
+            </div>
 
             {/* Refresh Trigger */}
             <button
               onClick={triggerRefresh}
-              className={`p-2 rounded-lg border transition-all ${
+              className={`p-2 rounded-xl border transition-all ${
                 isDark
-                  ? "bg-[#131B2E] border-[#1E293B] text-slate-300 hover:text-white hover:bg-slate-800"
-                  : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  ? "bg-[#131B2E] border-[#1E293B] text-slate-300 hover:text-white hover:border-indigo-500/40"
+                  : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:border-indigo-300 shadow-xs"
               }`}
               title="Refresh database aggregation"
             >
-              <RefreshCw className={`w-4 h-4 ${isLoadingDataset ? "animate-spin text-blue-400" : ""}`} />
+              <RefreshCw className={`w-4 h-4 ${isLoadingDataset ? "animate-spin text-indigo-500" : ""}`} />
             </button>
 
             {/* Day / Night Theme Toggle */}
             <button
+              id="theme-toggle-btn"
               onClick={toggleTheme}
-              className={`p-2 rounded-lg border transition-all ${
+              className={`p-2 rounded-xl border transition-all ${
                 isDark
-                  ? "bg-[#131B2E] border-[#1E293B] text-slate-300 hover:text-white hover:bg-slate-800"
-                  : "bg-white border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-50"
+                  ? "bg-[#131B2E] border-[#1E293B] text-slate-300 hover:text-amber-400 hover:border-indigo-500/40"
+                  : "bg-white border-slate-200 text-slate-600 hover:text-indigo-600 hover:border-indigo-300 shadow-xs"
               }`}
               title={isDark ? "Switch to Light Mode" : "Switch to Dark Mode"}
             >
-              {isDark ? <Sun className="w-4 h-4 text-amber-400 animate-spin" /> : <Moon className="w-4 h-4 text-indigo-600" />}
+              {isDark ? <Sun className="w-4 h-4 text-amber-400" /> : <Moon className="w-4 h-4 text-indigo-600" />}
             </button>
 
             {/* Profile widget */}
             <div className={`hidden sm:flex items-center gap-2 pl-2 border-l ${isDark ? "border-[#1E293B]" : "border-slate-200"}`}>
-              <div className="w-8 h-8 rounded-lg bg-blue-600 text-white flex items-center justify-center font-bold text-xs">
+              <div className="w-8 h-8 rounded-xl bg-gradient-to-tr from-indigo-600 to-blue-500 text-white flex items-center justify-center font-bold text-xs shadow-xs">
                 <User className="w-4 h-4" />
               </div>
             </div>

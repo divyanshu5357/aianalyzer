@@ -84,6 +84,11 @@ def normalize_dataset(
     col_py_c = get_orig("py_cucet", "PY CUCET")
     col_py_a = get_orig("py_admission", "PY Admission")
 
+    col_course_cluster = get_orig("course_cluster", "Course Cluster")
+    col_state_code = get_orig("state_code", "State Code")
+    col_zone = get_orig("zone", "Zone")
+    col_team = get_orig("team", "Team")
+
     # Set local working memory for this normalization transaction
     db.execute(text("SET LOCAL work_mem = '64MB';"))
 
@@ -106,8 +111,15 @@ def normalize_dataset(
     min_row, max_row = int(bounds[0]), int(bounds[1])
     total_rows = max_row - min_row + 1
 
+    ds_info = db.execute(
+        text("SELECT academic_year, campus_name FROM system.datasets WHERE id = :ds_id"),
+        {"ds_id": str(dataset_id)},
+    ).mappings().first()
+    ds_year = ds_info.get("academic_year") if ds_info else None
+    ds_campus = ds_info.get("campus_name") if ds_info else None
+
     # Construct chunk insert SQL
-    conflict_clause = ""
+    conflict_clause = "ON CONFLICT (dataset_id, row_number) DO NOTHING"
     if mode == "upsert":
         conflict_clause = """
         ON CONFLICT (dataset_id, row_number)
@@ -118,6 +130,7 @@ def normalize_dataset(
             main_source = EXCLUDED.main_source,
             source = EXCLUDED.source,
             campus_name = EXCLUDED.campus_name,
+            academic_year = EXCLUDED.academic_year,
             state = EXCLUDED.state,
             program_name = EXCLUDED.program_name,
             cy_leads = EXCLUDED.cy_leads,
@@ -125,7 +138,13 @@ def normalize_dataset(
             cy_admission = EXCLUDED.cy_admission,
             py_leads = EXCLUDED.py_leads,
             py_cucet = EXCLUDED.py_cucet,
-            py_admission = EXCLUDED.py_admission
+            py_admission = EXCLUDED.py_admission,
+            course_cluster = EXCLUDED.course_cluster,
+            state_code = EXCLUDED.state_code,
+            zone = EXCLUDED.zone,
+            team = EXCLUDED.team,
+            created_month = EXCLUDED.created_month,
+            admission_month = EXCLUDED.admission_month
         """
 
     chunk_sql = text(f"""
@@ -133,6 +152,7 @@ def normalize_dataset(
             id,
             dataset_id,
             row_number,
+            academic_year,
             owner,
             cluster,
             lead_type,
@@ -146,26 +166,52 @@ def normalize_dataset(
             cy_admission,
             py_leads,
             py_cucet,
-            py_admission
+            py_admission,
+            course_cluster,
+            state_code,
+            zone,
+            team,
+            created_month,
+            admission_month
         )
         SELECT
             gen_random_uuid(),
             :dataset_id,
             row_number,
-            NULLIF(TRIM(raw_data->>'{col_owner}'), ''),
+            :ds_year,
+            COALESCE(NULLIF(TRIM(raw_data->>'{col_owner}'), ''), NULLIF(TRIM(raw_data->>'OwnerIdName'), '')),
             NULLIF(TRIM(raw_data->>'{col_cluster}'), ''),
-            NULLIF(TRIM(raw_data->>'{col_lead_type}'), ''),
-            NULLIF(TRIM(raw_data->>'{col_main_source}'), ''),
-            NULLIF(TRIM(raw_data->>'{col_source}'), ''),
-            NULLIF(TRIM(raw_data->>'{col_campus}'), ''),
-            NULLIF(TRIM(raw_data->>'{col_state}'), ''),
+            COALESCE(NULLIF(TRIM(raw_data->>'{col_lead_type}'), ''), NULLIF(TRIM(raw_data->>'ProspectStage'), '')),
+            COALESCE(NULLIF(TRIM(raw_data->>'{col_main_source}'), ''), NULLIF(TRIM(raw_data->>'Origin'), '')),
+            COALESCE(NULLIF(TRIM(raw_data->>'{col_source}'), ''), NULLIF(TRIM(raw_data->>'Source'), '')),
+            COALESCE(NULLIF(TRIM(raw_data->>'{col_campus}'), ''), NULLIF(TRIM(raw_data->>'mx_Campus'), ''), :ds_campus),
+            COALESCE(NULLIF(TRIM(raw_data->>'{col_state}'), ''), NULLIF(TRIM(raw_data->>'mx_State_New'), ''), NULLIF(TRIM(raw_data->>'mx_State'), '')),
             NULLIF(TRIM(raw_data->>'{col_prog}'), ''),
-            COALESCE(NULLIF(REPLACE(raw_data->>'{col_cy_l}', ',', ''), '')::numeric, 0),
-            COALESCE(NULLIF(REPLACE(raw_data->>'{col_cy_c}', ',', ''), '')::numeric, 0),
-            COALESCE(NULLIF(REPLACE(raw_data->>'{col_cy_a}', ',', ''), '')::numeric, 0),
+            CASE 
+                WHEN NULLIF(REPLACE(raw_data->>'{col_cy_l}', ',', ''), '') IS NOT NULL THEN (REPLACE(raw_data->>'{col_cy_l}', ',', '')::numeric)
+                WHEN raw_data->>'ProspectID' IS NOT NULL OR raw_data->>'FirstName' IS NOT NULL THEN 1
+                ELSE 0
+            END,
+            CASE 
+                WHEN NULLIF(REPLACE(raw_data->>'{col_cy_c}', ',', ''), '') IS NOT NULL THEN (REPLACE(raw_data->>'{col_cy_c}', ',', '')::numeric)
+                WHEN NULLIF(TRIM(raw_data->>'mx_CUCET_Score'), '') IS NOT NULL OR raw_data->>'mx_CUCET_Exam_Status' IN ('Eligible-for-Scholarship', 'Eligible for Admission but not for Scholarship', 'Not-Eligible for Admissions') THEN 1
+                ELSE 0
+            END,
+            CASE 
+                WHEN NULLIF(TRIM(raw_data->>'mx_AdmissionDate'), '') IS NOT NULL AND LOWER(TRIM(raw_data->>'mx_AdmissionDate')) != 'null' THEN 1
+                WHEN NULLIF(REPLACE(raw_data->>'{col_cy_a}', ',', ''), '') IS NOT NULL THEN (REPLACE(raw_data->>'{col_cy_a}', ',', '')::numeric)
+                WHEN raw_data->>'ProspectStage' = 'Enrolled' THEN 1
+                ELSE 0
+            END,
             COALESCE(NULLIF(REPLACE(raw_data->>'{col_py_l}', ',', ''), '')::numeric, 0),
             COALESCE(NULLIF(REPLACE(raw_data->>'{col_py_c}', ',', ''), '')::numeric, 0),
-            COALESCE(NULLIF(REPLACE(raw_data->>'{col_py_a}', ',', ''), '')::numeric, 0)
+            COALESCE(NULLIF(REPLACE(raw_data->>'{col_py_a}', ',', ''), '')::numeric, 0),
+            NULLIF(TRIM(raw_data->>'{col_course_cluster}'), ''),
+            NULLIF(TRIM(raw_data->>'{col_state_code}'), ''),
+            NULLIF(TRIM(raw_data->>'{col_zone}'), ''),
+            NULLIF(TRIM(raw_data->>'{col_team}'), ''),
+            system.parse_month(COALESCE(NULLIF(TRIM(raw_data->>'CreatedOn'), ''), NULLIF(TRIM(raw_data->>'Created_On'), ''), NULLIF(TRIM(raw_data->>'enquiry_date'), ''))),
+            system.parse_month(NULLIF(TRIM(raw_data->>'mx_AdmissionDate'), ''), NULLIF(TRIM(COALESCE(raw_data->>'CreatedOn', raw_data->>'Created_On', raw_data->>'enquiry_date')), ''))
         FROM staging.records
         WHERE dataset_id = :dataset_id
           AND row_number >= :start_row AND row_number <= :end_row
@@ -179,6 +225,8 @@ def normalize_dataset(
             chunk_sql,
             {
                 "dataset_id": dataset_id,
+                "ds_year": ds_year,
+                "ds_campus": ds_campus,
                 "start_row": curr_start,
                 "end_row": curr_end,
             },
@@ -201,4 +249,6 @@ def normalize_dataset(
             progress_callback(final_count, total_rows)
         except Exception:
             pass
+    # Note: Aggregate refresh is deferred to async_worker to run scoped refresh
+    # once the entire ingestion pipeline (including mapping) is complete.
     return final_count

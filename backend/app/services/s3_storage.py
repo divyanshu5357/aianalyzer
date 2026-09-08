@@ -1,69 +1,36 @@
-import boto3
-from botocore.exceptions import ClientError
-
-BUCKET_NAME = "cu-custom-ai-agent-files"
-AWS_REGION = "eu-north-1"
-
-s3_client = boto3.client(
-    "s3",
-    region_name=AWS_REGION,
-)
-
-
+"""
+Storage service adapter delegating to ObjectStorageProvider.
+Ensures provider-agnostic execution for R2, S3, MinIO, and Local storage fallback.
+"""
 import logging
+from typing import Optional
+from app.storage.service import get_storage_provider
 
 logger = logging.getLogger(__name__)
+
 
 def generate_upload_url(
     object_key: str,
     content_type: str,
     expires_in: int = 3600,
 ) -> str:
-    try:
-        return s3_client.generate_presigned_url(
-            "put_object",
-            Params={
-                "Bucket": BUCKET_NAME,
-                "Key": object_key,
-                "ContentType": content_type,
-            },
-            ExpiresIn=expires_in,
-        )
-    except ClientError as e:
-        logger.error(f"Error generating presigned URL: {e}")
-        raise
+    provider = get_storage_provider()
+    res = provider.create_presigned_upload_url(object_key, expires_in=expires_in, content_type=content_type)
+    return res.get("url", "")
 
 
 def download_file(object_key: str, local_path: str) -> None:
-    try:
-        s3_client.download_file(
-            BUCKET_NAME,
-            object_key,
-            local_path,
-        )
-    except ClientError as e:
-        logger.error(f"Error downloading file from S3: {e}")
-        raise
+    provider = get_storage_provider()
+    ok = provider.download_file(object_key, local_path)
+    if not ok:
+        raise ValueError(f"Failed to download object storage key: {object_key}")
 
 
 def delete_file(object_key: str) -> None:
-    try:
-        s3_client.delete_object(
-            Bucket=BUCKET_NAME,
-            Key=object_key,
-        )
-    except ClientError as e:
-        logger.error(f"Error deleting file from S3: {e}")
-        # Not raising, since this is usually cleanup
-        pass
+    provider = get_storage_provider()
+    provider.delete_object(object_key)
 
 
 def check_object_exists(object_key: str) -> bool:
-    try:
-        s3_client.head_object(Bucket=BUCKET_NAME, Key=object_key)
-        return True
-    except ClientError as e:
-        if e.response['Error']['Code'] == '404':
-            return False
-        logger.error(f"Error checking object existence: {e}")
-        raise
+    provider = get_storage_provider()
+    return provider.exists(object_key)

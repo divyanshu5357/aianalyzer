@@ -31,9 +31,10 @@ from pathlib import Path
 from uuid import uuid4
 
 from typing import Optional, Any
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query, BackgroundTasks
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query, BackgroundTasks, Request
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+from sqlalchemy import text
 
 from app.database.connection import get_db
 from app.database.repository import (
@@ -79,6 +80,11 @@ class InitiateFile(BaseModel):
 
 class UploadInitiateRequest(BaseModel):
     files: list[InitiateFile]
+    workbook_type: Optional[str] = "raw_data"
+    upload_mode: Optional[str] = "monthly"
+    academic_year: Optional[int] = None
+    month: Optional[str] = None
+    campus_name: Optional[str] = None
 
 class UploadCompleteFile(BaseModel):
     dataset_id: str
@@ -227,6 +233,12 @@ def _process_single_file(
         total_rows=rows,
     )
 
+    db.execute(
+        text("UPDATE system.datasets SET row_count = :staged_rows WHERE id = :ds_id"),
+        {"ds_id": str(dataset_id), "staged_rows": max(staged_rows, rows)},
+    )
+    db.commit()
+
     t1_stage3 = time.perf_counter()
     logger.info(
         "[INGESTION PROFILE] Stage 3 (Staging Insert): elapsed=%.4fs, staged_rows=%d",
@@ -241,23 +253,23 @@ def _process_single_file(
     columns = profile.get("column_names") or []
     column_mappings = map_and_store_dataset_schema(db=db, dataset_id=dataset_id, columns=columns)
 
-    # ── Stage 4 & 5: Dataset Normalization & Indexing ─────────────────────
+    # ── Stage 4 & 5: Executable Dynamic Mapping Normalization ───────────
     t0_stage4 = time.perf_counter()
     if job_id:
         update_job_progress(job_id, "normalization", processed_rows=0, total_rows=staged_rows or rows, dataset_id=str(dataset_id), db=db)
 
-    def norm_callback(proc_rows: int, tot_rows: int):
-        if job_id:
-            update_job_progress(job_id, "normalization", processed_rows=proc_rows, total_rows=tot_rows or staged_rows or rows, dataset_id=str(dataset_id), db=db)
-
-    normalized_rows = normalize_dataset(
+    from app.ingestion.mapping_executor import execute_mapping_normalization, calculate_data_quality_report
+    exec_res = execute_mapping_normalization(
         db=db,
         dataset_id=dataset_id,
-        progress_callback=norm_callback if job_id else None,
+        source_file=original_filename,
     )
+    normalized_rows = exec_res.get("normalized_rows", 0)
+    data_quality_stats = exec_res.get("data_quality") or calculate_data_quality_report(db=db, dataset_id=str(dataset_id))
+
     t1_stage4 = time.perf_counter()
     logger.info(
-        "[INGESTION PROFILE] Stage 4 & 5 (Dataset Normalization & Index Constraints): elapsed=%.4fs, normalized_rows=%d",
+        "[INGESTION PROFILE] Stage 4 & 5 (Executable Dynamic Mapping Normalization): elapsed=%.4fs, normalized_rows=%d",
         t1_stage4 - t0_stage4,
         normalized_rows,
     )
@@ -294,6 +306,7 @@ def _process_single_file(
         "staged_rows": staged_rows,
         "normalized_rows": normalized_rows,
         "column_mappings": column_mappings,
+        "data_quality": data_quality_stats,
         "profile": profile,
         "file_path": str(file_path),
         "file_checksum": checksum,
@@ -353,6 +366,8 @@ def _detect_and_check(
         period_start_year=detection.period_start_year,
         period_end_year=detection.period_end_year,
         academic_label=detection.academic_label,
+        academic_year=detection.academic_year,
+        campus_name=detection.campus_name,
         upload_version=1,
     )
 
@@ -700,7 +715,7 @@ def confirm_upload(
 
 
 @router.post("/upload/initiate")
-def initiate_upload(body: UploadInitiateRequest):
+def initiate_upload(body: UploadInitiateRequest, db: Session = Depends(get_db)):
     """
     Generate presigned URLs for direct browser-to-S3 upload.
     """
@@ -711,6 +726,9 @@ def initiate_upload(body: UploadInitiateRequest):
 
     job_id = f"job_{uuid4().hex[:8]}"
     result_files = []
+    wb_type = (body.workbook_type or "RAW").upper()
+    if wb_type == "RAW_DATA":
+        wb_type = "RAW"
 
     for file_info in body.files:
         if not file_info.filename:
@@ -728,9 +746,46 @@ def initiate_upload(body: UploadInitiateRequest):
         import re
         safe_filename = re.sub(r'[^a-zA-Z0-9.-]', '_', file_info.filename)
         object_key = f"uploads/{dataset_id}/{safe_filename}"
-        
-        upload_url = generate_upload_url(object_key, file_info.content_type)
-        
+
+        try:
+            upload_url = generate_upload_url(object_key, file_info.content_type)
+        except Exception as e:
+            logger.warning("Failed to generate presigned upload URL: %s", e)
+            raise HTTPException(
+                status_code=503,
+                detail=f"S3 storage unavailable: {e}. Please use direct file upload.",
+            )
+
+        # Pre-seed system.datasets row with user-selected metadata
+        try:
+            db.execute(
+                text("""
+                    INSERT INTO system.datasets (
+                        id, dataset_name, original_filename, dataset_type, 
+                        academic_year, campus_name, workbook_type, status, is_active, is_analytics_enabled
+                    ) VALUES (
+                        :id, :name, :orig, :dtype, 
+                        :year, :campus, :wb_type, 'initiated', TRUE, TRUE
+                    ) ON CONFLICT (id) DO UPDATE SET
+                        academic_year = COALESCE(EXCLUDED.academic_year, system.datasets.academic_year),
+                        campus_name = COALESCE(EXCLUDED.campus_name, system.datasets.campus_name),
+                        workbook_type = EXCLUDED.workbook_type
+                """),
+                {
+                    "id": dataset_id,
+                    "name": file_info.filename,
+                    "orig": file_info.filename,
+                    "dtype": extension.lstrip("."),
+                    "year": body.academic_year,
+                    "campus": body.campus_name,
+                    "wb_type": wb_type,
+                },
+            )
+            db.commit()
+        except Exception as db_err:
+            logger.warning("Failed to pre-seed system.datasets row: %s", db_err)
+            db.rollback()
+
         result_files.append({
             "dataset_id": dataset_id,
             "filename": file_info.filename,
@@ -744,6 +799,24 @@ def initiate_upload(body: UploadInitiateRequest):
     }
 
 
+def _process_job_background(job_id: str, files_info: list):
+    from app.ingestion.async_worker import run_async_ingestion_job
+    from app.database.connection import SessionLocal
+
+    db = SessionLocal()
+    try:
+        for f in files_info:
+            run_async_ingestion_job(
+                job_id=job_id,
+                dataset_id=f["dataset_id"],
+                storage_key=f["s3_key"],
+                original_filename=f["filename"],
+                db_session=db,
+            )
+    finally:
+        db.close()
+
+
 @router.post("/upload/complete")
 def complete_upload(
     body: UploadCompleteRequest,
@@ -751,8 +824,8 @@ def complete_upload(
     db: Session = Depends(get_db)
 ):
     """
-    Called after frontend successfully uploads files to S3.
-    Verifies S3 object exists and starts background ingestion.
+    Called after frontend successfully uploads files to Object Storage (S3 / R2 / Local).
+    Verifies object existence and starts asynchronous background ingestion.
     """
     from app.services.s3_storage import check_object_exists
     from app.ingestion.job_tracker import create_job
@@ -765,7 +838,7 @@ def complete_upload(
         if not exists:
             raise HTTPException(
                 status_code=400, 
-                detail=f"File not found in S3 for {file_info.filename}. Did the upload succeed?"
+                detail=f"File not found in storage for {file_info.filename}. Did the upload succeed?"
             )
             
     # Create the job picking the first file as representative for tracking
@@ -793,3 +866,33 @@ def complete_upload(
         "message": "Ingestion started in background",
         "file_count": len(saved_files_info),
     }
+
+
+@router.put("/upload/storage-direct")
+async def direct_storage_upload(
+    request: Request,
+    key: str = Query(...),
+    file: Optional[UploadFile] = File(None),
+):
+    """Direct upload endpoint for storage mode (supports raw byte body or multipart form)."""
+    from app.storage.service import get_storage_provider
+    provider = get_storage_provider()
+    if file is not None:
+        content = await file.read()
+        content_type = file.content_type
+    else:
+        content = await request.body()
+        content_type = request.headers.get("content-type", "application/octet-stream")
+    
+    provider.put_object(key, content, content_type=content_type)
+    return {"status": "uploaded", "key": key}
+
+
+@router.get("/upload/{job_id}/status")
+def get_upload_job_status(job_id: str, db: Session = Depends(get_db)):
+    """Query upload session and async worker progress."""
+    from app.ingestion.job_tracker import get_job_status
+    status_info = get_job_status(job_id, db=db)
+    if not status_info:
+        raise HTTPException(status_code=404, detail="Upload session job not found.")
+    return status_info

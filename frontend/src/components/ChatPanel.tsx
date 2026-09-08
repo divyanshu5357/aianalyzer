@@ -9,6 +9,7 @@ import {
   Loader2,
   Database,
   UploadCloud,
+  Download,
 } from "lucide-react";
 import { askAgent, ChatResponse } from "../lib/api";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
@@ -38,6 +39,12 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 }) => {
   const { seededPeriodA, seededPeriodB } = useApp();
   const [inputQuestion, setInputQuestion] = useState("");
+
+  const handleDownloadTranscript = (format: "txt" | "csv") => {
+    const convId = activeConversationId || "active";
+    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+    window.open(`${API_BASE}/api/conversations/${convId}/transcript?format=${format}`, "_blank");
+  };
 
   useEffect(() => {
     if (initialQuestion) {
@@ -172,6 +179,27 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
                 : "Instant natural language answers powered by agent analytics"}
             </p>
           </div>
+        </div>
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider hidden sm:inline">Export:</span>
+          <button
+            type="button"
+            onClick={() => handleDownloadTranscript("txt")}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 border border-slate-200 rounded-lg transition-all cursor-pointer"
+            title="Download transcript as TXT"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>TXT</span>
+          </button>
+          <button
+            type="button"
+            onClick={() => handleDownloadTranscript("csv")}
+            className="flex items-center gap-1 px-2.5 py-1 text-xs font-semibold text-slate-600 bg-slate-100 hover:bg-blue-50 hover:text-blue-600 hover:border-blue-200 border border-slate-200 rounded-lg transition-all cursor-pointer"
+            title="Download transcript as CSV"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>CSV</span>
+          </button>
         </div>
       </div>
 

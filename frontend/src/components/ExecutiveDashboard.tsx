@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState, useCallback, useMemo } from "react";
+import React, { useEffect, useState, useCallback, useMemo, useRef } from "react";
 import {
   TrendingUp,
   TrendingDown,
@@ -15,16 +15,26 @@ import {
   Sparkles,
   RotateCcw,
   Building2,
+  Loader2,
+  X,
+  FileText,
+  Globe,
+  MapPin,
+  Calendar,
 } from "lucide-react";
 import {
   ResponsiveContainer,
   BarChart,
   Bar,
+  PieChart,
+  Pie,
+  Cell,
   XAxis,
   YAxis,
   CartesianGrid,
   Tooltip,
   Legend,
+  LabelList,
 } from "recharts";
 import { useApp } from "../context/AppContext";
 import {
@@ -34,6 +44,8 @@ import {
   getDashboardMonthlyTrend,
   getDashboardPerformanceRankings,
   getDashboardFilterOptions,
+  getAdmissionsByGender,
+  getAdmissionsByState,
   DashboardFilters,
   DashboardFilterOptionsResponse,
   OverviewResponse,
@@ -42,8 +54,11 @@ import {
   MonthlyTrendItem,
   PerformanceRankingsResponse,
   ActiveDatasetInfo,
+  GenderMonthItem,
+  StateAdmissionItem,
 } from "../lib/api";
 import { NavTab } from "./Sidebar";
+import IndiaStateMap from "./maps/IndiaStateMap";
 
 interface ExecutiveDashboardProps {
   activeDataset: ActiveDatasetInfo | null;
@@ -56,12 +71,21 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   onNavigateToTab,
   onSeedChatPrompt,
 }) => {
-  const { theme, activePeriodLabel } = useApp();
+  const {
+    theme,
+    selectedCampus,
+    setSelectedCampus,
+    availableCampuses,
+    year,
+    fromDate,
+    setFromDate,
+    toDate,
+    setToDate,
+    appliedFromDate,
+    appliedToDate,
+    setDateRangeLimits,
+  } = useApp();
   const isDark = theme === "dark";
-
-  // Filter State - Campus Filter
-  const [selectedCampus, setSelectedCampus] = useState<string>("all");
-  const [selectedSession, setSelectedSession] = useState<string>("all");
 
   // Options & Data State
   const [filterOptions, setFilterOptions] = useState<DashboardFilterOptionsResponse | null>(null);
@@ -74,6 +98,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [loadVersion, setLoadVersion] = useState(0);
 
   // Detail Drawer State
   const [selectedEntity, setSelectedEntity] = useState<{ dimension: string; value: string } | null>(null);
@@ -81,120 +106,203 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   const [detailLoading, setDetailLoading] = useState(false);
   const [detailError, setDetailError] = useState<string | null>(null);
 
-  // Sync selected session default with active period label
-  useEffect(() => {
-    if (activePeriodLabel && selectedSession === "all") {
-      setSelectedSession(activePeriodLabel);
-    }
-  }, [activePeriodLabel, selectedSession]);
+  // Phase 11.7B: Gender and Geographic Analytics State
+  const [genderMonths, setGenderMonths] = useState<GenderMonthItem[]>([]);
+  const [genderCategories, setGenderCategories] = useState<string[]>([]);
+  const [totalGenderAdmissions, setTotalGenderAdmissions] = useState(0);
+  const [genderLoading, setGenderLoading] = useState(true);
+
+  const [indiaStatesData, setIndiaStatesData] = useState<StateAdmissionItem[]>([]);
+  const [totalIndiaAdmissions, setTotalIndiaAdmissions] = useState(0);
+  const [hasPyStateData, setHasPyStateData] = useState(true);
+  const [stateComparisonYear, setStateComparisonYear] = useState<number | null>(null);
+  const [indiaStatesLoading, setIndiaStatesLoading] = useState(true);
+
+  // Data Control Modal State
+  const [showDataControlModal, setShowDataControlModal] = useState(false);
+  const [dataControlHistory, setDataControlHistory] = useState<any[]>([]);
+  const [dataControlLoading, setDataControlLoading] = useState(false);
+
+  const fetchControlHistory = () => {
+    setDataControlLoading(true);
+    fetch("/api/data-control/history")
+      .then((res) => res.json())
+      .then((data) => {
+        if (data?.history) {
+          setDataControlHistory(data.history);
+        }
+        setDataControlLoading(false);
+      })
+      .catch((err) => {
+        console.error("Failed to fetch data control history:", err);
+        setDataControlLoading(false);
+      });
+  };
 
   // Active filters object
   const currentFilters: DashboardFilters = useMemo(() => {
     return {
-      academic_session: selectedSession !== "all" ? selectedSession : undefined,
       campus: selectedCampus !== "all" ? selectedCampus : undefined,
+      years: year ? [year] : undefined,
+      from_date: appliedFromDate || undefined,
+      to_date: appliedToDate || undefined,
     };
-  }, [selectedSession, selectedCampus]);
+  }, [selectedCampus, year, appliedFromDate, appliedToDate]);
 
-  // Load dynamic filter options
-  const loadFilterOptions = useCallback(async () => {
-    if (!activeDataset) return;
+  const fromDateRef = useRef(fromDate);
+  fromDateRef.current = fromDate;
+  const toDateRef = useRef(toDate);
+  toDateRef.current = toDate;
+
+  // Load dynamic filter options (non-blocking)
+  const loadFilterOptions = useCallback(async (signal?: AbortSignal) => {
     try {
-      const opts = await getDashboardFilterOptions(selectedSession !== "all" ? selectedSession : undefined);
+      const opts = await getDashboardFilterOptions(
+        undefined,
+        selectedCampus !== "all" ? selectedCampus : undefined,
+        undefined,
+        { signal }
+      );
       setFilterOptions(opts);
+      if (opts?.date_range) {
+        setDateRangeLimits(opts.date_range);
+        if (!fromDateRef.current && opts.date_range.default_from) {
+          setFromDate(opts.date_range.default_from);
+        }
+        if (!toDateRef.current && opts.date_range.default_to) {
+          setToDate(opts.date_range.default_to);
+        }
+      }
     } catch (err) {
-      console.error("Failed to load filter options:", err);
+      if ((err as Error)?.name !== "AbortError") {
+        console.error("Failed to load filter options:", err);
+      }
     }
-  }, [activeDataset, selectedSession]);
-
-  // Load rankings for dimension
-  const loadRankings = useCallback(async (dim: string) => {
-    if (!activeDataset) return;
-    try {
-      const res = await getDashboardPerformanceRankings(dim, currentFilters);
-      setRankings(res);
-    } catch (err) {
-      console.error("Failed to load rankings for dimension:", dim, err);
-    }
-  }, [activeDataset, currentFilters]);
-
-  // Main data load function
-  const loadData = useCallback(async () => {
-    if (!activeDataset) return;
-    setIsLoading(true);
-    setError(null);
-    try {
-      await loadFilterOptions();
-      const [overviewData, insightsData, trendData] = await Promise.all([
-        getDashboardOverview(currentFilters),
-        getDashboardInsights(currentFilters),
-        getDashboardMonthlyTrend(currentFilters),
-      ]);
-      setOverview(overviewData);
-      setInsights(insightsData);
-      setMonthlyTrend(trendData);
-      await loadRankings(rankingsDimension);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load dashboard data.");
-    } finally {
-      setIsLoading(false);
-    }
-  }, [activeDataset, currentFilters, rankingsDimension, loadFilterOptions, loadRankings]);
+  }, [selectedCampus, setDateRangeLimits, setFromDate, setToDate]);
 
   useEffect(() => {
-    const timer = setTimeout(() => {
-      loadData();
-    }, 0);
-    return () => clearTimeout(timer);
-  }, [loadData]);
+    const controller = new AbortController();
+    const { signal } = controller;
 
-  const handleDimensionChange = async (dim: string) => {
+    setIsLoading(true);
+    setGenderLoading(true);
+    setIndiaStatesLoading(true);
+    setError(null);
+
+    loadFilterOptions(signal);
+
+    // Fetch overview, insights, gender, and geography in PARALLEL
+    // (monthly trend and performance rankings are managed independently by their dedicated effects)
+    Promise.all([
+      getDashboardOverview(currentFilters, { signal }),
+      getDashboardInsights(currentFilters, { signal }),
+      getAdmissionsByGender(currentFilters, { signal }),
+      getAdmissionsByState(currentFilters, { signal }),
+    ])
+      .then(([overviewData, insightsData, genderRes, stateRes]) => {
+        setOverview(overviewData);
+        setInsights(insightsData);
+
+        setGenderMonths(genderRes?.months || []);
+        setGenderCategories(genderRes?.gender_categories || []);
+        setTotalGenderAdmissions(genderRes?.total_admissions || 0);
+        setGenderLoading(false);
+
+        setIndiaStatesData(stateRes?.states || []);
+        setTotalIndiaAdmissions(stateRes?.total_india_admissions || 0);
+        setHasPyStateData(stateRes?.has_py_data ?? true);
+        setStateComparisonYear(stateRes?.comparison_year ?? null);
+        setIndiaStatesLoading(false);
+
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed to load dashboard dataset:", err);
+          setError(err?.message || "Failed to load executive dashboard aggregation.");
+          setIsLoading(false);
+        }
+      });
+
+    return () => {
+      controller.abort();
+    };
+  }, [loadVersion, currentFilters, loadFilterOptions]);
+
+  // Refetch performance rankings independently when rankings dimension tab or filters change
+  useEffect(() => {
+    const controller = new AbortController();
+    getDashboardPerformanceRankings(rankingsDimension, currentFilters, { signal: controller.signal })
+      .then((rankingsData) => setRankings(rankingsData))
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed to load performance rankings:", err);
+        }
+      });
+    return () => controller.abort();
+  }, [rankingsDimension, currentFilters]);
+
+  // Refetch monthly trend when metric tab changes
+  useEffect(() => {
+    const controller = new AbortController();
+    getDashboardMonthlyTrend(mainMetric, currentFilters, { signal: controller.signal })
+      .then((data) => setMonthlyTrend(data))
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed to refresh monthly trend:", err);
+        }
+      });
+    return () => controller.abort();
+  }, [mainMetric, currentFilters]);
+
+  // Load entity detail when an entity is clicked
+  useEffect(() => {
+    if (!selectedEntity) return;
+
+    const controller = new AbortController();
+    setDetailLoading(true);
+    setDetailError(null);
+
+    getEntityDetail(selectedEntity.dimension, selectedEntity.value, currentFilters, {
+      signal: controller.signal,
+    })
+      .then((res: any) => {
+        setEntityDetail(res);
+        setDetailLoading(false);
+      })
+      .catch((err: any) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed to load entity detail:", err);
+          setDetailError("Failed to fetch entity drilldown analysis.");
+          setDetailLoading(false);
+        }
+      });
+
+    return () => controller.abort();
+  }, [selectedEntity, currentFilters]);
+
+  const handleDimensionChange = (dim: "program" | "state" | "source" | "emp" | "campus") => {
     setRankingsDimension(dim);
-    await loadRankings(dim);
   };
 
   const handleEntityClick = (dimension: string, value: string) => {
-    let bDim = dimension.toLowerCase().trim();
-    if (bDim === "counsellor") bDim = "owner";
-    if (bDim === "program") bDim = "program_name";
-    if (bDim === "campus") bDim = "campus_name";
-
-    setSelectedEntity({ dimension: bDim, value });
-    setDetailLoading(true);
-    setDetailError(null);
-    setEntityDetail(null);
-
-    getEntityDetail(bDim, value)
-      .then((res) => {
-        setEntityDetail(res);
-      })
-      .catch((err) => {
-        setDetailError(err instanceof Error ? err.message : "Failed to load details.");
-      })
-      .finally(() => {
-        setDetailLoading(false);
-      });
+    setSelectedEntity({ dimension, value });
   };
 
-  const handleAskAIAboutEntity = (dim: string, val: string) => {
-    const dimName =
-      dim === "program_name"
-        ? "program"
-        : dim === "campus_name"
-        ? "campus"
-        : dim === "owner"
-        ? "counsellor"
-        : dim;
-    onSeedChatPrompt(`Analyze the performance of ${dimName} "${val}"`);
-    onNavigateToTab("chat");
+  const handleAskAIAboutEntity = (dimension: string, value: string) => {
+    if (onSeedChatPrompt) {
+      onSeedChatPrompt(`Analyze the performance trend and key drivers for ${dimension} '${value}'.`);
+    }
   };
 
-  // Helper for displaying diff badge formatted clearly
+  // Helper for displaying diff badge
   const renderMetricDiff = (
-    change: number,
-    growthPct: number | null,
+    change: number | null | undefined,
+    growthPct: number | null | undefined,
     isRate: boolean = false
   ) => {
+    if (change === undefined || change === null) return null;
+
     const isPositive = change > 0;
     const isNegative = change < 0;
     const colorClass = isPositive
@@ -209,7 +317,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       textStr = formattedPp;
     } else {
       const formattedNum = `${isPositive ? "+" : ""}${change.toLocaleString()}`;
-      const formattedPct = growthPct !== null ? `${isPositive ? "+" : ""}${growthPct}%` : "N/A";
+      const formattedPct = growthPct !== null && growthPct !== undefined ? `${isPositive ? "+" : ""}${growthPct}%` : "N/A";
       textStr = `${formattedNum} (${formattedPct})`;
     }
 
@@ -223,41 +331,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     );
   };
 
-  if (!activeDataset) {
+  if (isLoading && !overview) {
     return (
-      <div
-        className={`flex flex-col items-center justify-center p-12 border rounded-3xl text-center space-y-6 max-w-2xl mx-auto my-12 shadow-md ${
-          isDark ? "bg-slate-900 border-slate-800" : "bg-white border-slate-200"
-        }`}
-      >
-        <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/30 flex items-center justify-center text-blue-500">
-          <Database className="w-8 h-8" />
-        </div>
-        <div className="space-y-2">
-          <h2 className={`text-xl font-extrabold ${isDark ? "text-white" : "text-slate-900"}`}>
-            No Active Dataset Selected
-          </h2>
-          <p className={`text-sm max-w-sm ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-            To view the Executive Dashboard, you must first upload and select a dataset.
-          </p>
-        </div>
-        <button
-          onClick={() => onNavigateToTab("upload")}
-          className="px-6 py-2.5 bg-blue-600 hover:bg-blue-700 text-white font-bold text-sm rounded-xl transition-all shadow-md"
-        >
-          Go to Ingestion Center
-        </button>
-      </div>
-    );
-  }
-
-  if (isLoading) {
-    return (
-      <div className="flex flex-col items-center justify-center p-24 space-y-4">
-        <div className="w-10 h-10 border-4 border-blue-500 border-t-transparent rounded-full animate-spin"></div>
-        <p className={`text-xs font-medium ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-          Aggregating executive metrics...
-        </p>
+      <div className="flex flex-col items-center justify-center min-h-[400px] space-y-4">
+        <Loader2 className="w-8 h-8 text-blue-500 animate-spin" />
+        <span className={`text-xs font-semibold ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+          Aggregating multi-campus analytics engine...
+        </span>
       </div>
     );
   }
@@ -270,7 +350,11 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           <span className="text-xs font-semibold">{error}</span>
         </div>
         <button
-          onClick={loadData}
+          onClick={() => {
+            setIsLoading(true);
+            setError(null);
+            setLoadVersion((version) => version + 1);
+          }}
           className="px-4 py-1.5 bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs rounded-lg transition-colors"
         >
           Retry Aggregation
@@ -279,77 +363,84 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     );
   }
 
-  const cyYear = overview?.current_year || 2026;
-  const pyYear = overview?.previous_year || 2025;
-  const sessionLabel = selectedSession !== "all" ? selectedSession : activeDataset.academic_label || `${pyYear}-${cyYear.toString().slice(-2)}`;
+  const cyYear = overview?.current_year;
+  const pyYear = overview?.previous_year;
+  const campusLabel = selectedCampus === "all" ? "All Campuses" : `${selectedCampus} Campus`;
+  const datasetCount = overview?.dataset_count ?? 0;
 
   return (
     <div className="space-y-6 pb-12">
-      {/* Top Header & Campus Filter Control */}
-      <div className={`p-6 rounded-2xl border flex flex-col md:flex-row md:items-center justify-between gap-4 transition-all shadow-xs ${
-        isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200"
+      {/* Executive Scope Header Banner */}
+      <div className={`p-6 rounded-2xl border transition-all ${
+        isDark 
+          ? "bg-gradient-to-r from-[#111A2E] via-[#10182B] to-[#0D1424] border-[#1E2B45] shadow-lg shadow-black/20" 
+          : "bg-gradient-to-r from-white via-slate-50/60 to-white border-slate-200/90 shadow-sm"
       }`}>
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="h-2 w-2 rounded-full bg-blue-500 animate-pulse"></span>
-            <span className={`text-[10px] font-extrabold uppercase tracking-wider ${
-              isDark ? "text-blue-400" : "text-blue-600"
-            }`}>
-              Executive Analytics
-            </span>
-            <span className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-              • Academic Session: <strong className={isDark ? "text-slate-200" : "text-slate-800"}>{sessionLabel}</strong> (PY {pyYear} vs CY {cyYear})
-            </span>
+        <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+          <div>
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="inline-flex items-center gap-1.5 text-[11px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                Active Analytics Scope
+              </span>
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                isDark ? "bg-slate-800/80 border-slate-700/60 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-700"
+              }`}>
+                🏢 {campusLabel}
+              </span>
+              <span className={`text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                isDark ? "bg-slate-800/80 border-slate-700/60 text-slate-300" : "bg-slate-100 border-slate-200 text-slate-700"
+              }`}>
+                📊 {datasetCount} Active Dataset{datasetCount !== 1 ? "s" : ""}
+              </span>
+              {(appliedFromDate || appliedToDate || overview?.from_date || overview?.to_date) && (
+                <span className={`inline-flex items-center gap-1.5 text-xs font-semibold px-2.5 py-0.5 rounded-full border ${
+                  isDark 
+                    ? "bg-indigo-950/60 border-indigo-800/80 text-indigo-300" 
+                    : "bg-indigo-50 border-indigo-200 text-indigo-700"
+                }`}>
+                  <Calendar className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>
+                    {overview?.from_date || appliedFromDate || "Start"} → {overview?.to_date || appliedToDate || "End"}
+                  </span>
+                  {overview?.py_from_date && overview?.py_to_date && (
+                    <span className={`text-[10px] ml-1 font-medium ${isDark ? "text-indigo-400/90" : "text-indigo-600/90"}`}>
+                      (PY: {overview.py_from_date} → {overview.py_to_date})
+                    </span>
+                  )}
+                </span>
+              )}
+            </div>
+            <h1 className={`text-2xl lg:text-3xl font-black tracking-tight mt-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+              {selectedCampus === "all" ? "University Admissions & Conversion Overview" : `${selectedCampus} Campus Admissions & Conversion`}
+            </h1>
+            <p className={`text-xs mt-1 font-medium ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+              {cyYear && pyYear ? `Intake trajectory comparing Academic Year ${cyYear} vs ${pyYear}` : "Comprehensive intake trajectory, lead velocity, and CUCET conversion performance"}
+            </p>
           </div>
-          <h1 className={`text-2xl font-extrabold tracking-tight mt-1 ${isDark ? "text-white" : "text-slate-900"}`}>
-            Executive Management Dashboard
-          </h1>
-        </div>
 
-        {/* Campus Global Filter Option */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            <Building2 className={`w-4 h-4 ${isDark ? "text-blue-400" : "text-blue-600"}`} />
-            <label className={`text-xs font-bold ${isDark ? "text-slate-300" : "text-slate-700"}`}>
-              Campus Filter:
-            </label>
-          </div>
-          <select
-            value={selectedCampus}
-            onChange={(e) => setSelectedCampus(e.target.value)}
-            className={`text-xs font-bold py-2 px-3 rounded-xl border outline-none transition-colors shadow-xs ${
-              isDark
-                ? "bg-[#0B0F19] border-[#1E293B] text-white focus:border-blue-500"
-                : "bg-slate-50 border-slate-300 text-slate-800 focus:border-blue-500"
-            }`}
-          >
-            <option value="all">All Campuses</option>
-            {filterOptions?.campuses.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </select>
-          {selectedCampus !== "all" && (
+          <div className="flex items-center gap-3 shrink-0">
             <button
-              onClick={() => setSelectedCampus("all")}
-              className={`p-2 rounded-xl text-xs font-bold transition-all ${
+              onClick={() => {
+                fetchControlHistory();
+                setShowDataControlModal(true);
+              }}
+              className={`px-3.5 py-2 rounded-xl border text-xs font-bold flex items-center gap-2 transition-all shadow-xs ${
                 isDark
-                  ? "bg-slate-800 hover:bg-slate-700 text-slate-300"
-                  : "bg-slate-100 hover:bg-slate-200 text-slate-700"
+                  ? "bg-[#131B2E] border-[#1E293B] text-slate-300 hover:text-white hover:border-indigo-500/50 hover:bg-slate-800/60"
+                  : "bg-white border-slate-200 text-slate-700 hover:text-slate-900 hover:border-indigo-400 hover:bg-slate-50"
               }`}
-              title="Clear Campus Filter"
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <Database className="w-3.5 h-3.5 text-indigo-500" />
+              <span>Data Control</span>
             </button>
-          )}
+          </div>
         </div>
       </div>
 
       {/* 4 Primary KPI Cards */}
       {overview && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {/* Admissions Card */}
           <div
             className={`p-5 rounded-2xl border transition-all ${
               isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
@@ -371,7 +462,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  PY: {overview.kpis.admissions.py.toLocaleString()}
+                  {overview.kpis.admissions.py != null ? `PY: ${overview.kpis.admissions.py.toLocaleString()}` : "Single Year Scope"}
                 </span>
                 {renderMetricDiff(overview.kpis.admissions.change, overview.kpis.admissions.growth_pct)}
               </div>
@@ -400,7 +491,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  PY: {overview.kpis.leads.py.toLocaleString()}
+                  {overview.kpis.leads.py != null ? `PY: ${overview.kpis.leads.py.toLocaleString()}` : "Single Year Scope"}
                 </span>
                 {renderMetricDiff(overview.kpis.leads.change, overview.kpis.leads.growth_pct)}
               </div>
@@ -430,7 +521,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-xs pt-1">
                   <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                    PY: {overview.kpis.cucet.py.toLocaleString()}
+                    {overview.kpis.cucet.py != null ? `PY: ${overview.kpis.cucet.py.toLocaleString()}` : "Single Year Scope"}
                   </span>
                   {renderMetricDiff(overview.kpis.cucet.change, overview.kpis.cucet.growth_pct)}
                 </div>
@@ -460,7 +551,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  PY: {overview.kpis.conversion_rate.py}%
+                  {overview.kpis.conversion_rate.py != null ? `PY: ${overview.kpis.conversion_rate.py}%` : "Single Year Scope"}
                 </span>
                 {renderMetricDiff(overview.kpis.conversion_rate.change, overview.kpis.conversion_rate.growth_pct, true)}
               </div>
@@ -469,23 +560,20 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
         </div>
       )}
 
-      {/* Main Monthly Performance Progression Chart */}
-      <div
-        className={`p-6 rounded-3xl border transition-all ${
-          isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
-        }`}
-      >
-        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 mb-6">
+      {/* 2 Interactive Side-by-Side Monthly Trajectory Charts (Target vs Actual & PY vs CY) */}
+      <div className="space-y-6">
+        {/* Section Header & Shared Metric Selector */}
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h3 className={`text-lg font-extrabold ${isDark ? "text-white" : "text-slate-900"}`}>
-              Monthly Performance Progression
+            <h3 className={`text-lg font-extrabold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+              Monthly Performance & Trajectory Analysis
             </h3>
             <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-              Comparing CY {cyYear} vs PY {pyYear} monthly trajectory {selectedCampus !== "all" ? `(Filtered: ${selectedCampus})` : ""}
+              {pyYear ? `Comparing CY ${cyYear} vs PY ${pyYear} & Targets across monthly intake periods` : `Monthly trajectory for ${cyYear}`} {selectedCampus !== "all" ? `(Filtered: ${selectedCampus})` : ""}
             </p>
           </div>
 
-          {/* Metric Selector Tabs */}
+          {/* Shared Metric Selector Tabs (Admissions, Leads, CUCET) */}
           <div className={`flex items-center p-1 rounded-xl border text-xs ${
             isDark ? "bg-[#0B0F19] border-[#1E293B]" : "bg-slate-100 border-slate-200"
           }`}>
@@ -527,67 +615,363 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 CUCET
               </button>
             )}
-            <button
-              onClick={() => setMainMetric("conversion_rate")}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                mainMetric === "conversion_rate"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : isDark
-                  ? "text-slate-400 hover:text-white"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Conversion %
-            </button>
           </div>
         </div>
 
-        <div className="h-72 w-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <BarChart data={monthlyTrend} margin={{ top: 10, right: 10, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1E293B" : "#E2E8F0"} />
-              <XAxis dataKey="month" stroke={isDark ? "#64748B" : "#64748B"} fontSize={11} />
-              <YAxis stroke={isDark ? "#64748B" : "#64748B"} fontSize={11} />
-              <Tooltip
-                contentStyle={{
-                  backgroundColor: isDark ? "#0B0F19" : "#FFFFFF",
-                  borderColor: isDark ? "#1E293B" : "#E2E8F0",
-                  borderRadius: "12px",
-                  color: isDark ? "#FFFFFF" : "#0F172A",
-                  boxShadow: "0 4px 6px -1px rgba(0, 0, 0, 0.1)",
-                }}
-              />
-              <Legend />
-              <Bar
-                dataKey={
-                  mainMetric === "admissions"
-                    ? "py_admission"
-                    : mainMetric === "leads"
-                    ? "py_leads"
-                    : mainMetric === "cucet"
-                    ? "py_cucet"
-                    : "py_conversion_rate"
-                }
-                name={`PY ${pyYear}`}
-                fill={isDark ? "#334155" : "#94A3B8"}
-                radius={[4, 4, 0, 0]}
-              />
-              <Bar
-                dataKey={
-                  mainMetric === "admissions"
-                    ? "cy_admission"
-                    : mainMetric === "leads"
-                    ? "cy_leads"
-                    : mainMetric === "cucet"
-                    ? "cy_cucet"
-                    : "cy_conversion_rate"
-                }
-                name={`CY ${cyYear}`}
-                fill="#2563EB"
-                radius={[4, 4, 0, 0]}
-              />
-            </BarChart>
-          </ResponsiveContainer>
+        {/* 2 Side-by-Side Chart Cards Grid */}
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          {/* CHART 1: Target vs Actual Performance */}
+          <div
+            className={`p-6 rounded-3xl border transition-all ${
+              isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+              <div>
+                <h4 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+                  <span>{mainMetric === "admissions" ? "🎓" : mainMetric === "leads" ? "🟣" : "🎫"}</span>
+                  Target Performance Trajectory
+                </h4>
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                  Target vs CY {cyYear} Actual ({mainMetric === "admissions" ? "Admissions" : mainMetric === "leads" ? "Leads" : "CUCET"})
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs font-semibold">
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 inline-block" /> Target
+                </span>
+                <span className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" /> CY {cyYear} Actual
+                </span>
+              </div>
+            </div>
+
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyTrend} margin={{ top: 35, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1E293B" : "#F1F5F9"} />
+                  <XAxis dataKey="month" tickFormatter={(m) => (m ? m.slice(0, 3) : "")} stroke={isDark ? "#64748B" : "#94A3B8"} fontSize={11} />
+                  <YAxis stroke={isDark ? "#64748B" : "#94A3B8"} fontSize={11} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: isDark ? "#0B0F19" : "#FFFFFF", borderColor: isDark ? "#1E293B" : "#E2E8F0", borderRadius: "12px", fontSize: "12px" }}
+                    formatter={(val: any, name: any) => [typeof val === "number" ? val.toLocaleString() : (val ?? 0), name]}
+                  />
+                  <Bar
+                    dataKey={mainMetric === "admissions" ? "target_admission" : mainMetric === "leads" ? "target_leads" : "target_cucet"}
+                    name="Target"
+                    fill="#6EE7B7"
+                    radius={[4, 4, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey={mainMetric === "admissions" ? "target_admission" : mainMetric === "leads" ? "target_leads" : "target_cucet"}
+                      content={(props: any) => {
+                        const { x, y, width, value } = props;
+                        if (value === undefined || value === null || value <= 0) return null;
+                        const valStr = typeof value === "number" ? Math.round(value).toLocaleString() : String(value);
+                        const centerX = (x || 0) + (width ? width / 2 : 0);
+                        const posY = (y || 0) - 6;
+                        return (
+                          <text
+                            x={centerX}
+                            y={posY}
+                            fill={isDark ? "#A7F3D0" : "#047857"}
+                            fontSize={10}
+                            fontWeight={800}
+                            textAnchor="start"
+                            transform={`rotate(-90 ${centerX} ${posY})`}
+                          >
+                            {valStr}
+                          </text>
+                        );
+                      }}
+                    />
+                  </Bar>
+                  <Bar
+                    dataKey={mainMetric === "admissions" ? "cy_admission" : mainMetric === "leads" ? "cy_leads" : "cy_cucet"}
+                    name={`CY ${cyYear}`}
+                    fill="#0D9488"
+                    radius={[4, 4, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey={mainMetric === "admissions" ? "cy_admission" : mainMetric === "leads" ? "cy_leads" : "cy_cucet"}
+                      content={(props: any) => {
+                        const { x, y, width, value } = props;
+                        if (value === undefined || value === null || value <= 0) return null;
+                        const valStr = typeof value === "number" ? Math.round(value).toLocaleString() : String(value);
+                        const centerX = (x || 0) + (width ? width / 2 : 0);
+                        const posY = (y || 0) - 6;
+                        return (
+                          <text
+                            x={centerX}
+                            y={posY}
+                            fill={isDark ? "#6EE7B7" : "#0F766E"}
+                            fontSize={10}
+                            fontWeight={800}
+                            textAnchor="start"
+                            transform={`rotate(-90 ${centerX} ${posY})`}
+                          >
+                            {valStr}
+                          </text>
+                        );
+                      }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+
+          {/* CHART 2: PY vs CY Historic Comparison */}
+          <div
+            className={`p-6 rounded-3xl border transition-all ${
+              isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
+            }`}
+          >
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 mb-6">
+              <div>
+                <h4 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+                  <span>{mainMetric === "admissions" ? "🎓" : mainMetric === "leads" ? "🟣" : "🎫"}</span>
+                  Historic Trajectory Comparison
+                </h4>
+                <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                  Comparing CY {cyYear} vs {pyYear ? `PY ${pyYear}` : "Previous Year"} ({mainMetric === "admissions" ? "Admissions" : mainMetric === "leads" ? "Leads" : "CUCET"})
+                </p>
+              </div>
+              <div className="flex items-center gap-3 text-xs font-semibold">
+                <span className="flex items-center gap-1.5 text-emerald-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 inline-block" /> PY {pyYear || ""}
+                </span>
+                <span className="flex items-center gap-1.5 text-indigo-500 dark:text-indigo-400">
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" /> CY {cyYear}
+                </span>
+              </div>
+            </div>
+
+            <div className="h-72 w-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={monthlyTrend} margin={{ top: 35, right: 10, left: -20, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" stroke={isDark ? "#1E293B" : "#F1F5F9"} />
+                  <XAxis dataKey="month" tickFormatter={(m) => (m ? m.slice(0, 3) : "")} stroke={isDark ? "#64748B" : "#94A3B8"} fontSize={11} />
+                  <YAxis stroke={isDark ? "#64748B" : "#94A3B8"} fontSize={11} />
+                  <Tooltip
+                    contentStyle={{ backgroundColor: isDark ? "#0B0F19" : "#FFFFFF", borderColor: isDark ? "#1E293B" : "#E2E8F0", borderRadius: "12px", fontSize: "12px" }}
+                    formatter={(val: any, name: any) => [typeof val === "number" ? val.toLocaleString() : (val ?? 0), name]}
+                  />
+                  <Bar
+                    dataKey={mainMetric === "admissions" ? "py_admission" : mainMetric === "leads" ? "py_leads" : "py_cucet"}
+                    name={`PY ${pyYear || ""}`}
+                    fill="#6EE7B7"
+                    radius={[4, 4, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey={mainMetric === "admissions" ? "py_admission" : mainMetric === "leads" ? "py_leads" : "py_cucet"}
+                      content={(props: any) => {
+                        const { x, y, width, value } = props;
+                        if (value === undefined || value === null || value <= 0) return null;
+                        const valStr = typeof value === "number" ? Math.round(value).toLocaleString() : String(value);
+                        const centerX = (x || 0) + (width ? width / 2 : 0);
+                        const posY = (y || 0) - 6;
+                        return (
+                          <text
+                            x={centerX}
+                            y={posY}
+                            fill={isDark ? "#A7F3D0" : "#047857"}
+                            fontSize={10}
+                            fontWeight={800}
+                            textAnchor="start"
+                            transform={`rotate(-90 ${centerX} ${posY})`}
+                          >
+                            {valStr}
+                          </text>
+                        );
+                      }}
+                    />
+                  </Bar>
+                  <Bar
+                    dataKey={mainMetric === "admissions" ? "cy_admission" : mainMetric === "leads" ? "cy_leads" : "cy_cucet"}
+                    name={`CY ${cyYear}`}
+                    fill="#6366F1"
+                    radius={[4, 4, 0, 0]}
+                  >
+                    <LabelList
+                      dataKey={mainMetric === "admissions" ? "cy_admission" : mainMetric === "leads" ? "cy_leads" : "cy_cucet"}
+                      content={(props: any) => {
+                        const { x, y, width, value } = props;
+                        if (value === undefined || value === null || value <= 0) return null;
+                        const valStr = typeof value === "number" ? Math.round(value).toLocaleString() : String(value);
+                        const centerX = (x || 0) + (width ? width / 2 : 0);
+                        const posY = (y || 0) - 6;
+                        return (
+                          <text
+                            x={centerX}
+                            y={posY}
+                            fill={isDark ? "#818CF8" : "#4338CA"}
+                            fontSize={10}
+                            fontWeight={800}
+                            textAnchor="start"
+                            transform={`rotate(-90 ${centerX} ${posY})`}
+                          >
+                            {valStr}
+                          </text>
+                        );
+                      }}
+                    />
+                  </Bar>
+                </BarChart>
+              </ResponsiveContainer>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ============================================================ */}
+      {/* PHASE 11.7: GEOGRAPHY & GENDER ANALYTICS SECTION             */}
+      {/* ============================================================ */}
+      <div className="space-y-6">
+        {/* Gender Breakdown (Left) & India State Admissions CY vs PY (Right) */}
+        <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-stretch">
+          {/* LEFT CARD: Admissions by Gender Monthly Bar Chart (6 cols on lg) */}
+          <div
+            className={`lg:col-span-6 p-6 rounded-3xl border flex flex-col justify-between transition-all ${
+              isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h4 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+                    <Users className="w-5 h-5 text-blue-500" />
+                    Admissions by Gender
+                  </h4>
+                  <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    Monthly admission mix by gender ({cyYear})
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300">
+                    {totalGenderAdmissions.toLocaleString()} Total Admitted
+                  </span>
+                </div>
+              </div>
+
+              {/* Monthly Grouped Bar Chart */}
+              {genderLoading ? (
+                <div className="h-80 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-blue-500" />
+                </div>
+              ) : genderMonths.length === 0 ? (
+                <div className="h-80 flex items-center justify-center text-slate-400 text-sm">
+                  No monthly gender breakdown data available
+                </div>
+              ) : (
+                <div className="w-full h-80 pt-2">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <BarChart data={genderMonths} margin={{ top: 15, right: 10, left: -15, bottom: 0 }}>
+                      <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#1E293B" : "#F1F5F9"} />
+                      <XAxis
+                        dataKey="month"
+                        stroke={isDark ? "#64748B" : "#94A3B8"}
+                        fontSize={11}
+                        tickLine={false}
+                      />
+                      <YAxis
+                        stroke={isDark ? "#64748B" : "#94A3B8"}
+                        fontSize={11}
+                        tickLine={false}
+                        axisLine={false}
+                        tickFormatter={(v) => (v >= 1000 ? `${(v / 1000).toFixed(0)}k` : `${v}`)}
+                      />
+                      <Tooltip
+                        contentStyle={{
+                          backgroundColor: isDark ? "#0B0F19" : "#FFFFFF",
+                          borderColor: isDark ? "#1E293B" : "#E2E8F0",
+                          borderRadius: "12px",
+                          fontSize: "12px",
+                          boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
+                        }}
+                        formatter={(val: any, name: any) => [
+                          `${Number(val).toLocaleString()} admissions`,
+                          name,
+                        ]}
+                        labelFormatter={(label: any, payload: any) => {
+                          const item = payload?.[0]?.payload;
+                          return item?.month_display || label;
+                        }}
+                      />
+                      <Legend
+                        wrapperStyle={{ paddingTop: "12px", fontSize: "12px" }}
+                        iconType="circle"
+                      />
+                      {genderCategories.map((cat, idx) => {
+                        const catLower = cat.toLowerCase();
+                        let barColor = "#8B5CF6"; // default purple
+                        if (catLower.includes("male") && !catLower.includes("female")) barColor = "#3B82F6"; // blue
+                        else if (catLower.includes("female")) barColor = "#EC4899"; // pink
+                        else if (catLower.includes("unspecified")) barColor = "#94A3B8"; // slate
+                        else if (catLower.includes("other")) barColor = "#10B981"; // emerald
+                        else {
+                          const fallbacks = ["#F59E0B", "#06B6D4", "#6366F1", "#14B8A6"];
+                          barColor = fallbacks[idx % fallbacks.length];
+                        }
+
+                        return (
+                          <Bar
+                            key={cat}
+                            dataKey={cat}
+                            name={cat}
+                            fill={barColor}
+                            radius={[4, 4, 0, 0]}
+                            maxBarSize={28}
+                          />
+                        );
+                      })}
+                    </BarChart>
+                  </ResponsiveContainer>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT CARD: India State-wise Admissions CY vs PY Map (6 cols on lg) */}
+          <div
+            className={`lg:col-span-6 p-6 rounded-3xl border flex flex-col justify-between transition-all ${
+              isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
+            }`}
+          >
+            <div>
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h4 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
+                    <MapPin className="w-5 h-5 text-indigo-600" />
+                    India Admissions by State
+                  </h4>
+                  <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                    State-wise admissions: CY Admissions (more adms)
+                  </p>
+                </div>
+                <div className="text-right">
+                  <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300">
+                    {totalIndiaAdmissions.toLocaleString()} India Total
+                  </span>
+                </div>
+              </div>
+
+              {/* Interactive India Map */}
+              {indiaStatesLoading ? (
+                <div className="h-80 flex items-center justify-center">
+                  <Loader2 className="w-8 h-8 animate-spin text-indigo-600" />
+                </div>
+              ) : (
+                <IndiaStateMap
+                  statesData={indiaStatesData}
+                  totalAdmissions={totalIndiaAdmissions}
+                  hasPyData={hasPyStateData}
+                  comparisonYear={stateComparisonYear}
+                  currentYear={cyYear}
+                />
+              )}
+            </div>
+          </div>
         </div>
       </div>
 
@@ -615,7 +999,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               {["program", "state", "campus", "source", "counsellor"].map((d) => (
                 <button
                   key={d}
-                  onClick={() => handleDimensionChange(d)}
+                  onClick={() => handleDimensionChange(d as any)}
                   className={`px-2.5 py-1 rounded-lg font-bold capitalize transition-all ${
                     rankingsDimension === d
                       ? "bg-blue-600 text-white shadow-xs"
@@ -630,7 +1014,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             </div>
           </div>
 
-          {rankings && (
+          {rankings && rankings.improvements && rankings.declines && (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               {/* Top Improvements */}
               <div>
@@ -638,30 +1022,39 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   <TrendingUp className="w-4 h-4" /> Top Improvement Drivers
                 </h4>
                 <div className="space-y-2">
-                  {rankings.improvements.slice(0, 5).map((item) => (
-                    <div
-                      key={item.entity}
-                      onClick={() => handleEntityClick(rankingsDimension, item.entity)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
-                        isDark
-                          ? "bg-[#0B0F19] border-[#1E293B] hover:border-blue-500/50"
-                          : "bg-slate-50 border-slate-200 hover:border-blue-400 shadow-xs"
-                      }`}
-                    >
-                      <div>
-                        <div className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
-                          {item.entity}
+                  {(rankings.improvements || []).length > 0 ? (
+                    (rankings.improvements || []).slice(0, 5).map((item) => (
+                      <div
+                        key={item.entity}
+                        onClick={() => handleEntityClick(rankingsDimension, item.entity)}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
+                          isDark
+                            ? "bg-[#0B0F19] border-[#1E293B] hover:border-blue-500/50"
+                            : "bg-slate-50 border-slate-200 hover:border-blue-400 shadow-xs"
+                        }`}
+                      >
+                        <div>
+                          <div className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                            {item.entity}
+                          </div>
+                          <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                            CY: {item.cy_admission?.toLocaleString() ?? "0"}
+                            {item.py_admission != null ? ` | PY: ${item.py_admission.toLocaleString()}` : ""}
+                          </div>
                         </div>
-                        <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                          CY: {item.cy_admission.toLocaleString()} | PY: {item.py_admission.toLocaleString()}
-                        </div>
+                        <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
+                          {item.admission_change != null
+                            ? `${item.admission_change >= 0 ? "+" : ""}${item.admission_change.toLocaleString()}`
+                            : `CY: ${item.cy_admission?.toLocaleString() ?? "0"}`}
+                          <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </span>
                       </div>
-                      <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
-                        +{item.admission_change.toLocaleString()}
-                        <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </span>
+                    ))
+                  ) : (
+                    <div className={`p-4 rounded-xl text-xs italic ${isDark ? "bg-[#0B0F19] text-slate-500" : "bg-slate-50 text-slate-500"}`}>
+                      No positive improvement drivers found for this selection.
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
 
@@ -671,30 +1064,39 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   <TrendingDown className="w-4 h-4" /> Decline Areas
                 </h4>
                 <div className="space-y-2">
-                  {rankings.declines.slice(0, 5).map((item) => (
-                    <div
-                      key={item.entity}
-                      onClick={() => handleEntityClick(rankingsDimension, item.entity)}
-                      className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
-                        isDark
-                          ? "bg-[#0B0F19] border-[#1E293B] hover:border-blue-500/50"
-                          : "bg-slate-50 border-slate-200 hover:border-blue-400 shadow-xs"
-                      }`}
-                    >
-                      <div>
-                        <div className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
-                          {item.entity}
+                  {(rankings.declines || []).length > 0 ? (
+                    (rankings.declines || []).slice(0, 5).map((item) => (
+                      <div
+                        key={item.entity}
+                        onClick={() => handleEntityClick(rankingsDimension, item.entity)}
+                        className={`p-3 rounded-xl border transition-all cursor-pointer flex items-center justify-between group ${
+                          isDark
+                            ? "bg-[#0B0F19] border-[#1E293B] hover:border-blue-500/50"
+                            : "bg-slate-50 border-slate-200 hover:border-blue-400 shadow-xs"
+                        }`}
+                      >
+                        <div>
+                          <div className={`text-xs font-bold ${isDark ? "text-white" : "text-slate-900"}`}>
+                            {item.entity}
+                          </div>
+                          <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                            CY: {item.cy_admission?.toLocaleString() ?? "0"}
+                            {item.py_admission != null ? ` | PY: ${item.py_admission.toLocaleString()}` : ""}
+                          </div>
                         </div>
-                        <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                          CY: {item.cy_admission.toLocaleString()} | PY: {item.py_admission.toLocaleString()}
-                        </div>
+                        <span className="text-xs font-bold text-rose-500 flex items-center gap-1">
+                          {item.admission_change != null
+                            ? item.admission_change.toLocaleString()
+                            : `CY: ${item.cy_admission?.toLocaleString() ?? "0"}`}
+                          <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
+                        </span>
                       </div>
-                      <span className="text-xs font-bold text-rose-500 flex items-center gap-1">
-                        {item.admission_change.toLocaleString()}
-                        <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
-                      </span>
+                    ))
+                  ) : (
+                    <div className={`p-4 rounded-xl text-xs italic ${isDark ? "bg-[#0B0F19] text-slate-500" : "bg-slate-50 text-slate-500"}`}>
+                      No declining areas found for this selection.
                     </div>
-                  ))}
+                  )}
                 </div>
               </div>
             </div>
@@ -816,7 +1218,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   </div>
 
                   {/* Cross Breakdowns */}
-                  {Object.entries(entityDetail.breakdowns).map(([bDim, items]) => (
+                  {Object.entries(entityDetail.breakdowns || {}).map(([bDim, items]) => (
                     <div key={bDim}>
                       <h4 className={`text-xs font-bold uppercase tracking-wider mb-2 capitalize ${
                         isDark ? "text-slate-400" : "text-slate-600"
@@ -850,6 +1252,109 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 <Sparkles className="w-4 h-4" />
                 Ask AI Agent About {selectedEntity.value}
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Data Control Modal */}
+      {showDataControlModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className={`w-full max-w-4xl max-h-[85vh] rounded-3xl border flex flex-col shadow-2xl overflow-hidden ${
+            isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200"
+          }`}>
+            <div className={`p-6 border-b flex items-center justify-between ${isDark ? "border-slate-800" : "border-slate-200"}`}>
+              <div className="flex items-center gap-3">
+                <div className="p-2.5 rounded-xl bg-blue-500/10 text-blue-500">
+                  <Database className="w-5 h-5" />
+                </div>
+                <div>
+                  <h2 className={`text-lg font-black ${isDark ? "text-white" : "text-slate-900"}`}>
+                    Data Control & Upload Audit History
+                  </h2>
+                  <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
+                    Real dataset records & prospect tracking from PostgreSQL
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDataControlModal(false)}
+                className={`p-2 rounded-xl border transition-all ${
+                  isDark ? "bg-slate-800 border-slate-700 text-slate-400 hover:text-white" : "bg-slate-100 border-slate-200 text-slate-600 hover:text-slate-900"
+                }`}
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <div className="p-6 overflow-y-auto space-y-4">
+              {dataControlLoading ? (
+                <div className="flex items-center justify-center py-12 gap-3 text-xs font-semibold text-blue-500">
+                  <Loader2 className="w-5 h-5 animate-spin" /> Loading upload history from PostgreSQL...
+                </div>
+              ) : dataControlHistory.length === 0 ? (
+                <div className="py-12 text-center text-xs italic text-slate-500">
+                  No dataset records found in PostgreSQL.
+                </div>
+              ) : (
+                <div className="overflow-x-auto">
+                  <table className="w-full text-left text-xs border-collapse">
+                    <thead>
+                      <tr className={`border-b text-[11px] font-extrabold uppercase tracking-wider ${
+                        isDark ? "border-slate-800 text-slate-400" : "border-slate-200 text-slate-500"
+                      }`}>
+                        <th className="py-3 px-3">File / Dataset</th>
+                        <th className="py-3 px-3">Type</th>
+                        <th className="py-3 px-3">Academic Year</th>
+                        <th className="py-3 px-3">Rows Staged</th>
+                        <th className="py-3 px-3">Distinct ProspectIDs</th>
+                        <th className="py-3 px-3">Status</th>
+                        <th className="py-3 px-3">Upload Time</th>
+                      </tr>
+                    </thead>
+                    <tbody className={`divide-y ${isDark ? "divide-slate-800/60" : "divide-slate-200"}`}>
+                      {dataControlHistory.map((ds) => (
+                        <tr key={ds.id} className={isDark ? "hover:bg-slate-800/30" : "hover:bg-slate-50"}>
+                          <td className="py-3 px-3 font-bold flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-blue-500 flex-shrink-0" />
+                            <span className={isDark ? "text-white" : "text-slate-900"}>{ds.original_filename}</span>
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase ${
+                              ds.workbook_type === "RAW"
+                                ? "bg-blue-500/10 text-blue-500"
+                                : ds.workbook_type === "DIMENSION"
+                                ? "bg-purple-500/10 text-purple-500"
+                                : "bg-amber-500/10 text-amber-500"
+                            }`}>
+                              {ds.workbook_type}
+                            </span>
+                          </td>
+                          <td className="py-3 px-3 font-semibold">
+                            {ds.academic_year || ds.academic_label || "Auto-Detected"}
+                          </td>
+                          <td className="py-3 px-3 font-extrabold text-blue-500">
+                            {ds.row_count?.toLocaleString() ?? 0}
+                          </td>
+                          <td className="py-3 px-3 font-extrabold text-emerald-500">
+                            {ds.distinct_prospect_count?.toLocaleString() ?? ds.row_count?.toLocaleString() ?? 0}
+                          </td>
+                          <td className="py-3 px-3">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold ${
+                              ds.is_active ? "bg-emerald-500/10 text-emerald-500" : "bg-slate-500/10 text-slate-400"
+                            }`}>
+                              {ds.is_active ? "Active" : ds.status}
+                            </span>
+                          </td>
+                          <td className={`py-3 px-3 text-[11px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
+                            {ds.created_at ? new Date(ds.created_at).toLocaleString() : "N/A"}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
             </div>
           </div>
         </div>

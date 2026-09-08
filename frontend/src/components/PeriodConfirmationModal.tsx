@@ -34,23 +34,21 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
 
   const detectedLabel = detection?.academic_label ?? null;
 
-  // Generate 2-year non-overlapping stepping options (e.g. 2025-26, 2023-24, 2021-22, 2019-20)
-  const getTwoYearSteppingOptions = (
+  // Generate single reporting year options (e.g. 2026, 2025, 2024, 2023)
+  const getSingleYearOptions = (
     anchor?: string | null,
     serverList: string[] = []
   ): PeriodOptionItem[] => {
-    let anchorStart = 2025;
+    let anchorYear = new Date().getFullYear();
     if (anchor) {
-      const m = anchor.match(/^(20\d{2})[-_](\d{2}|20\d{2})$/);
+      const m = anchor.match(/(20\d{2})/);
       if (m && m[1]) {
-        anchorStart = parseInt(m[1], 10);
+        anchorYear = parseInt(m[1], 10);
       }
     }
     const generated: string[] = [];
     for (let i = 0; i < 6; i++) {
-      const s = anchorStart - i * 2;
-      const e = s + 1;
-      generated.push(`${s}-${e.toString().slice(-2)}`);
+      generated.push(String(anchorYear - i));
     }
 
     const uploadedSet = new Set(serverList.map((s) => s.trim()));
@@ -70,13 +68,13 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
     }));
   };
 
-  const periodOptions = getTwoYearSteppingOptions(detectedLabel, availablePeriods);
+  const periodOptions = getSingleYearOptions(detectedLabel, availablePeriods);
 
   // Pick first non-uploaded period as default selection if detected is not available
   const firstUnuploaded = periodOptions.find((p) => !p.uploaded)?.label;
   const defaultSelection = (detectedLabel && !availablePeriods.includes(detectedLabel))
     ? detectedLabel
-    : (firstUnuploaded ?? detectedLabel ?? periodOptions[0]?.label ?? "2025-26");
+    : (firstUnuploaded ?? detectedLabel ?? periodOptions[0]?.label ?? String(new Date().getFullYear()));
 
   const [selectedLabel, setSelectedLabel] = useState<string>(defaultSelection);
   const [isCustom, setIsCustom] = useState(false);
@@ -262,7 +260,7 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
                 <input
                   id="period-select-modal"
                   type="text"
-                  placeholder="e.g. 2025-26"
+                  placeholder="e.g. 2026"
                   value={selectedLabel}
                   onChange={(e) => setSelectedLabel(e.target.value)}
                   className="w-full pl-9 pr-4 py-2.5 text-sm font-semibold text-slate-700 bg-white border border-slate-200 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-500 transition-all"
@@ -291,7 +289,7 @@ export const PeriodConfirmationModal: React.FC<Props> = ({ file, onClose, onConf
               )}
             </div>
             <p className="text-xs text-slate-400 mt-1.5">
-              Format: YYYY-YY (e.g. 2025-26 where 2025 is PY and 2026 is CY)
+              Format: YYYY (e.g. 2026 for Reporting Year 2026)
             </p>
           </div>
 

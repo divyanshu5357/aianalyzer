@@ -29,6 +29,7 @@ import {
   FileUploadResponseExtended,
 } from "../lib/api";
 import { PeriodConfirmationModal } from "./PeriodConfirmationModal";
+import { MappingReviewModal, MappingSuggestionItem } from "./MappingReviewModal";
 
 
 const ALLOWED_EXTENSIONS = [".csv", ".xlsx", ".xls", ".xlsb"];
@@ -52,6 +53,15 @@ export const FileUpload: React.FC<FileUploadProps> = ({
   const [expandedMappings, setExpandedMappings] = useState<Record<string, boolean>>({});
   // Period confirmation modal state
   const [pendingPeriodFile, setPendingPeriodFile] = useState<UploadedFileItemExtended | null>(null);
+  // Dynamic mapping review modal state
+  const [pendingMappingFile, setPendingMappingFile] = useState<{
+    dataset_id: string;
+    filename: string;
+    sheetName?: string;
+    totalRows: number;
+    suggestions: MappingSuggestionItem[];
+    qualityPreview?: any;
+  } | null>(null);
 
   // Real-time backend progress state
   const [activeJobId, setActiveJobId] = useState<string | null>(null);
@@ -716,6 +726,26 @@ export const FileUpload: React.FC<FileUploadProps> = ({
             })}
           </div>
         </div>
+      )}
+
+      {/* Mapping Review Modal */}
+      {pendingMappingFile && (
+        <MappingReviewModal
+          datasetId={pendingMappingFile.dataset_id}
+          filename={pendingMappingFile.filename}
+          sheetName={pendingMappingFile.sheetName}
+          totalRows={pendingMappingFile.totalRows}
+          suggestions={pendingMappingFile.suggestions}
+          qualityPreview={pendingMappingFile.qualityPreview}
+          onComplete={(res) => {
+            setPendingMappingFile(null);
+            setUploadStep("success");
+            if (onUploadSuccess) onUploadSuccess(res);
+          }}
+          onCancel={() => {
+            setPendingMappingFile(null);
+          }}
+        />
       )}
 
     </div>

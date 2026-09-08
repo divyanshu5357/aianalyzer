@@ -1,7 +1,7 @@
 "use client";
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
-import { getActiveDataset, getAllPeriods, ActiveDatasetInfo, PeriodSummary } from "../lib/api";
+import { getActiveDataset, getAllPeriods, getDashboardFilterOptions, ActiveDatasetInfo, PeriodSummary } from "../lib/api";
 
 /**
  * Guard: only accept labels matching the academic period pattern YYYY-YY.
@@ -9,7 +9,7 @@ import { getActiveDataset, getAllPeriods, ActiveDatasetInfo, PeriodSummary } fro
  */
 function isValidPeriodLabel(label: string | null | undefined): boolean {
   if (!label) return false;
-  return /^\d{4}-\d{2}$/.test(label.trim());
+  return /^\d{4}(-\d{2})?$/.test(label.trim());
 }
 
 export type ThemeType = "light" | "dark";
@@ -20,6 +20,11 @@ interface AppContextType {
   activeDataset: ActiveDatasetInfo | null;
   isLoadingDataset: boolean;
   fetchActiveDataset: () => Promise<void>;
+  // Campus Scope Filter
+  selectedCampus: string;
+  setSelectedCampus: (c: string) => void;
+  availableCampuses: string[];
+  setAvailableCampuses: (campuses: string[]) => void;
   // Period-aware year tracking
   year: number;
   setYear: (y: number) => void;
@@ -39,6 +44,18 @@ interface AppContextType {
   setSeededPeriodB: (period: string | null) => void;
   refreshTrigger: number;
   triggerRefresh: () => void;
+  // Global Date Range Filter
+  fromDate: string;
+  setFromDate: (d: string) => void;
+  toDate: string;
+  setToDate: (d: string) => void;
+  appliedFromDate: string | null;
+  appliedToDate: string | null;
+  dateRangeLimits: { min_date: string; max_date: string; default_from: string; default_to: string } | null;
+  setDateRangeLimits: (limits: { min_date: string; max_date: string; default_from: string; default_to: string } | null) => void;
+  dateRangeError: string | null;
+  applyDateRange: () => boolean;
+  resetDateRange: () => void;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -56,6 +73,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [seededPeriodA, setSeededPeriodA] = useState<string | null>(null);
   const [seededPeriodB, setSeededPeriodB] = useState<string | null>(null);
   const [refreshTrigger, setRefreshTrigger] = useState<number>(0);
+  const [fromDate, setFromDate] = useState<string>("");
+  const [toDate, setToDate] = useState<string>("");
+  const [appliedFromDate, setAppliedFromDate] = useState<string | null>(null);
+  const [appliedToDate, setAppliedToDate] = useState<string | null>(null);
+  const [dateRangeLimits, setDateRangeLimits] = useState<{ min_date: string; max_date: string; default_from: string; default_to: string } | null>(null);
+  const [dateRangeError, setDateRangeError] = useState<string | null>(null);
 
   // Initialize theme from localStorage
   useEffect(() => {
@@ -136,12 +159,66 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
+  const [selectedCampus, setSelectedCampus] = useState<string>("all");
+  const [availableCampuses, setAvailableCampuses] = useState<string[]>(["Mohali"]);
+
+  const fetchFilterOptions = useCallback(async () => {
+    try {
+      const opts = await getDashboardFilterOptions();
+      if (opts?.campuses && opts.campuses.length > 0) {
+        const normalized = Array.from(
+          new Set(
+            opts.campuses.map(
+              (c) => c.charAt(0).toUpperCase() + c.slice(1).toLowerCase()
+            )
+          )
+        ).sort();
+        setAvailableCampuses(normalized);
+      }
+      if (opts?.date_range) {
+        setDateRangeLimits(opts.date_range);
+      }
+    } catch {
+      // Keep defaults
+    }
+  }, []);
+
   useEffect(() => {
     setTimeout(() => {
       fetchActiveDataset();
       fetchPeriods();
+      fetchFilterOptions();
     }, 0);
-  }, [fetchActiveDataset, fetchPeriods]);
+  }, [fetchActiveDataset, fetchPeriods, fetchFilterOptions]);
+
+  const applyDateRange = useCallback(() => {
+    if (!fromDate && !toDate) {
+      setAppliedFromDate(null);
+      setAppliedToDate(null);
+      setDateRangeError(null);
+      return true;
+    }
+    if (!fromDate || !toDate) {
+      setDateRangeError("Both From Date and To Date are required.");
+      return false;
+    }
+    if (fromDate > toDate) {
+      setDateRangeError("From Date cannot be later than To Date.");
+      return false;
+    }
+    setDateRangeError(null);
+    setAppliedFromDate(fromDate);
+    setAppliedToDate(toDate);
+    return true;
+  }, [fromDate, toDate]);
+
+  const resetDateRange = useCallback(() => {
+    setFromDate("");
+    setToDate("");
+    setAppliedFromDate(null);
+    setAppliedToDate(null);
+    setDateRangeError(null);
+  }, []);
 
   const setYear = (y: number) => {
     setYearState(y);
@@ -150,6 +227,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (matchingPeriod) {
       setActivePeriodLabel(matchingPeriod.academic_label);
     }
+    // Clear custom date range when year changes
+    resetDateRange();
   };
 
   const triggerRefresh = () => {
@@ -176,6 +255,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeDataset,
         isLoadingDataset,
         fetchActiveDataset,
+        selectedCampus,
+        setSelectedCampus,
+        availableCampuses,
+        setAvailableCampuses,
         year,
         setYear,
         periods,
@@ -192,6 +275,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSeededPeriodB,
         refreshTrigger,
         triggerRefresh,
+        fromDate,
+        setFromDate,
+        toDate,
+        setToDate,
+        appliedFromDate,
+        appliedToDate,
+        dateRangeLimits,
+        setDateRangeLimits,
+        dateRangeError,
+        applyDateRange,
+        resetDateRange,
       }}
     >
       {children}

@@ -1,0 +1,8 @@
+{
+  "active_version": "2026_canonical_v2",
+  "model_dir": "v2",
+  "model_artifact": "model_v2_canonical_lightgbm_calibrated.joblib",
+  "preprocessor_artifact": "preprocessor_v2.joblib",
+  "registered_at": "2026-09-08T00:00:00Z",
+  "governance_status": "APPROVED_PRODUCTION"
+}

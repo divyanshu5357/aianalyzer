@@ -28,32 +28,88 @@ def get_latest_dataset_id(db: Session) -> UUID | str | None:
 
 
 
+def query_metrics_for_year(db: Session, year: int, campus_name: str | None = None, dataset_id: Any = None) -> dict[str, int]:
+    """
+    Fetch funnel totals for a given academic year.
+    Checks single-year academic_year matching first, falling back to legacy cy_leads/py_leads if needed.
+    """
+    campus_filter = "AND campus_name = :campus" if campus_name else ""
+    ds_filter = "AND dataset_id = :dataset_id" if dataset_id else ""
+    params = {"year": year}
+    if campus_name:
+        params["campus"] = campus_name
+    if dataset_id:
+        params["dataset_id"] = str(dataset_id)
+
+    # 1. Try single-year datasets matching academic_year
+    query_yr = text(f"""
+        SELECT
+            COALESCE(SUM(cy_leads), 0) AS leads,
+            COALESCE(SUM(cy_cucet), 0) AS cucet,
+            COALESCE(SUM(cy_admission), 0) AS admission
+        FROM analytics.uploaded_metrics
+        WHERE academic_year = :year
+        {campus_filter}
+        {ds_filter}
+    """)
+    row = db.execute(query_yr, params).mappings().first()
+    if row and (row["leads"] or row["cucet"] or row["admission"]):
+        return {
+            "leads": int(row["leads"]),
+            "cucet": int(row["cucet"]),
+            "admission": int(row["admission"]),
+        }
+
+    # 2. Fallback to dataset_id directly if provided
+    if dataset_id:
+        query_ds = text(f"""
+            SELECT
+                COALESCE(SUM(cy_leads), 0) AS cy_leads,
+                COALESCE(SUM(cy_cucet), 0) AS cy_cucet,
+                COALESCE(SUM(cy_admission), 0) AS cy_admission
+            FROM analytics.uploaded_metrics
+            WHERE dataset_id = :dataset_id
+            {campus_filter}
+        """)
+        r = db.execute(query_ds, params).mappings().first()
+        if r:
+            return {
+                "leads": int(r["cy_leads"]),
+                "cucet": int(r["cy_cucet"]),
+                "admission": int(r["cy_admission"]),
+            }
+
+    return {"leads": 0, "cucet": 0, "admission": 0}
+
+
 def calculate_funnel_uploaded(
-    db: Session, dataset_id: Any, current_year: int
+    db: Session, dataset_id: Any, current_year: int, campus_name: str | None = None
 ) -> dict[str, Any]:
     previous_year = current_year - 1
-    query = text(
-        """
-        SELECT
-            COALESCE(SUM(cy_leads), 0) AS cy_leads,
-            COALESCE(SUM(cy_cucet), 0) AS cy_cucet,
-            COALESCE(SUM(cy_admission), 0) AS cy_admission,
-            COALESCE(SUM(py_leads), 0) AS py_leads,
-            COALESCE(SUM(py_cucet), 0) AS py_cucet,
-            COALESCE(SUM(py_admission), 0) AS py_admission
-        FROM analytics.uploaded_metrics
-        WHERE dataset_id = :dataset_id
-        """
-    )
-    row = db.execute(query, {"dataset_id": dataset_id}).mappings().one()
 
-    cy_leads = int(row["cy_leads"])
-    cy_cucet = int(row["cy_cucet"])
-    cy_admission = int(row["cy_admission"])
+    cy_data = query_metrics_for_year(db, current_year, campus_name, dataset_id)
+    py_data = query_metrics_for_year(db, previous_year, campus_name, None)
 
-    py_leads = int(row["py_leads"])
-    py_cucet = int(row["py_cucet"])
-    py_admission = int(row["py_admission"])
+    # If dataset_id was passed, check if it contains py_leads natively
+    if dataset_id and py_data["leads"] == 0:
+        raw_row = db.execute(
+            text("SELECT COALESCE(SUM(py_leads), 0) AS py_l, COALESCE(SUM(py_cucet), 0) AS py_c, COALESCE(SUM(py_admission), 0) AS py_a FROM analytics.uploaded_metrics WHERE dataset_id = :ds"),
+            {"ds": str(dataset_id)},
+        ).mappings().first()
+        if raw_row:
+            py_data = {
+                "leads": int(raw_row["py_l"]),
+                "cucet": int(raw_row["py_c"]),
+                "admission": int(raw_row["py_a"]),
+            }
+
+    cy_leads = cy_data["leads"]
+    cy_cucet = cy_data["cucet"]
+    cy_admission = cy_data["admission"]
+
+    py_leads = py_data["leads"]
+    py_cucet = py_data["cucet"]
+    py_admission = py_data["admission"]
 
     lead_cucet_rate = (cy_cucet / cy_leads * 100) if cy_leads else 0.0
     lead_admission_rate = (cy_admission / cy_leads * 100) if cy_leads else 0.0

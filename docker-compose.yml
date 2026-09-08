@@ -23,6 +23,22 @@ services:
       timeout: 5s
       retries: 10
 
+  neo4j:
+    image: neo4j:5-community
+    container_name: ai_agent_neo4j
+    restart: unless-stopped
+    ports:
+      - "7474:7474" # HTTP Browser
+      - "7687:7687" # Bolt Protocol
+    environment:
+      NEO4J_AUTH: neo4j/neo4j_password
+      NEO4J_PLUGINS: '["apoc"]'
+      NEO4J_dbms_security_procedures_unrestricted: "apoc.*"
+    volumes:
+      - neo4j_data:/data
+      - neo4j_logs:/logs
 
 volumes:
   postgres_data:
+  neo4j_data:
+  neo4j_logs:

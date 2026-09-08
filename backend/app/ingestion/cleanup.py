@@ -119,6 +119,14 @@ def delete_dataset_cascade(db: Session, dataset_ids: list[str]) -> Dict[str, int
             {"ds_id": ds_id},
         ).rowcount
 
+    # Purge dashboard aggregates for deleted datasets (scoped O(1) delete instead of global rebuild)
+    for ds_id in dataset_ids:
+        try:
+            from app.analytics.aggregate_refresh import delete_dashboard_agg_for_dataset
+            delete_dashboard_agg_for_dataset(db, str(ds_id))
+        except Exception as e:
+            logger.warning("Failed to delete dashboard_agg for dataset %s: %s", ds_id, e)
+
     return {
         "staging": staging_deleted,
         "analytics": analytics_deleted,

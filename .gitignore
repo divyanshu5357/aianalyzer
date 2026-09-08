@@ -77,16 +77,32 @@ lerna-debug.log*
 backend/logs/
 frontend/logs/
 
-# Database, Uploads & Media Artifacts
+# Database, Uploads, Storage & Client Data
 *.sqlite
 *.sqlite3
 *.db
+*.dump
+*.parquet
+*.csv
+*.xlsx
+*.xls
+*.xlsb
+uploads/
+data/
+data/storage/
+data/storage_test/
 data/uploads/*
 !data/uploads/.gitkeep
 data/db/*
 !data/db/.gitkeep
 data/raw/*
 !data/raw/.gitkeep
+backend/data/
+backend/data/raw/
+backend/data/storage/
+backend/app/ml/data/
+backend/masterdata/
+documents/raw/
 ai_audit.jsonl
 *.jsonl
 
@@ -94,8 +110,5 @@ ai_audit.jsonl
 tmp/
 temp/
 /tmp/
-
-# Large datasets
-backend/data/
-backend/data/raw/
-documents/raw/
+scratch/
+backend/scratch/

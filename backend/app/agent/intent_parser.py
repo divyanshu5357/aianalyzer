@@ -2,50 +2,19 @@ import re
 from typing import Any
 
 
+from app.semantic.metric_registry import METRIC_REGISTRY, resolve_metric_name
+from app.semantic.dimension_registry import DIMENSION_REGISTRY, resolve_dimension_name
+
 METRIC_ALIASES = {
-    "admission": [
-        "admission",
-        "admissions",
-        "admitted",
-        "enrolled",
-        "enrollment",
-    ],
-    "leads": [
-        "lead",
-        "leads",
-        "enquiry",
-        "enquiries",
-        "inquiry",
-        "inquiries",
-    ],
-    "cucet": [
-        "cucet",
-        "cucet registration",
-        "cucet registrations",
-        "entrance test",
-    ],
-    "lead_cucet_rate": [
-        "lead to cucet",
-        "lead cucet rate",
-        "lead-cucet",
-        "lead conversion to cucet",
-    ],
-    "lead_admission_rate": [
-        "lead to admission",
-        "lead admission rate",
-        "lead-admission",
-        "lead conversion to admission",
-        "admission rate",
-        "conversion rate",
-        "admission-rate",
-        "conversion-rate",
-    ],
-    "cucet_admission_rate": [
-        "cucet to admission",
-        "cucet admission rate",
-        "cucet-admission",
-        "cucet conversion to admission",
-    ],
+    "admission": ["admission", "admissions", "admitted", "enrolled", "enrollment"],
+    "gross_admission": ["gross admission", "gross admissions"],
+    "refunded": ["refunded", "refunds", "refund"],
+    "leads": ["lead", "leads", "enquiry", "enquiries", "inquiry", "inquiries"],
+    "cucet": ["cucet", "cucet registration", "cucet registrations", "entrance test"],
+    "lead_cucet_rate": ["lead to cucet", "lead cucet rate", "lead-cucet", "lead conversion to cucet"],
+    "lead_admission_rate": ["lead to admission", "lead admission rate", "lead-admission", "lead conversion to admission"],
+    "cucet_admission_rate": ["cucet to admission", "cucet admission rate", "cucet-admission", "cucet conversion to admission"],
+    "conversion_rate": ["conversion rate", "conversion-rate", "conversion", "overall conversion"],
 }
 
 
@@ -90,6 +59,22 @@ DIMENSION_ALIASES = {
     "main_source": [
         "main source",
         "source cluster",
+    ],
+    "course_cluster": [
+        "course cluster",
+        "course group",
+        "program cluster",
+    ],
+    "state_code": [
+        "state code",
+    ],
+    "zone": [
+        "zone",
+        "region",
+    ],
+    "team": [
+        "team",
+        "group",
     ],
 }
 
@@ -211,24 +196,26 @@ def extract_comparison(question: str) -> dict[str, Any] | None:
         return None
 
     left_raw, right_raw = None, None
-    
-    # 1. difference between A and B / compare A and B / compare A with/to B
-    p1 = re.search(r"\b(?:difference between|compare|comparison of)\s+(.*?)\s+(?:and|with|to)\s+(.*)", normalized)
-    if p1:
-        left_raw, right_raw = p1.group(1), p1.group(2)
+
+    # 1. Prioritize explicit 'vs' / 'versus' / 'against' / 'compared to'
+    p_vs = re.search(r"\b(.*?)\s+(?:vs|versus|compared with|compared to|against)\s+(.*)", normalized)
+    if p_vs:
+        left_raw, right_raw = p_vs.group(1), p_vs.group(2)
     else:
-        # 2. how do A and B compare / put A and B side by side
-        p2 = re.search(r"\b(?:how do|how does|put)\s+(.*?)\s+and\s+(.*?)\s+(?:compare|side by side)\b", normalized)
-        if p2:
-            left_raw, right_raw = p2.group(1), p2.group(2)
+        # 2. difference between A and B / compare A and B / compare A with/to B
+        p1 = re.search(r"\b(?:difference between|compare|comparison of)\s+(.*?)\s+(?:and|with|to)\s+(.*)", normalized)
+        if p1:
+            left_raw, right_raw = p1.group(1), p1.group(2)
         else:
-            # 3. A vs B / A versus B / A compared with B / A compared to B
-            p3 = re.search(r"\b(.*?)\s+(?:vs|versus|compared with|compared to|against)\s+(.*)", normalized)
-            if p3:
-                left_raw, right_raw = p3.group(1), p3.group(2)
+            # 3. how do A and B compare / put A and B side by side
+            p2 = re.search(r"\b(?:how do|how does|put)\s+(.*?)\s+and\s+(.*?)\s+(?:compare|side by side)\b", normalized)
+            if p2:
+                left_raw, right_raw = p2.group(1), p2.group(2)
 
     if not left_raw or not right_raw:
         return None
+
+
 
     def _clean_phrase(phrase: str) -> str:
         p = phrase
@@ -369,14 +356,13 @@ def detect_source_detail(question: str) -> tuple[str | None, str | None]:
 
 def detect_anaphora_references(question: str) -> dict[str, Any]:
     q_norm = question.lower().strip()
-    pronouns = ["they", "them", "their", "it", "this", "that", "those", "these", "same", "previous result", "last result", "which one", "the top 3", "top 3", "top three"]
+    pronouns = ["they", "them", "their", "it", "this", "that", "those", "these", "same", "previous result", "last result", "which one", "this one", "that one", "first one", "second one", "the top 3", "top 3", "top three"]
     ambiguous_reference_phrases = [
         "what improved", "best one", "they perform", "how did they", "show me the best"
     ]
     has_pronoun = any(re.search(r"\b" + re.escape(p) + r"\b", q_norm) for p in pronouns) or \
                   "which one" in q_norm or "show top 3" in q_norm or "show top 5" in q_norm or "show the top 3" in q_norm or \
-                  any(phrase in q_norm for phrase in ambiguous_reference_phrases) or \
-                  bool(re.search(r"\b(one|they|them|it)\b", q_norm))
+                  any(phrase in q_norm for phrase in ambiguous_reference_phrases)
 
     selectors = {
         "first": ["first one", "the first one", "1st one"],
@@ -421,12 +407,22 @@ def extract_heuristics_filters(question: str) -> dict[str, str]:
     q_lower = question.lower()
     filters = {}
     
-    # If the question contains ranking, comparison, or YoY keywords, skip heuristic filter extraction
+    # 1. Explicit "for <entity>" or "in <entity>" prep pattern check
+    prep_match = re.search(r"\b(?:for|in)\s+([a-zA-Z0-9\s.-]+?)(?:\s+in\s+20\d\d|\s+for\s+20\d\d|\b|$)", question, flags=re.IGNORECASE)
+    if prep_match:
+        val = prep_match.group(1).rstrip("?:.!'\"").strip()
+        noise = ["admission", "admissions", "lead", "leads", "cucet", "table", "chart", "bar", "pie", "growth", "performance", "sources", "states", "programs", "courses", "campuses", "owners", "counselors"]
+        if val.lower() not in noise and not (val.isdigit() and len(val) == 4):
+            filters["entity_filter"] = val
+            return filters
+
+    # If the question contains ranking, comparison, YoY, counsellor or report keywords, skip heuristic filter extraction
     skip_keywords = [
         "most", "highest", "lowest", "top", "vs", "versus", "compare", "compared",
         "improved", "dropped", "decreased", "increased", "decline", "declined",
         "improving", "dropping", "worst", "best", "who ", "which ", "why", "difference",
-        "side by side", "between"
+        "side by side", "between", "never called", "no call", "overdue", "report", "excel",
+        "time to first call", "call attempt", "0 call", "1 call", "2 call", "3 call", "4+ call"
     ]
     if any(kw in q_lower for kw in skip_keywords):
         quotes = re.findall(r'["\'](.*?)["\']', question)
@@ -434,13 +430,12 @@ def extract_heuristics_filters(question: str) -> dict[str, str]:
             filters["unknown_dim"] = quotes[0]
         return filters
 
-    # 1. Look for quoted strings
+    # Look for quoted strings
     quotes = re.findall(r'["\'](.*?)["\']', question)
     if quotes:
-        # Keep quotes as potential filter values
         filters["unknown_dim"] = quotes[0]
 
-    # 2. Heuristics for dimension keyword follow-ups
+    # Heuristics for dimension keyword follow-ups
     for keyword, dim in [
         ("program", "program_name"),
         ("course", "program_name"),
@@ -449,38 +444,30 @@ def extract_heuristics_filters(question: str) -> dict[str, str]:
         ("owner", "owner"),
         ("counselor", "owner"),
         ("counsellor", "owner"),
+        ("agent", "owner"),
         ("source", "source"),
+        ("team", "team"),
+        ("zone", "zone"),
+        ("region", "zone"),
+        ("state code", "state_code"),
+        ("course cluster", "course_cluster"),
     ]:
         idx = q_lower.find(keyword)
         if idx != -1:
-            # Extract substring after keyword
             sub = question[idx + len(keyword):].strip()
-            # Clean leading noise
-            sub = re.sub(r"^(name|of|for|is|to|:|'|\")\s*", "", sub, flags=re.IGNORECASE).strip()
+            sub = re.sub(r"^(performance for|activity for|leads for|data for|performance in|breakdown for|distribution for|name|of|for|is|to|:|'|\")\s*", "", sub, flags=re.IGNORECASE).strip()
             if sub:
-                # Remove common trailing chart/format noise
-                for noise in ["as a", "in 2026", "in 2025", "for 2026", "for 2025", "as a bar", "as a pie", "bar chart", "pie chart"]:
-                    noise_idx = sub.lower().find(noise)
+                for noise_term in ["as a", "in 2026", "in 2025", "for 2026", "for 2025", "as a bar", "as a pie", "bar chart", "pie chart"]:
+                    noise_idx = sub.lower().find(noise_term)
                     if noise_idx != -1:
                         sub = sub[:noise_idx].strip()
                 sub = sub.rstrip("?:.!'\"").strip()
-                if sub and len(sub) > 1:
-                    filters[dim] = sub
+                if sub and len(sub) > 1 and sub.lower() not in ["leads", "performance", "s are responsible", "assigned but never called", "activity", "that program", "this program", "the program", "that", "this"]:
+                    if sub.lower() in ["mohali", "lucknow", "jaipur", "bhopal", "patna"]:
+                        filters["campus_name"] = sub
+                    else:
+                        filters["entity_filter"] = sub
                     
-    # 3. Fallback for "for <value>" or "in <value>" patterns
-    if not filters:
-        for prep in ["for", "in", "of", "to"]:
-            match = re.search(rf"\b{prep}\s+([a-zA-Z0-9\s.-]+)(?:\s+in\s+20\d\d|\s+for\s+20\d\d|\b|$)", question, flags=re.IGNORECASE)
-            if match:
-                val = match.group(1).strip()
-                if val.lower() not in ["admission", "admissions", "lead", "leads", "cucet", "table", "chart", "bar", "pie", "growth", "performance"]:
-                    # Exclude 4-digit years from being treated as arbitrary filters
-                    if not (val.isdigit() and len(val) == 4 and val.startswith("20")):
-                        val = val.rstrip("?:.!'\"").strip()
-                        if val and len(val) > 1:
-                            filters["unknown_dim"] = val
-                            break
-                        
     return filters
 
 
@@ -495,13 +482,324 @@ def parse_question(question: str) -> dict[str, Any]:
     ref_info = detect_anaphora_references(question)
     response_type, chart_type = detect_response_format(question)
     heur_filters = extract_heuristics_filters(question)
+    time_context = detect_time_context(question)
+    dimensions = detect_dimensions(question)
+
+    # Phase 11 Specific Intent Matchers
+    if any(w in normalized for w in ["excel report", "generate report", "export report", "export this", "download report", "give me the excel report", "generate counsellor report"]):
+        return {
+            "question": question,
+            "intent_type": "generate_report",
+            "operation": "generate_report",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": dimensions,
+            "filters": {},
+            "response_type": "text",
+            "chart_type": None,
+        }
+
+    if any(w in normalized for w in ["never called", "assigned but never called", "0 call", "0-call", "no call leads", "no calls", "assigned but not called"]):
+        return {
+            "question": question,
+            "intent_type": "no_call_leads",
+            "operation": "no_call_leads",
+            "metric": "leads",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["overdue interested", "interested overdue", "overdue interested leads", "overdue follow-ups", "overdue follow ups", "overdue followups", "overdue followup", "overdue follow up", "overdue"]):
+        return {
+            "question": question,
+            "intent_type": "overdue_interested",
+            "operation": "overdue_interested",
+            "metric": "leads",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["time to first call", "average time to first call", "time to call"]):
+        return {
+            "question": question,
+            "intent_type": "time_to_first_call",
+            "operation": "time_to_first_call",
+            "metric": "time",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["exactly 1 call", "exactly one call", "1 call", "one call", "2 or fewer calls", "2 calls", "3 calls", "4+ calls", "call attempt distribution"]):
+        return {
+            "question": question,
+            "intent_type": "call_attempts",
+            "operation": "call_attempts",
+            "metric": "leads",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    # Phase 11.3 AI Insights & Performance Driver Analysis Intent Matchers
+    if any(w in normalized for w in ["why are admissions down", "why admissions dropped", "why admissions down", "why are admissions decreased", "admissions decline"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "admissions_decline",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["program_name", "source", "state", "owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["which programs are declining", "declining programs", "program decline", "programs declining", "programs dropped"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "program_decline",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["program_name"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["which sources caused the decline", "which sources are declining", "sources causing decline", "sources causing the decline", "source decline", "sources declining", "sources dropped"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "source_decline",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["source"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["which counsellors are underperforming", "which counsellors need attention", "which counselors need attention", "underperforming counsellors", "underperforming counselors", "counsellors underperforming", "counsellor underperformance"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "counsellor_underperformance",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["which states are declining", "declining states", "state decline", "states declining", "states dropped"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "state_decline",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["state"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["why are we below target", "why below target", "target shortfall", "below target reasons"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "target_shortfall",
+            "metric": "leads",
+            "time_context": time_context,
+            "dimensions": ["campus_name", "program_name"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["what improved this month", "what improved", "top improvements", "what increased", "what went up"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "improvements",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["program_name", "source"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["where should management focus", "management focus", "where to focus", "focus areas"]):
+        return {
+            "question": question,
+            "intent_type": "driver_analysis",
+            "operation": "management_focus",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["program_name", "source", "owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    # Phase 11.5 ML Admission Prediction Intent Matcher
+    if any(w in normalized for w in ["admission probability", "highest admission probability", "predicted admissions", "predicted conversion", "high probability leads", "predicted high priority", "high probability", "leads need immediate counselor attention", "leads need immediate attention", "predicted conversion"]):
+        return {
+            "question": question,
+            "intent_type": "prediction_analysis",
+            "operation": "admission_probability",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["owner", "program_name"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in [
+        "inhouse vs outsource", "inhouse versus outsource", "inhouse vs outsource leads",
+        "in house vs out sourced", "in house versus out sourced", "in house vs out sourced leads",
+        "compare inhouse vs outsource", "compare in house vs out sourced", "compare in house vs out sourced leads",
+        "inhouse vs outsource leads and conversion", "in house vs out sourced conversion", "compare in house vs out sourced conversion",
+        "compare inhouse source and outsource", "inhouse source and outsource",
+        "inhouse and outsource", "compare inhouse and outsource", "inhouse source", "outsource source",
+        "show all lead types", "all lead types", "show lead types", "lead type breakdown",
+        "lead types and lead count", "lead types and their lead count", "show others", "others lead type",
+        "lead type categories", "show total in house leads", "show total out sourced leads", "show total others leads",
+        "total in house leads", "total out sourced leads", "total others leads",
+        "which sources are out sourced", "which sources are in house", "sources are out sourced", "sources for out sourced",
+        "sources in out sourced", "sources for in house"
+    ]):
+        return {
+            "question": question,
+            "intent_type": "inhouse_vs_outsource",
+            "operation": "inhouse_vs_outsource",
+            "metric": "leads",
+            "time_context": time_context,
+            "dimensions": ["lead_type"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["top owners inhouse", "top owners for inhouse", "inhouse top owners", "top owner inhouse"]):
+        return {
+            "question": question,
+            "intent_type": "top_owners_inhouse",
+            "operation": "top_owners_inhouse",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["top course of mohali", "top course in mohali", "top programs mohali", "top program of mohali", "top program in mohali"]):
+        return {
+            "question": question,
+            "intent_type": "top_course_mohali",
+            "operation": "ranking",
+            "metric": "admission",
+            "time_context": time_context,
+            "dimensions": ["program_name"],
+            "filters": {"campus_name": "Mohali"},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["lowest average call", "lowest average call attempts", "lowest call attempts", "which owner have lowest average call", "which owner has lowest average call"]):
+        return {
+            "question": question,
+            "intent_type": "lowest_avg_calls",
+            "operation": "lowest_avg_calls",
+            "metric": "call",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["highest conversion late", "highest conversion rate", "owners with highest conversion rate", "owners with highest conversion late"]):
+        return {
+            "question": question,
+            "intent_type": "highest_conversion_rate",
+            "operation": "highest_conversion_rate",
+            "metric": "conversion",
+            "time_context": time_context,
+            "dimensions": ["owner"],
+            "filters": {},
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in [
+        "below target", "everything below target", "under target", "target deficit", "show all counsellors below target",
+        "lead target", "admission target", "cucet target", "target for mohali", "actual vs target", "target in august",
+        "target in june", "target in july", "target in may", "target in april", "what is the target", "target of",
+        "program-wise lead targets", "program wise lead targets", "program target", "program targets", "target by program",
+        "state-wise lead targets", "state wise lead targets", "state target", "state targets", "target by state",
+        "source-wise lead targets", "source wise lead targets", "source target", "source targets", "target by source"
+    ]):
+        return {
+            "question": question,
+            "intent_type": "below_target",
+            "operation": "below_target",
+            "metric": "leads" if "lead" in normalized else ("cucet" if "cucet" in normalized else "admission"),
+            "time_context": time_context,
+            "dimensions": dimensions or ["program_name"],
+            "filters": heur_filters,
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["top sources for", "sources for", "source breakdown for", "source breakdown"]):
+        return {
+            "question": question,
+            "intent_type": "source_breakdown_program",
+            "operation": "breakdown",
+            "metric": "leads",
+            "time_context": time_context,
+            "dimensions": ["source"],
+            "filters": heur_filters,
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
+
+    if any(w in normalized for w in ["state breakdown for", "states for", "state distribution for", "state breakdown"]):
+        return {
+            "question": question,
+            "intent_type": "state_breakdown_program",
+            "operation": "breakdown",
+            "metric": "leads",
+            "time_context": time_context,
+            "dimensions": ["state"],
+            "filters": heur_filters,
+            "response_type": response_type,
+            "chart_type": chart_type,
+        }
 
     if ref_info["is_reference"]:
         return {
             "question": question,
             "intent_type": "followup_reference",
             "metric": "admission",
-            "time_context": detect_time_context(question),
+            "time_context": time_context,
             "dimensions": [],
             "filters": heur_filters,
             "response_type": response_type,
@@ -513,8 +811,6 @@ def parse_question(question: str) -> dict[str, Any]:
     metric = detect_metric(question)
     source_intent = detect_source_intent(question)
     source_detail = detect_source_detail(question)
-    time_context = detect_time_context(question)
-    dimensions = detect_dimensions(question)
     funnel = detect_funnel(question) or detect_funnel_by_stages(question)
 
     comparison_info = extract_comparison(question)

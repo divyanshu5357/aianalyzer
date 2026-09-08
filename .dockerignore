@@ -1,0 +1,59 @@
+# Version Control
+.git
+.gitignore
+.gitattributes
+
+# Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+backend/venv/
+venv/
+ENV/
+env/
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Node / Frontend artifacts
+node_modules/
+frontend/node_modules/
+.next/
+frontend/.next/
+out/
+build/
+dist/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# IDE & OS
+.DS_Store
+.idea/
+.vscode/
+*.swp
+*.swo
+
+# Large raw dataset storage & dumps (keep in S3 / external volume, not in image layers)
+data/
+data/raw/
+backend/data/
+backend/data/raw/
+backend/data/storage/
+data/storage/
+backend/app/ml/data/
+backend/masterdata/
+*.xlsx
+*.xlsb
+*.csv
+*.parquet
+*.dump
+!backend/data/sample/*.csv
+
+# Temporary files & logs
+*.log
+scratch/
+backend/scratch/
+.system_generated/

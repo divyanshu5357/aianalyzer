@@ -1,0 +1,79 @@
+{
+  "model_version": "2026_canonical_v3",
+  "algorithm": "Calibrated LightGBM Classifier (Sigmoid)",
+  "target_variable": "cy_admission",
+  "training_timestamp": "2026-09-08T15:56:54.912422Z",
+  "feature_columns": [
+    "campus_name",
+    "academic_year",
+    "program_code",
+    "source_canonical",
+    "lead_type",
+    "state_canonical",
+    "state_code",
+    "zone",
+    "owner_canonical",
+    "team",
+    "created_month",
+    "created_dayofweek",
+    "created_hour",
+    "cy_cucet"
+  ],
+  "categorical_columns": [
+    "campus_name",
+    "program_code",
+    "source_canonical",
+    "lead_type",
+    "state_canonical",
+    "state_code",
+    "zone",
+    "owner_canonical",
+    "team"
+  ],
+  "numeric_columns": [
+    "academic_year",
+    "created_month",
+    "created_dayofweek",
+    "created_hour",
+    "cy_cucet"
+  ],
+  "split_statistics": {
+    "total_records": 1923000,
+    "train_records": 940087,
+    "val_records": 491456,
+    "test_records": 491457,
+    "train_positive_count": 29023,
+    "val_positive_count": 16117,
+    "test_positive_count": 15280,
+    "academic_years": [
+      2025,
+      2026
+    ]
+  },
+  "evaluation_metrics": {
+    "model_name": "2026_canonical_v3",
+    "pr_auc": 0.1683,
+    "roc_auc": 0.7893,
+    "precision": 0.75,
+    "recall": 0.0004,
+    "f1": 0.0008,
+    "brier_score": 0.0279,
+    "confusion_matrix": [
+      [
+        476175,
+        2
+      ],
+      [
+        15274,
+        6
+      ]
+    ],
+    "top10_precision": 0.1474,
+    "top10_lift": 4.74,
+    "base_rate": 0.0311
+  },
+  "artifacts": {
+    "model": "model_v3_canonical_lightgbm_calibrated.joblib",
+    "preprocessor": "preprocessor_v3.joblib"
+  }
+}

@@ -3,7 +3,7 @@ import logging
 from typing import Any, Literal
 from pydantic import BaseModel, Field
 from google import genai
-from google.genai import types
+from google.genai import errors, types
 
 from app.config.settings import settings
 
@@ -69,6 +69,10 @@ class GeminiPlan(BaseModel):
             "state",
             "program_name",
             "owner",
+            "course_cluster",
+            "state_code",
+            "zone",
+            "team",
         ]
         | None
     ) = None
@@ -130,8 +134,12 @@ NATURAL LANGUAGE GUIDELINES:
 - "channel", "source cluster", "source" -> "source"
 - "program", "course" -> "program_name"
 - "campus", "location" -> "campus_name"
-- "owner", "counselor", "counsellor" -> "owner"
+- "owner", "counselor", "counsellor", "agent" -> "owner"
 - "state" -> "state"
+- "course cluster", "course group" -> "course_cluster"
+- "state code" -> "state_code"
+- "zone", "region" -> "zone"
+- "team", "group" -> "team"
 
 Return JSON matching the schema ONLY.
 """
@@ -153,7 +161,7 @@ def _fallback_plan() -> dict[str, Any]:
 
 import time
 import httpx
-from google.genai import errors
+
 
 _gemini_cooldown_until = 0.0
 

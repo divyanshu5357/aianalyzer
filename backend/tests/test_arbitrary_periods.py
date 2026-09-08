@@ -4,9 +4,9 @@ Arbitrary-period analytics tests.
 Uses dynamic entity discovery rather than hardcoded program names.
 """
 import unittest
-from app.database.connection import SessionLocal
-from app.analytics.period_resolver import compare_periods, get_historical_trend
 from sqlalchemy import text
+from app.database.connection import SessionLocal
+from app.analytics.period_resolver import compare_periods
 
 
 def _discover_program_name(db):
@@ -98,33 +98,12 @@ class TestArbitraryPeriods(unittest.TestCase):
             self.assertTrue(row["period_a_rate"] >= 0)
             self.assertTrue(row["period_b_rate"] >= 0)
 
-    def test_historical_trend(self):
-        """Test the get_historical_trend function."""
-        if not self._has_two_periods:
-            self.skipTest("Need at least 2 periods for trend")
-        res = get_historical_trend(self.db, "admissions", "program_name")
-        self.assertIn("periods", res)
-        self.assertTrue(len(res["periods"]) >= 2)
-        self.assertIn("data", res)
-
-    def test_historical_trend_conversion(self):
-        """Test historical trend with conversion rate."""
-        if not self._has_two_periods:
-            self.skipTest("Need at least 2 periods for trend")
-        res = get_historical_trend(self.db, "conversion_rate", "program_name")
-        self.assertIn("periods", res)
-        self.assertTrue(len(res["periods"]) >= 2)
-
     def test_compare_same_period(self):
-        """Test comparing a period with itself (should be 0 change)."""
+        """Test comparing a period with itself raises ValueError."""
         if not self.available_labels:
             self.skipTest("No periods available")
-        res = compare_periods(self.db, "admissions", self._period_a, self._period_a, "program_name")
-        if res["data"]:
-            row = res["data"][0]
-            self.assertEqual(row["period_a_value"], row["period_b_value"])
-            self.assertEqual(row["absolute_change"], 0)
-            self.assertEqual(row["growth_percent"], 0.0)
+        with self.assertRaises(ValueError):
+            compare_periods(self.db, "admissions", self._period_a, self._period_a, "program_name")
 
     def test_compare_reverse_chronological(self):
         """Test comparing older period as A and newer as B."""
@@ -138,7 +117,7 @@ class TestArbitraryPeriods(unittest.TestCase):
             self.assertTrue(row["period_a_value"] >= 0)
             self.assertTrue(row["period_b_value"] >= 0)
 
-    def test_invalid_period(self):
-        """Test invalid period throws ValueError."""
+    def test_invalid_dimension(self):
+        """Test invalid dimension throws ValueError."""
         with self.assertRaises(ValueError):
-            compare_periods(self.db, "admissions", "invalid-period", self._period_a, "program_name")
+            compare_periods(self.db, "admissions", self._period_a, self._period_b, "invalid_dimension")

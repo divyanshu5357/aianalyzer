@@ -5,7 +5,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from app.agent.intent_parser import parse_question, detect_anaphora_references
+from app.agent.intent_parser import parse_question, detect_anaphora_references, extract_comparison
 from app.database.conversations import (
     get_or_create_conversation,
     save_conversation_message,
@@ -83,9 +83,6 @@ def _extract_year_context(time_context: Any, current_year: int, previous_year: i
     return current_year
 
 
-# find_entity_in_dataset() was removed during the codebase audit.
-# Entity resolution is handled by resolve_flexible_entity() in tools/utils.py.
-
 
 ANALYTICAL_STOP_WORDS = {
     "how", "many", "admissions", "admission", "are", "there", "show", "leads", "lead",
@@ -109,7 +106,8 @@ ANALYTICAL_STOP_WORDS = {
     "value", "values", "analysis", "analytics", "tell", "give", "list", "get",
     "students", "student", "admitted", "lost", "breakdown", "per", "each", "hierarchy", "ceo", "google", 
     "satisfaction", "employee", "marketing", "campaign", "success", "improvements", "difference", "between", 
-    "side", "by", "side", "compare"
+    "side", "by", "side", "compare", "happened", "happen", "happening", "occurred", "occur", "registered",
+    "registration", "registrations", "take", "place", "took", "doing", "done", "make", "made"
 }
 
 
@@ -137,7 +135,7 @@ def has_unrecognized_words(question: str, db: Session, active_dataset: Any) -> b
             continue
         if w in ANALYTICAL_STOP_WORDS:
             continue
-        # Analytics domain words (expanded — includes plurals)
+        # Analytics domain words (expanded — includes plurals and Phase 11 keywords)
         if w in {
             "admission", "admissions", "lead", "leads", "cucet", "rate", "rates",
             "conversion", "conversions", "yoy", "previous", "current", "year", "years",
@@ -147,6 +145,14 @@ def has_unrecognized_words(question: str, db: Session, active_dataset: Any) -> b
             "total", "totals", "count", "average", "trend", "trends", "monthly",
             "quarterly", "annual", "yearly", "metric", "metrics", "analysis", "analyze",
             "insight", "insights", "report", "reports", "summary", "overview",
+            "never", "called", "overdue", "interested", "excel", "declining", "responsible",
+            "why", "down", "attempt", "attempts", "call", "calls", "time", "first", "due", "today", "upcoming", "export", "download",
+            "assigned", "exactly", "uncalled", "responsible", "declining", "fewer", "less", "followup", "followups", "follow", "ups",
+            "inhouse", "outsource", "outsourced", "house", "sourced", "others", "unmapped",
+            "versus", "vs", "which", "university", "code", "name",
+            "underperforming", "shortfall", "management", "focus", "attention", "causing", "caused", "need",
+            "improved", "improve", "decline", "declines", "where", "below", "target", "shortfalls",
+            "predict", "predicts", "predicted", "predictive", "prediction", "predictions", "probability", "prioritization", "priority",
         }:
             continue
         # Dimension/entity category words (expanded — includes plurals and variants)
@@ -162,6 +168,20 @@ def has_unrecognized_words(question: str, db: Session, active_dataset: Any) -> b
         # Test if it can be resolved as a flexible entity (actual dimension value)
         res = resolve_flexible_entity(db, active_dataset, w)
         if not res["resolved"] and not res["ambiguous"]:
+            from app.semantic.program_resolver import resolve_canonical_program
+            p_res = resolve_canonical_program(db, active_dataset, w)
+            if p_res["resolved"] or p_res.get("candidates"):
+                continue
+            
+            # Check lead_type and source dynamically in organization.source_master
+            from sqlalchemy import text
+            lt_exists = db.execute(
+                text("SELECT 1 FROM organization.source_master WHERE LOWER(lead_type) LIKE :w OR LOWER(source) LIKE :w LIMIT 1"),
+                {"w": f"%{w}%"}
+            ).first()
+            if lt_exists:
+                continue
+
             return True
     return False
 
@@ -182,16 +202,20 @@ def is_local_intent_confident(intent: dict[str, Any], question: str, db: Session
     if ref_info.get("is_reference"):
         return True
 
+    # 4. Check parsed intent type
+    intent_type = intent.get("intent_type")
+    from app.agent.tool_registry import ToolRegistry
+    if ToolRegistry.is_global_intent(intent_type):
+        return True
+
     # Check unrecognized words
     if has_unrecognized_words(question, db, active_dataset):
         return False
 
-    # 4. Check parsed intent type
-    intent_type = intent.get("intent_type")
     if not intent_type or intent_type == "unknown":
         return False
 
-    if intent_type in ("metric", "funnel"):
+    if intent_type in ("metric", "funnel", "generate_report", "no_call_leads", "overdue_interested", "time_to_first_call", "call_attempts", "counsellor_performance", "driver_analysis", "below_target", "source_breakdown_program", "state_breakdown_program", "prediction_analysis"):
         return True
 
     if intent_type in ("breakdown", "ranking", "yoy", "source"):
@@ -218,6 +242,10 @@ def validate_agent_plan(
     Validation stage before tool execution.
     Distinguishes unsupported domain questions, ambiguous requests, and missing entities.
     """
+    from app.agent.tool_registry import ToolRegistry
+    if ToolRegistry.is_global_intent(intent.get("intent_type", "")):
+        return None
+
     q_norm = question.lower().strip()
 
     # 1. Reject Unsupported Domain Questions
@@ -866,6 +894,7 @@ def resolve_conversation_references(
                 "debug": {"context_used": True, "ranking_from_context": True},
             }
 
+    prev_dim_col = "owner" if prev_dim in ("counsellor", "owner") else prev_dim
     # 4a. YoY Comparison on Previous Entity: e.g. "compare it with last year"
     if ref_info.get("is_yoy"):
         itemized_data = []
@@ -880,7 +909,7 @@ def resolve_conversation_references(
                         SUM(py_admission) AS py_admission
                     FROM analytics.uploaded_metrics
                     WHERE dataset_id = :ds_id
-                      AND LOWER("{prev_dim}") = LOWER(:ent)
+                      AND LOWER("{prev_dim_col}") = LOWER(:ent)
                     """
                 ),
                 {"ds_id": str(active_dataset), "ent": ent},
@@ -1060,7 +1089,41 @@ def _log_turn_to_audit(
             columns=res.get("columns"),
         )
     except Exception as e:
-        logger.warning(f"Error writing turn audit: {e}")
+        logger.warning(f"Error writing turn audit")
+
+
+def resolve_dataset_for_question(db: Session, question: str, intent: dict[str, Any], default_dataset: Any, prev_context: dict[str, Any] | None = None) -> tuple[Any, int, int]:
+    """
+    Dynamically resolve active dataset and years based on explicit academic year in prompt or previous conversation context.
+    Strictly restricted to RAW datasets (workbook_type = 'RAW').
+    """
+    from app.database.repository import resolve_raw_dataset
+    import re
+    
+    target_year = None
+    time_ctx = intent.get("time_context") or ""
+    
+    m = re.search(r'\b(202[0-9])\b', str(time_ctx) + " " + question)
+    if m:
+        target_year = int(m.group(1))
+    elif prev_context and prev_context.get("year"):
+        target_year = int(prev_context["year"])
+
+    if target_year:
+        return resolve_raw_dataset(db, target_year=target_year, default_dataset=default_dataset)
+
+    if prev_context and prev_context.get("dataset_id"):
+        prev_ds = prev_context["dataset_id"]
+        # Verify prev_ds is RAW
+        is_raw = db.execute(
+            text("SELECT id FROM system.datasets WHERE id = :id AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'"),
+            {"id": str(prev_ds)}
+        ).scalar()
+        if is_raw:
+            cy_yr, py_yr = get_active_dataset_years(db, prev_ds)
+            return str(prev_ds), cy_yr, py_yr
+
+    return resolve_raw_dataset(db, target_year=None, default_dataset=default_dataset)
 
 
 def answer_question(
@@ -1072,22 +1135,20 @@ def answer_question(
 ) -> dict[str, Any]:
     """
     Agentic Analytics Entrypoint:
-    Memory Context -> Gemini/Intent Plan -> Validation -> Followup Resolution -> Generic Router Tool Execution -> Formatter.
+    Memory Context -> Gemini/Intent Plan -> Dynamic Year/Dataset Resolution -> Validation -> Router Tool Execution.
     """
-    active_dataset = get_active_dataset(db)
-    if active_dataset:
-        cy_year, py_year = get_active_dataset_years(db, active_dataset)
-    else:
-        cy_year, py_year = datetime.now().year, datetime.now().year - 1
-
-    conversation_id = get_or_create_conversation(db, conversation_id, active_dataset)
+    default_dataset = get_active_dataset(db)
+    intent = parse_question(question)
+    conversation_id = get_or_create_conversation(db, conversation_id, None)
+    prev_context = get_conversation_context(db, conversation_id, None)
+    
+    active_dataset, cy_year, py_year = resolve_dataset_for_question(db, question, intent, default_dataset, prev_context)
     save_conversation_message(db, conversation_id, "user", question)
-    prev_context = get_conversation_context(db, conversation_id, active_dataset)
 
     if not active_dataset:
         res = {
             "question": question,
-            "answer": "Please upload a dataset before asking analytical questions.",
+            "answer": "No active dataset is available. Please upload/select a dataset.",
             "response_type": "text",
             "chart_type": None,
             "columns": [],
@@ -1099,9 +1160,498 @@ def answer_question(
         _log_turn_to_audit(db, conversation_id, question, res, active_dataset, cy_year, py_year, {}, None, period_a, period_b)
         return res
 
+    year = _extract_year_context(intent.get("time_context"), cy_year, py_year)
+    q_norm = question.lower().strip()
+
+    # ----------------------------------------------------------------------
+    # Program Comparison & Disambiguation Engine
+    # ----------------------------------------------------------------------
+
+    from app.semantic.program_resolver import resolve_canonical_program
+
+    # Case A: Selection of candidate from previous turn or existing program_a_code
+    if prev_context and (prev_context.get("pending_target") or prev_context.get("candidates") or prev_context.get("program_a_code")):
+        pending_target = prev_context.get("pending_target")
+        candidates = prev_context.get("candidates", [])
+        prog_a_code = prev_context.get("program_a_code")
+        prog_a_name = prev_context.get("program_a_name")
+        prog_b_code = prev_context.get("program_b_code")
+        prog_b_name = prev_context.get("program_b_name")
+
+        selected_code = None
+        selected_name = None
+
+        if candidates:
+            for cand in candidates:
+                c_code = (cand.get("program_code") or "").upper().strip()
+                c_name = (cand.get("program_name") or "").lower().strip()
+                c_short = (cand.get("program_name_short") or "").lower().strip()
+                if c_code and (c_code in q_norm.upper() or q_norm.upper() in c_code):
+                    selected_code = cand.get("program_code")
+                    selected_name = cand.get("program_name")
+                    break
+                if c_name and (c_name in q_norm or q_norm in c_name):
+                    selected_code = cand.get("program_code")
+                    selected_name = cand.get("program_name")
+                    break
+                if c_short and (c_short in q_norm or q_norm in c_short):
+                    selected_code = cand.get("program_code")
+                    selected_name = cand.get("program_name")
+                    break
+
+        if not selected_code and pending_target:
+            p_res = resolve_canonical_program(db, active_dataset, question)
+            if p_res["resolved"]:
+                selected_code = p_res["program_code"]
+                selected_name = p_res["program_name"]
+
+        if selected_code and (pending_target == "program_b" or prog_a_code):
+            prog_b_code = selected_code
+            prog_b_name = selected_name
+
+            metric = intent.get("metric") or prev_context.get("metric") or "admission"
+            from app.agent.tools.comparison_tool import ComparisonTool
+            from app.agent.tools.base import ToolRequest
+            tool = ComparisonTool()
+            req = ToolRequest(
+                dataset_id=str(active_dataset),
+                metric=metric,
+                values=[prog_a_code, prog_b_code],
+                dimension="program_code",
+                year=cy_year,
+                current_year=cy_year,
+                previous_year=py_year,
+                metadata={
+                    "display_names": {
+                        prog_a_code: prog_a_name,
+                        prog_b_code: prog_b_name
+                    }
+                }
+            )
+            tool_res = tool.execute(db, req)
+            formatted_res = format_tool_response(tool_res, question)
+            
+            new_ctx = {
+                "dataset_id": str(active_dataset),
+                "last_intent": "comparison",
+                "operation": "comparison",
+                "metric": metric,
+                "year": cy_year,
+                "program_a_code": prog_a_code,
+                "program_a_name": prog_a_name,
+                "program_b_code": prog_b_code,
+                "program_b_name": prog_b_name,
+                "dimension": "program_name",
+                "dimensions": ["program_name"],
+                "result_entities": [prog_a_name, prog_b_name],
+                "result_set": formatted_res.get("data", []),
+                "data": formatted_res.get("data", []),
+            }
+            save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+            save_conversation_message(db, conversation_id, "assistant", formatted_res["answer"])
+            _log_turn_to_audit(db, conversation_id, question, formatted_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+            return formatted_res
+
+        elif selected_code and pending_target == "program":
+            metric = intent.get("metric") or "admission"
+            db_metric_col = "cy_leads" if metric == "leads" else "cy_admission"
+            rows = db.execute(text(f"""
+                SELECT COALESCE(SUM({db_metric_col}), 0) 
+                FROM analytics.uploaded_metrics 
+                WHERE dataset_id = :ds AND program_code = :code
+            """), {"ds": str(active_dataset), "code": selected_code}).scalar() or 0
+
+            single_res = {
+                "question": question,
+                "answer": f"The total {metric} count for {selected_name} ({selected_code}) is {int(rows)}.",
+                "response_type": "table",
+                "chart_type": None,
+                "columns": ["program_name", metric],
+                "data": [{"program_name": selected_name, metric: int(rows)}],
+                "year": cy_year,
+                "conversation_id": conversation_id,
+            }
+            new_ctx = {
+                "dataset_id": str(active_dataset),
+                "last_intent": "metric",
+                "operation": "metric",
+                "metric": metric,
+                "year": cy_year,
+                "program_code": selected_code,
+                "program_name": selected_name,
+                "dimension": "program_name",
+                "dimensions": ["program_name"],
+                "result_entities": [selected_name],
+                "data": single_res["data"],
+            }
+            save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+            save_conversation_message(db, conversation_id, "assistant", single_res["answer"])
+            _log_turn_to_audit(db, conversation_id, question, single_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+            return single_res
+
+    # Program Info / University Lookup Intent Detection
+    if "university" in q_norm or "campus for" in q_norm or "university name" in q_norm:
+        term_match = re.search(r"\b(?:for|of)\s+(.*)", question, re.IGNORECASE)
+        raw_term = term_match.group(1).rstrip("?:.!'\"").strip() if term_match else question
+        from app.semantic.program_resolver import resolve_canonical_program
+        p_res = resolve_canonical_program(db, active_dataset, raw_term)
+        if not p_res["resolved"] and not p_res.get("candidates"):
+            match_row = db.execute(text("""
+                SELECT program_code, program_name, program_campus, course_cluster
+                FROM organization.course_master
+                WHERE UPPER(program_code) = UPPER(:t) OR LOWER(program_name) LIKE :like_t
+                LIMIT 1
+            """), {"t": raw_term.strip(), "like_t": f"%{raw_term.lower().strip()}%"}).mappings().first()
+            if match_row:
+                p_res = {"resolved": True, "program_code": match_row["program_code"], "program_name": match_row["program_name"]}
+
+        if p_res["resolved"]:
+            p_code = p_res["program_code"]
+            p_name = p_res["program_name"]
+            rec = db.execute(text("""
+                SELECT program_code, program_name, program_campus, course_cluster
+                FROM organization.course_master
+                WHERE UPPER(TRIM(program_code)) = UPPER(TRIM(:code))
+                LIMIT 1
+            """), {"code": p_code}).mappings().first()
+            campus = rec["program_campus"] if rec and rec.get("program_campus") else "Mohali"
+            ans_text = f"The Program Code **{p_code}** corresponds to **{p_name}** at the **{campus}** campus."
+            res_dict = {
+                "question": question,
+                "answer": ans_text,
+                "response_type": "text",
+                "data": [{"program_code": p_code, "program_name": p_name, "campus": campus}],
+                "conversation_id": conversation_id,
+            }
+            save_conversation_message(db, conversation_id, "assistant", ans_text)
+            return res_dict
+
+    # Case B: Follow-up question on existing comparison context ("compare their leads", "compare their conversion")
+    if prev_context and prev_context.get("program_a_code") and prev_context.get("program_b_code"):
+        is_comp_followup = any(kw in q_norm for kw in ["their leads", "their conversion", "compare leads", "compare conversion", "conversion rate", "what about leads", "what about conversion"])
+        if is_comp_followup:
+            prog_a_code = prev_context["program_a_code"]
+            prog_a_name = prev_context["program_a_name"]
+            prog_b_code = prev_context["program_b_code"]
+            prog_b_name = prev_context["program_b_name"]
+            
+            metric = "leads" if "lead" in q_norm else ("conversion" if "conversion" in q_norm else "admission")
+            
+            if metric in ("leads", "admission"):
+                from app.agent.tools.comparison_tool import ComparisonTool
+                from app.agent.tools.base import ToolRequest
+                tool = ComparisonTool()
+                req = ToolRequest(
+                    dataset_id=str(active_dataset),
+                    metric=metric,
+                    values=[prog_a_code, prog_b_code],
+                    dimension="program_code",
+                    year=cy_year,
+                    current_year=cy_year,
+                    previous_year=py_year,
+                    metadata={
+                        "display_names": {
+                            prog_a_code: prog_a_name,
+                            prog_b_code: prog_b_name
+                        }
+                    }
+                )
+                tool_res = tool.execute(db, req)
+                formatted_res = format_tool_response(tool_res, question)
+            else: # conversion
+                rows = db.execute(text("""
+                    SELECT 
+                        program_code,
+                        COALESCE(SUM(cy_leads), 0) as leads,
+                        COALESCE(SUM(cy_admission), 0) as admission
+                    FROM analytics.uploaded_metrics
+                    WHERE dataset_id = :ds AND program_code IN (:code_a, :code_b)
+                    GROUP BY program_code
+                """), {"ds": str(active_dataset), "code_a": prog_a_code, "code_b": prog_b_code}).mappings().all()
+
+                code_map = {r["program_code"]: r for r in rows}
+                data_rows = []
+                for p_code, p_name in [(prog_a_code, prog_a_name), (prog_b_code, prog_b_name)]:
+                    rec = code_map.get(p_code, {"leads": 0, "admission": 0})
+                    lds = int(rec["leads"] or 0)
+                    adm = int(rec["admission"] or 0)
+                    conv_pct = round((adm / lds * 100.0), 2) if lds > 0 else 0.0
+                    data_rows.append({
+                        "program_name": p_name,
+                        "leads": lds,
+                        "admission": adm,
+                        "conversion_rate (%)": f"{conv_pct}%"
+                    })
+
+                formatted_res = {
+                    "question": question,
+                    "answer": f"Here is the conversion rate comparison between {prog_a_name} and {prog_b_name}:",
+                    "response_type": "table",
+                    "chart_type": None,
+                    "columns": ["program_name", "leads", "admission", "conversion_rate (%)"],
+                    "data": data_rows,
+                    "year": cy_year,
+                    "conversation_id": conversation_id,
+                }
+
+            new_ctx = {
+                "dataset_id": str(active_dataset),
+                "last_intent": "comparison",
+                "operation": "comparison",
+                "metric": metric,
+                "year": cy_year,
+                "program_a_code": prog_a_code,
+                "program_a_name": prog_a_name,
+                "program_b_code": prog_b_code,
+                "program_b_name": prog_b_name,
+                "dimension": "program_name",
+                "dimensions": ["program_name"],
+                "result_entities": [prog_a_name, prog_b_name],
+                "result_set": formatted_res.get("data", []),
+                "data": formatted_res.get("data", []),
+            }
+            save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+            save_conversation_message(db, conversation_id, "assistant", formatted_res["answer"])
+            _log_turn_to_audit(db, conversation_id, question, formatted_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+            return formatted_res
+
+    # Case C: Primary Program Comparison Intent Detection & Execution
+    comp_extracted = intent.get("comparison_info") or extract_comparison(question)
+    if comp_extracted and comp_extracted.get("requested_values") and len(comp_extracted["requested_values"]) >= 2:
+        val_a, val_b = comp_extracted["requested_values"][0], comp_extracted["requested_values"][1]
+        
+        is_prog_q = "program" in q_norm or "course" in q_norm or "b.e" in q_norm or "cse" in q_norm or "btech" in q_norm or "mtech" in q_norm or "mba" in q_norm or "ibm" in q_norm
+        
+        res_a = resolve_canonical_program(db, active_dataset, val_a)
+        res_b = resolve_canonical_program(db, active_dataset, val_b)
+
+        if is_prog_q or res_a["resolved"] or res_b["resolved"]:
+            if prev_context and prev_context.get("program_a_code") and not res_a["resolved"]:
+                res_a = {
+                    "resolved": True,
+                    "program_code": prev_context["program_a_code"],
+                    "program_name": prev_context["program_a_name"]
+                }
+            if prev_context and prev_context.get("program_b_code") and not res_b["resolved"]:
+                res_b = {
+                    "resolved": True,
+                    "program_code": prev_context["program_b_code"],
+                    "program_name": prev_context["program_b_name"]
+                }
+
+            if res_a["resolved"] and res_b["resolved"]:
+                prog_a_code = res_a["program_code"]
+                prog_a_name = res_a["program_name"]
+                prog_b_code = res_b["program_code"]
+                prog_b_name = res_b["program_name"]
+
+                metric = intent.get("metric") or "admission"
+                from app.agent.tools.comparison_tool import ComparisonTool
+                from app.agent.tools.base import ToolRequest
+                tool = ComparisonTool()
+                req = ToolRequest(
+                    dataset_id=str(active_dataset),
+                    metric=metric,
+                    values=[prog_a_code, prog_b_code],
+                    dimension="program_code",
+                    year=cy_year,
+                    current_year=cy_year,
+                    previous_year=py_year,
+                    metadata={
+                        "display_names": {
+                            prog_a_code: prog_a_name,
+                            prog_b_code: prog_b_name
+                        }
+                    }
+                )
+                tool_res = tool.execute(db, req)
+                formatted_res = format_tool_response(tool_res, question)
+
+                new_ctx = {
+                    "dataset_id": str(active_dataset),
+                    "last_intent": "comparison",
+                    "operation": "comparison",
+                    "metric": metric,
+                    "year": cy_year,
+                    "program_a_code": prog_a_code,
+                    "program_a_name": prog_a_name,
+                    "program_b_code": prog_b_code,
+                    "program_b_name": prog_b_name,
+                    "dimension": "program_name",
+                    "dimensions": ["program_name"],
+                    "result_entities": [prog_a_name, prog_b_name],
+                    "result_set": formatted_res.get("data", []),
+                    "data": formatted_res.get("data", []),
+                }
+                save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+                save_conversation_message(db, conversation_id, "assistant", formatted_res["answer"])
+                _log_turn_to_audit(db, conversation_id, question, formatted_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+                return formatted_res
+
+            elif res_a["resolved"] and not res_b["resolved"] and res_b.get("candidates"):
+                cands = res_b["candidates"]
+                
+                if prev_context and prev_context.get("pending_target") == "program_b":
+                    selected_b = cands[0]
+                    prog_a_code = res_a["program_code"]
+                    prog_a_name = res_a["program_name"]
+                    prog_b_code = selected_b["program_code"]
+                    prog_b_name = selected_b["program_name"]
+
+                    metric = intent.get("metric") or "admission"
+                    from app.agent.tools.comparison_tool import ComparisonTool
+                    from app.agent.tools.base import ToolRequest
+                    tool = ComparisonTool()
+                    req = ToolRequest(
+                        dataset_id=str(active_dataset),
+                        metric=metric,
+                        values=[prog_a_code, prog_b_code],
+                        dimension="program_code",
+                        year=cy_year,
+                        current_year=cy_year,
+                        previous_year=py_year,
+                        metadata={
+                            "display_names": {
+                                prog_a_code: prog_a_name,
+                                prog_b_code: prog_b_name
+                            }
+                        }
+                    )
+                    tool_res = tool.execute(db, req)
+                    formatted_res = format_tool_response(tool_res, question)
+
+                    new_ctx = {
+                        "dataset_id": str(active_dataset),
+                        "last_intent": "comparison",
+                        "operation": "comparison",
+                        "metric": metric,
+                        "year": cy_year,
+                        "program_a_code": prog_a_code,
+                        "program_a_name": prog_a_name,
+                        "program_b_code": prog_b_code,
+                        "program_b_name": prog_b_name,
+                        "dimension": "program_name",
+                        "dimensions": ["program_name"],
+                        "result_entities": [prog_a_name, prog_b_name],
+                        "result_set": formatted_res.get("data", []),
+                        "data": formatted_res.get("data", []),
+                    }
+                    save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+                    save_conversation_message(db, conversation_id, "assistant", formatted_res["answer"])
+                    _log_turn_to_audit(db, conversation_id, question, formatted_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+                    return formatted_res
+
+                c_str = "\n".join([f"- {c['program_code']}: {c['program_name']}" for c in cands[:5]])
+                recs = [{"label": f"{c['program_code']}: {c['program_name']}", "question": f"Compare {res_a['program_name']} vs {c['program_code']} admissions"} for c in cands[:4]]
+                clarify_res = {
+                    "question": question,
+                    "answer": f"I found multiple program candidates matching '{val_b}'. Which one did you mean?\n\n{c_str}",
+                    "response_type": "text",
+                    "chart_type": None,
+                    "columns": [],
+                    "data": [],
+                    "year": cy_year,
+                    "conversation_id": conversation_id,
+                    "recommendations": recs,
+                    "debug": {"agent_status": "ambiguous_entity", "candidates": cands},
+                }
+
+                new_ctx = {
+                    "dataset_id": str(active_dataset),
+                    "last_intent": "comparison",
+                    "operation": "comparison",
+                    "metric": intent.get("metric") or "admission",
+                    "year": cy_year,
+                    "program_a_code": res_a["program_code"],
+                    "program_a_name": res_a["program_name"],
+                    "pending_target": "program_b",
+                    "candidates": cands,
+                }
+                save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+                save_conversation_message(db, conversation_id, "assistant", clarify_res["answer"])
+                _log_turn_to_audit(db, conversation_id, question, clarify_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+                return clarify_res
+
+    # Case D: Single Program Disambiguation & Resolution
+    if ("program" in q_norm or "course" in q_norm or "b.e" in q_norm or "cse" in q_norm or "ibm" in q_norm) and not comp_extracted:
+        prog_term = re.sub(r"\b(show|get|tell|me|admissions|admission|leads|lead|for|in|2026|2025|total|count|of)\b", "", q_norm, flags=re.IGNORECASE).strip()
+        if prog_term and len(prog_term) >= 2:
+            p_res = resolve_canonical_program(db, active_dataset, prog_term)
+            if p_res["resolved"]:
+                p_code = p_res["program_code"]
+                p_name = p_res["program_name"]
+                metric = intent.get("metric") or "admission"
+                db_metric_col = "cy_leads" if metric == "leads" else "cy_admission"
+                rows = db.execute(text(f"""
+                    SELECT COALESCE(SUM({db_metric_col}), 0) 
+                    FROM analytics.uploaded_metrics 
+                    WHERE dataset_id = :ds AND program_code = :code
+                """), {"ds": str(active_dataset), "code": p_code}).scalar() or 0
+
+                single_res = {
+                    "question": question,
+                    "answer": f"The total {metric} count for {p_name} ({p_code}) is {int(rows)}.",
+                    "response_type": "table",
+                    "chart_type": None,
+                    "columns": ["program_name", metric],
+                    "data": [{"program_name": p_name, metric: int(rows)}],
+                    "year": cy_year,
+                    "conversation_id": conversation_id,
+                }
+                new_ctx = {
+                    "dataset_id": str(active_dataset),
+                    "last_intent": "metric",
+                    "operation": "metric",
+                    "metric": metric,
+                    "year": cy_year,
+                    "program_code": p_code,
+                    "program_name": p_name,
+                    "dimension": "program_name",
+                    "dimensions": ["program_name"],
+                    "result_entities": [p_name],
+                    "data": single_res["data"],
+                }
+                save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+                save_conversation_message(db, conversation_id, "assistant", single_res["answer"])
+                _log_turn_to_audit(db, conversation_id, question, single_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+                return single_res
+
+            elif p_res.get("candidates"):
+                cands = p_res["candidates"]
+                c_str = "\n".join([f"- {c['program_code']}: {c['program_name']}" for c in cands[:5]])
+                recs = [{"label": f"{c['program_code']}: {c['program_name']}", "question": f"Show admissions for {c['program_code']}"} for c in cands[:4]]
+                clarify_res = {
+                    "question": question,
+                    "answer": f"I found multiple program candidates matching '{prog_term}'. Which one did you mean?\n\n{c_str}",
+                    "response_type": "text",
+                    "chart_type": None,
+                    "columns": [],
+                    "data": [],
+                    "year": cy_year,
+                    "conversation_id": conversation_id,
+                    "recommendations": recs,
+                    "debug": {"agent_status": "ambiguous_entity", "candidates": cands},
+                }
+
+                new_ctx = {
+                    "dataset_id": str(active_dataset),
+                    "last_intent": "metric",
+                    "operation": "metric",
+                    "metric": intent.get("metric") or "admission",
+                    "year": cy_year,
+                    "pending_target": "program",
+                    "candidates": cands,
+                }
+                save_conversation_context(db, conversation_id, active_dataset, new_ctx)
+                save_conversation_message(db, conversation_id, "assistant", clarify_res["answer"])
+                _log_turn_to_audit(db, conversation_id, question, clarify_res, active_dataset, cy_year, py_year, intent, None, period_a, period_b)
+                return clarify_res
+
+
+
     # 1. Planning Stage (Local Parser first, fallback to Gemini if not confident)
-    intent = parse_question(question)
-    use_gemini = not is_local_intent_confident(intent, question, db, active_dataset)
+    from app.agent.tool_registry import ToolRegistry
+    use_gemini = not (ToolRegistry.is_global_intent(intent.get("intent_type", "")) or is_local_intent_confident(intent, question, db, active_dataset))
     gemini_plan = plan_question(question) if use_gemini else None
 
     # Safety guard: if local parser is not confident AND Gemini is unavailable,
@@ -1125,20 +1675,63 @@ def answer_question(
         _log_turn_to_audit(db, conversation_id, question, safe_res, active_dataset, cy_year, py_year, intent, gemini_plan, period_a, period_b)
         return safe_res
 
-    year = _extract_year_context(intent.get("time_context"), cy_year, py_year)
+    # Dimension-Aware Entity Resolution
 
-    q_norm = question.lower().strip()
-    
-    # Intercept follow-up to driver analysis asking for dimensions
-    if prev_context and prev_context.get("intent_type") == "driver_analysis":
-        if any(w in q_norm for w in ["source", "owner", "counselor", "counsellor", "campus", "state", "contribute", "contribution", "drove", "driver"]):
-            intent["intent_type"] = "followup_reference"
-            intent["operation"] = "driver_analysis"
-    if gemini_plan and gemini_plan.get("year"):
-        year = gemini_plan["year"]
+    entity_filter_val = intent.get("filters", {}).get("entity_filter") or intent.get("filters", {}).get("unknown_dim")
+    if entity_filter_val:
+        from app.semantic.entity_resolver import resolve_entity_dimension
+        ent_res = resolve_entity_dimension(db, active_dataset, entity_filter_val)
+        if ent_res["resolved"]:
+            ent_dim = ent_res["dimension"]
+            ent_val = ent_res["value"]
+
+            intent.get("filters", {}).pop("entity_filter", None)
+            intent.get("filters", {}).pop("unknown_dim", None)
+
+            req_dims = intent.get("dimensions") or ([intent.get("dimension")] if intent.get("dimension") else [])
+            if req_dims and req_dims[0] == ent_dim and ent_dim == "source":
+                same_dim_res = {
+                    "question": question,
+                    "answer": f"{ent_val} is already a Source, so there are no lower-level Source values under it. I can show its admissions/leads by state, program, source cluster, or owner.",
+                    "response_type": "text",
+                    "chart_type": None,
+                    "columns": [],
+                    "data": [],
+                    "year": cy_year,
+                    "conversation_id": conversation_id,
+                    "debug": {"agent_status": "same_dimension_breakdown", "entity": ent_val, "dimension": ent_dim},
+                }
+                save_conversation_message(db, conversation_id, "assistant", same_dim_res["answer"])
+                _log_turn_to_audit(db, conversation_id, question, same_dim_res, active_dataset, cy_year, py_year, intent, gemini_plan, period_a, period_b)
+                return same_dim_res
+
+            intent.setdefault("filters", {})[ent_dim] = ent_val
+
+    # Handle "Only <filter>" follow-ups (e.g. "Only Mohali.", "Only interested.")
+    if prev_context and (q_norm.startswith("only ") or q_norm.startswith("just ") or q_norm.startswith("for ")):
+        val_str = re.sub(r"^(only|just|for)\s+", "", q_norm, flags=re.IGNORECASE).rstrip(".:!?").strip()
+        last_op = prev_context.get("operation") or prev_context.get("last_intent") or prev_context.get("intent_type") or "counsellor_performance"
+        filters = dict(prev_context.get("filters") or {})
+
+        if val_str in ["mohali", "lucknow", "jaipur", "bhopal", "patna"]:
+            filters["campus_name"] = val_str.title()
+            filters["campus"] = val_str.title()
+        elif val_str in ["interested", "uncalled", "closed", "registered", "enrolled"]:
+            filters["disposition"] = val_str.title()
+            filters["attempt_bucket"] = "interested" if val_str == "interested" else filters.get("attempt_bucket")
+        else:
+            filters["unknown_dim"] = val_str
+
+        intent["intent_type"] = last_op
+        intent["operation"] = last_op
+        intent["filters"] = filters
+
+    from app.agent.tool_registry import ToolRegistry
+    if ToolRegistry.is_global_intent(intent.get("intent_type", "")):
+        intent["operation"] = intent.get("operation") or intent["intent_type"]
 
     # Merge Gemini plan findings into intent dict
-    if gemini_plan and gemini_plan.get("intent") not in ("unknown", "ambiguous", "unsupported"):
+    if gemini_plan and gemini_plan.get("intent") not in ("unknown", "ambiguous", "unsupported") and not ToolRegistry.is_global_intent(intent.get("intent_type", "")):
         g_op = gemini_plan.get("operation") or gemini_plan.get("intent")
         intent["intent_type"] = g_op
         if gemini_plan.get("metric"):
@@ -1155,12 +1748,29 @@ def answer_question(
             intent["chart_type"] = gemini_plan["chart_type"]
 
     # Hardening: Ambiguous / context-less check
-    if intent.get("intent_type") in ("yoy", "ranking", "breakdown", "comparison") and not intent.get("dimensions") and not intent.get("dimension") and not (intent.get("comparison_info") and intent.get("comparison_info", {}).get("requested_values")):
+    if not ToolRegistry.is_global_intent(intent.get("intent_type", "")) and intent.get("intent_type") in ("yoy", "ranking", "breakdown", "comparison") and not intent.get("dimensions") and not intent.get("dimension") and not (intent.get("comparison_info") and intent.get("comparison_info", {}).get("requested_values")):
         if not prev_context or (not prev_context.get("dimension") and not prev_context.get("dimensions")):
             intent["intent_type"] = "unknown"
             if gemini_plan:
                 gemini_plan["intent"] = "ambiguous"
                 gemini_plan["is_ambiguous"] = True
+
+    # Inherit entity filter for follow-up breakdown queries ("Show top sources for that program")
+    if "that program" in question.lower() or "this program" in question.lower():
+        if prev_context:
+            target_prog = (
+                prev_context.get("program_name")
+                or (prev_context.get("result_entities") and prev_context["result_entities"][0])
+                or (prev_context.get("selected_entities") and prev_context["selected_entities"][0])
+                or (prev_context.get("data") and prev_context["data"][0].get("program_name"))
+                or (prev_context.get("result_set") and prev_context["result_set"][0].get("program_name"))
+            )
+            if target_prog:
+                intent.setdefault("filters", {})["program_name"] = target_prog
+                if "unknown_dim" in intent.get("filters", {}):
+                    del intent["filters"]["unknown_dim"]
+                if gemini_plan:
+                    gemini_plan.setdefault("filters", {})["program_name"] = target_prog
 
     # 2. Validation Stage
     val_res = validate_agent_plan(
@@ -1179,15 +1789,17 @@ def answer_question(
         return val_res
 
     # 3. Follow-up Context Resolution
-    ref_res = resolve_conversation_references(
-        db=db,
-        active_dataset=active_dataset,
-        question=question,
-        intent=intent,
-        prev_context=prev_context,
-        cy_year=cy_year,
-        py_year=py_year,
-    )
+    ref_res = None
+    if not ToolRegistry.is_global_intent(intent.get("intent_type", "")):
+        ref_res = resolve_conversation_references(
+            db=db,
+            active_dataset=active_dataset,
+            question=question,
+            intent=intent,
+            prev_context=prev_context,
+            cy_year=cy_year,
+            py_year=py_year,
+        )
     if ref_res:
         ref_res["conversation_id"] = conversation_id
         save_conversation_message(db, conversation_id, "assistant", ref_res["answer"])
@@ -1203,6 +1815,7 @@ def answer_question(
                 "filters": intent.get("filters", {}),
                 "current_year": cy_year,
                 "previous_year": py_year,
+                "year": cy_year,
                 "response_type": ref_res.get("response_type"),
                 "chart_type": ref_res.get("chart_type"),
                 "result_entities": res_entities or (prev_context.get("result_entities") if prev_context else []),
@@ -1220,6 +1833,20 @@ def answer_question(
         _log_turn_to_audit(db, conversation_id, question, ref_res, active_dataset, cy_year, py_year, intent, gemini_plan, period_a, period_b)
         return ref_res
 
+    # Inherit entity filter for follow-up breakdown queries ("Show top sources for that program")
+    if "that program" in question.lower() or "this program" in question.lower() or "for that" in question.lower() or "for this" in question.lower():
+        if prev_context and prev_context.get("dimension") in ("program_name", "program"):
+            target_prog = (
+                (prev_context.get("result_entities") and prev_context["result_entities"][0])
+                or (prev_context.get("selected_entities") and prev_context["selected_entities"][0])
+                or (prev_context.get("data") and prev_context["data"][0].get("program_name"))
+                or (prev_context.get("result_set") and prev_context["result_set"][0].get("program_name"))
+            )
+            if target_prog and not intent.get("filters", {}).get("program_name"):
+                intent.setdefault("filters", {})["program_name"] = target_prog
+                if gemini_plan:
+                    gemini_plan.setdefault("filters", {})["program_name"] = target_prog
+
     # 4. Tool Router Execution
     plan_to_route = gemini_plan if (gemini_plan and gemini_plan.get("intent") != "unknown") else intent
     if plan_to_route:
@@ -1234,6 +1861,9 @@ def answer_question(
                 plan_to_route["dimension"] = dims[0]
         if "metric" not in plan_to_route or not plan_to_route["metric"]:
             plan_to_route["metric"] = intent.get("metric", "admission")
+
+        if intent.get("intent_type") in ("driver_analysis", "generate_report", "no_call_leads", "overdue_interested", "time_to_first_call", "call_attempts"):
+            plan_to_route["values"] = []
 
     tool_result = route_and_execute_plan(
         db=db,
@@ -1253,7 +1883,18 @@ def answer_question(
     if interp and formatted_res.get("answer"):
         formatted_res["answer"] = interp + formatted_res["answer"]
 
-    formatted_res["conversation_id"] = conversation_id
+    if formatted_res.get("debug") is None:
+        formatted_res["debug"] = {}
+    formatted_res["debug"]["dataset_id"] = str(active_dataset)
+    formatted_res["debug"]["intent"] = plan_to_route.get("operation") or plan_to_route.get("intent")
+    formatted_res["debug"]["filters"] = plan_to_route.get("filters", {})
+    formatted_res["debug"]["result_count"] = len(formatted_res.get("data", []))
+
+    logger.info(
+        f"DATA LINEAGE -> Question: '{question}' | Intent: {plan_to_route.get('intent')} | "
+        f"Tool: {getattr(tool_result, 'tool_name', 'unknown')} | "
+        f"Dataset ID: {active_dataset} | Filters: {plan_to_route.get('filters')} | Rows: {len(formatted_res.get('data', []))}"
+    )
 
     save_conversation_message(db, conversation_id, "assistant", formatted_res["answer"])
 
@@ -1261,15 +1902,30 @@ def answer_question(
     primary_dim = (formatted_res.get("columns") and formatted_res["columns"][0]) or "program_name"
     res_entities = extract_result_entities(formatted_res.get("data", []), primary_dim)
     if res_entities or formatted_res.get("data"):
+        prog_name = (
+            res_entities[0] if primary_dim in ("program_name", "program") and res_entities
+            else (prev_context.get("program_name") if prev_context else None)
+        )
+        campus_val = (
+            (plan_to_route.get("filters") and (plan_to_route["filters"].get("campus_name") or plan_to_route["filters"].get("campus")))
+            or (prev_context and prev_context.get("campus"))
+            or None
+        )
         new_ctx = {
             "dataset_id": str(active_dataset),
             "intent_type": plan_to_route.get("operation") or plan_to_route.get("intent"),
+            "operation": plan_to_route.get("operation") or plan_to_route.get("intent"),
+            "last_intent": plan_to_route.get("operation") or plan_to_route.get("intent"),
+            "group_by": primary_dim,
             "dimension": primary_dim,
             "dimensions": plan_to_route.get("dimensions", [primary_dim]),
             "metric": plan_to_route.get("metric", "admission"),
             "filters": plan_to_route.get("filters", {}),
+            "campus": campus_val,
+            "program_name": prog_name,
             "current_year": cy_year,
             "previous_year": py_year,
+            "year": cy_year,
             "response_type": formatted_res.get("response_type"),
             "chart_type": formatted_res.get("chart_type"),
             "result_entities": res_entities,

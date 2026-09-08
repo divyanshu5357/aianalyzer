@@ -3,7 +3,7 @@
 import React from "react";
 import { UploadCloud } from "lucide-react";
 import { useApp } from "../../context/AppContext";
-import { FileUpload } from "../../components/FileUpload";
+import { UploadWizard } from "../../components/UploadWizard";
 import { DatasetManager } from "../../components/DatasetManager";
 
 export default function UploadPage() {
@@ -16,7 +16,7 @@ export default function UploadPage() {
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       {/* Banner Card */}
       <div className={`p-6 rounded-2xl shadow-sm flex items-center justify-between border transition-all duration-200 ${
         isDark
@@ -26,7 +26,7 @@ export default function UploadPage() {
         <div>
           <h2 className="text-xl font-extrabold tracking-tight">Dataset Ingestion Center</h2>
           <p className={`text-xs mt-1 ${isDark ? "text-slate-300" : "text-blue-100"}`}>
-            Upload CSV, XLSX, XLS, or XLSB files to build staged analytics datasets.
+            Production Upload Wizard for Raw CRM Data, Dimension Masters, and Target Workbooks.
           </p>
         </div>
         <div className={`hidden sm:flex p-3 rounded-2xl ${isDark ? "bg-[#1E293B]" : "bg-white/10 backdrop-blur-xs"}`}>
@@ -34,7 +34,8 @@ export default function UploadPage() {
         </div>
       </div>
 
-      <FileUpload onUploadSuccess={handleDataChange} activeDataset={activeDataset} />
+      {/* Production Upload Wizard */}
+      <UploadWizard onComplete={handleDataChange} isDark={isDark} />
 
       {/* Dataset Management Section */}
       <DatasetManager onDatasetChange={handleDataChange} />

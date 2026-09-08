@@ -5,7 +5,6 @@ import {
   LayoutDashboard,
   UploadCloud,
   BarChart3,
-  TrendingUp,
   Layers,
   Bot,
   Sparkles,
@@ -13,7 +12,7 @@ import {
   ShieldCheck,
 } from "lucide-react";
 
-export type NavTab = "dashboard" | "upload" | "analytics" | "historical" | "sources" | "chat";
+export type NavTab = "dashboard" | "upload" | "analytics" | "sources" | "chat";
 
 interface SidebarProps {
   activeTab: NavTab;
@@ -46,11 +45,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
       id: "analytics",
       label: "Analytics",
       icon: <BarChart3 className="w-5 h-5" />,
-    },
-    {
-      id: "historical",
-      label: "Historical Trends",
-      icon: <TrendingUp className="w-5 h-5" />,
     },
     {
       id: "sources",
