@@ -77,33 +77,33 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="flex items-center justify-between p-5 border-b border-slate-100">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="flex items-center justify-between p-5 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-3">
-            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${danger ? "bg-red-50" : "bg-amber-50"}`}>
+            <div className={`w-9 h-9 rounded-xl flex items-center justify-center ${danger ? "bg-red-50 dark:bg-red-950" : "bg-amber-50 dark:bg-amber-950"}`}>
               {danger ? (
                 <ShieldAlert className="w-5 h-5 text-red-500" />
               ) : (
                 <AlertTriangle className="w-5 h-5 text-amber-500" />
               )}
             </div>
-            <h3 className="text-base font-bold text-slate-900">{title}</h3>
+            <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">{title}</h3>
           </div>
-          <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400">
+          <button onClick={onCancel} className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400">
             <X className="w-4 h-4" />
           </button>
         </div>
-        <div className="p-5 space-y-3 text-sm text-slate-600">{message}</div>
+        <div className="p-5 space-y-3 text-sm text-slate-600 dark:text-slate-300">{message}</div>
         {typedConfirmation && (
           <div className="px-5 pb-4">
-            <label className="block text-xs font-semibold text-slate-500 mb-1.5">
+            <label className="block text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5">
               Type <span className="font-mono text-red-600">{typedConfirmation}</span> to confirm
             </label>
             <input
               type="text"
               value={typed}
               onChange={(e) => setTyped(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg text-slate-900 bg-white focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
+              className="w-full px-3 py-2 text-sm border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:outline-none focus:ring-2 focus:ring-red-500/20 focus:border-red-500"
               placeholder={typedConfirmation}
             />
           </div>
@@ -112,7 +112,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
           <button
             onClick={onCancel}
             disabled={isLoading}
-            className="flex-1 py-2 px-4 rounded-xl text-sm font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200 transition-colors"
+            className="flex-1 py-2 px-4 rounded-xl text-sm font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
           >
             Cancel
           </button>
@@ -317,31 +317,31 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
 
         return (
           <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-            <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+            <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
               <div className="flex justify-between items-center mb-4">
                 <div className="flex items-center gap-2">
-                  <h3 className="text-base font-bold text-slate-900">Edit Dataset Metadata</h3>
+                  <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Edit Dataset Metadata</h3>
                   <span className={`px-2 py-0.5 rounded text-[10px] font-extrabold uppercase border ${
                     isEditingDim
-                      ? "bg-purple-50 text-purple-700 border-purple-200"
+                      ? "bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700"
                       : isEditingTgt
-                      ? "bg-amber-50 text-amber-700 border-amber-200"
-                      : "bg-blue-50 text-blue-700 border-blue-200"
+                      ? "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700"
+                      : "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700"
                   }`}>
                     {editingWbType}
                   </span>
                 </div>
-                <button onClick={() => setEditingDataset(null)} className="text-slate-400 hover:text-slate-600">
+                <button onClick={() => setEditingDataset(null)} className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200">
                   <X className="w-5 h-5" />
                 </button>
               </div>
               <div className="space-y-4 text-xs">
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Workbook Type / Role</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Workbook Type / Role</label>
                   <select
                     value={editType}
                     onChange={(e) => setEditType(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold"
+                    className="w-full px-3 py-2 border border-slate-300 dark:border-slate-600 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold"
                   >
                     <option value="RAW">RAW CRM Leads Data (Coexists across Year & Campus)</option>
                     <option value="DIMENSION">DIMENSION Master Tables (Single Reference Master)</option>
@@ -349,36 +349,36 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                   </select>
                 </div>
                 <div>
-                  <label className="block font-semibold text-slate-700 mb-1">Dataset Name</label>
+                  <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Dataset Name</label>
                   <input
                     type="text"
                     value={editName}
                     onChange={(e) => setEditName(e.target.value)}
-                    className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
+                    className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-medium"
                   />
                 </div>
                 <div className="grid grid-cols-2 gap-3">
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Academic Year</label>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Academic Year</label>
                     {isEditingDim ? (
                       <input
                         type="text"
                         disabled
                         value="Reference (Universal)"
-                        className="w-full px-3 py-2 border border-purple-200 rounded-lg text-purple-800 bg-purple-50/60 font-bold"
+                        className="w-full px-3 py-2 border border-purple-200 dark:border-purple-700 rounded-lg text-purple-800 dark:text-purple-300 bg-purple-50/60 dark:bg-purple-950/60 font-bold"
                       />
                     ) : isEditingTgt ? (
                       <input
                         type="text"
                         disabled
                         value="Target Master (Row Scope)"
-                        className="w-full px-3 py-2 border border-amber-200 rounded-lg text-amber-800 bg-amber-50/60 font-bold"
+                        className="w-full px-3 py-2 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-300 bg-amber-50/60 dark:bg-amber-950/60 font-bold"
                       />
                     ) : (
                       <select
                         value={editYear}
                         onChange={(e) => setEditYear(Number(e.target.value))}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold"
+                        className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold"
                       >
                         {availableYears.map((yr) => (
                           <option key={yr} value={yr}>
@@ -389,26 +389,26 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                     )}
                   </div>
                   <div>
-                    <label className="block font-semibold text-slate-700 mb-1">Campus Scope</label>
+                    <label className="block font-semibold text-slate-700 dark:text-slate-300 mb-1">Campus Scope</label>
                     {isEditingDim ? (
                       <input
                         type="text"
                         disabled
                         value="Universal / Reference"
-                        className="w-full px-3 py-2 border border-purple-200 rounded-lg text-purple-800 bg-purple-50/60 font-bold"
+                        className="w-full px-3 py-2 border border-purple-200 dark:border-purple-700 rounded-lg text-purple-800 dark:text-purple-300 bg-purple-50/60 dark:bg-purple-950/60 font-bold"
                       />
                     ) : isEditingTgt ? (
                       <input
                         type="text"
                         disabled
                         value="Multi-campus (Row Scope)"
-                        className="w-full px-3 py-2 border border-amber-200 rounded-lg text-amber-800 bg-amber-50/60 font-bold"
+                        className="w-full px-3 py-2 border border-amber-200 dark:border-amber-700 rounded-lg text-amber-800 dark:text-amber-300 bg-amber-50/60 dark:bg-amber-950/60 font-bold"
                       />
                     ) : (
                       <select
                         value={editCampus}
                         onChange={(e) => setEditCampus(e.target.value)}
-                        className="w-full px-3 py-2 border border-slate-200 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold"
+                        className="w-full px-3 py-2 border border-slate-200 dark:border-slate-700 rounded-lg text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-800 focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold"
                       >
                         {availableCampuses.map((c) => (
                           <option key={c} value={c}>
@@ -421,23 +421,23 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                 </div>
 
                 {isEditingDim ? (
-                  <div className="p-3 bg-purple-50 border border-purple-200 rounded-xl text-[11px] text-purple-800 space-y-1">
+                  <div className="p-3 bg-purple-50 dark:bg-purple-950/40 border border-purple-200 dark:border-purple-800 rounded-xl text-[11px] text-purple-800 dark:text-purple-200 space-y-1">
                     <p className="font-bold">ℹ️ Universal Reference Master</p>
-                    <p className="text-purple-700">
+                    <p className="text-purple-700 dark:text-purple-300">
                       Dimension lookup tables (Source_ms, Program, State) automatically apply across all academic years and campuses.
                     </p>
                   </div>
                 ) : isEditingTgt ? (
-                  <div className="p-3 bg-amber-50 border border-amber-200 rounded-xl text-[11px] text-amber-800 space-y-1">
+                  <div className="p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-[11px] text-amber-800 dark:text-amber-200 space-y-1">
                     <p className="font-bold">ℹ️ Target Allocation Master</p>
-                    <p className="text-amber-700">
+                    <p className="text-amber-700 dark:text-amber-300">
                       Target boundaries are derived directly from row-level Date, Month, Campus, and Target For dimensions.
                     </p>
                   </div>
                 ) : (
-                  <div className="p-3 bg-blue-50 border border-blue-200 rounded-xl text-[11px] text-blue-800 space-y-1">
+                  <div className="p-3 bg-blue-50 dark:bg-blue-950/40 border border-blue-200 dark:border-blue-800 rounded-xl text-[11px] text-blue-800 dark:text-blue-200 space-y-1">
                     <p className="font-bold">ℹ️ Actual Leads & Admissions Boundary</p>
-                    <p className="text-blue-700">
+                    <p className="text-blue-700 dark:text-blue-300">
                       RAW dataset metadata specifies the explicit academic year and campus for actual lead and admission metrics.
                     </p>
                   </div>
@@ -446,7 +446,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
               <div className="flex gap-2 mt-6">
                 <button
                   onClick={() => setEditingDataset(null)}
-                  className="flex-1 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                  className="flex-1 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
                 >
                   Cancel
                 </button>
@@ -466,19 +466,19 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
       {/* Conflict Warning Modal */}
       {conflictWarning && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md p-6">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-md p-6">
             <div className="flex items-center gap-3 text-amber-600 mb-3">
               <AlertTriangle className="w-6 h-6 shrink-0" />
-              <h3 className="text-base font-bold text-slate-900">Duplicate Active Dataset Warning</h3>
+              <h3 className="text-base font-bold text-slate-900 dark:text-slate-100">Duplicate Active Dataset Warning</h3>
             </div>
-            <p className="text-xs text-slate-600 mb-4">{conflictWarning.message}</p>
-            <p className="text-[11px] text-slate-500 mb-6">
+            <p className="text-xs text-slate-600 dark:text-slate-300 mb-4">{conflictWarning.message}</p>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mb-6">
               Enabling multiple datasets for the exact same campus and year may merge analytical totals. Do you wish to enable both?
             </p>
             <div className="flex gap-2">
               <button
                 onClick={() => setConflictWarning(null)}
-                className="flex-1 py-2 rounded-xl text-xs font-semibold bg-slate-100 text-slate-700 hover:bg-slate-200"
+                className="flex-1 py-2 rounded-xl text-xs font-semibold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
               >
                 Cancel
               </button>
@@ -500,14 +500,14 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
         danger
         message={
           <div className="space-y-3">
-            <div className="bg-slate-50 border border-slate-100 rounded-xl p-3.5 space-y-1.5 text-xs">
+            <div className="bg-slate-50 dark:bg-slate-800 border border-slate-100 dark:border-slate-700 rounded-xl p-3.5 space-y-1.5 text-xs">
               <div className="flex justify-between">
-                <span className="text-slate-500 font-medium">Dataset</span>
-                <span className="font-bold text-slate-800">{deleteConfirm?.name}</span>
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Dataset</span>
+                <span className="font-bold text-slate-800 dark:text-slate-200">{deleteConfirm?.name}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-slate-500 font-medium">Rows</span>
-                <span className="font-mono font-semibold text-slate-700">{deleteConfirm?.rowCount?.toLocaleString()}</span>
+                <span className="text-slate-500 dark:text-slate-400 font-medium">Rows</span>
+                <span className="font-mono font-semibold text-slate-700 dark:text-slate-300">{deleteConfirm?.rowCount?.toLocaleString()}</span>
               </div>
             </div>
           </div>
@@ -521,7 +521,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
       <ConfirmDialog
         open={!!benchmarkConfirm}
         title="Clear Test Data"
-        message={<p className="text-xs text-slate-600">Clear test and benchmark datasets safely?</p>}
+        message={<p className="text-xs text-slate-600 dark:text-slate-300">Clear test and benchmark datasets safely?</p>}
         confirmLabel="Clear Test Data"
         onConfirm={handleClearBenchmark}
         onCancel={() => setBenchmarkConfirm(null)}
@@ -541,21 +541,21 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
       />
 
       {/* Main Section */}
-      <div className="bg-white border border-slate-200 rounded-2xl shadow-xs">
+      <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-xs">
         <div
           role="button"
           tabIndex={0}
           onClick={() => setExpanded(!expanded)}
           onKeyDown={(e) => { if (e.key === "Enter" || e.key === " ") { e.preventDefault(); setExpanded(!expanded); } }}
-          className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-50/50 rounded-t-2xl transition-colors cursor-pointer select-none"
+          className="w-full flex items-center justify-between p-5 text-left hover:bg-slate-50/50 dark:hover:bg-slate-800/50 rounded-t-2xl transition-colors cursor-pointer select-none"
         >
           <div className="flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-indigo-50 flex items-center justify-center">
-              <Database className="w-5 h-5 text-indigo-600" />
+            <div className="w-9 h-9 rounded-xl bg-indigo-50 dark:bg-indigo-950 flex items-center justify-center">
+              <Database className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
             </div>
             <div>
-              <h3 className="text-sm font-bold text-slate-900">Dataset Management</h3>
-              <p className="text-[11px] text-slate-500 mt-0.5">
+              <h3 className="text-sm font-bold text-slate-900 dark:text-slate-100">Dataset Management</h3>
+              <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
                 {datasets.length} dataset{datasets.length !== 1 ? "s" : ""} · Multi-Year & Multi-Campus Analytics
               </p>
             </div>
@@ -563,7 +563,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
           <div className="flex items-center gap-2">
             <button
               onClick={(e) => { e.stopPropagation(); fetchData(); }}
-              className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-400 transition-colors"
+              className="p-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 transition-colors"
               title="Refresh"
             >
               <RefreshCw className={`w-4 h-4 ${loading ? "animate-spin" : ""}`} />
@@ -573,15 +573,15 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
         </div>
 
         {expanded && (
-          <div className="border-t border-slate-100">
+          <div className="border-t border-slate-100 dark:border-slate-800">
             {successMsg && (
-              <div className="mx-5 mt-4 p-3 bg-emerald-50 border border-emerald-100 rounded-xl text-xs text-emerald-700 flex items-center gap-2">
+              <div className="mx-5 mt-4 p-3 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-100 dark:border-emerald-800 rounded-xl text-xs text-emerald-700 dark:text-emerald-300 flex items-center gap-2">
                 <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
                 {successMsg}
               </div>
             )}
             {error && (
-              <div className="mx-5 mt-4 p-3 bg-red-50 border border-red-100 rounded-xl text-xs text-red-700 flex items-center gap-2">
+              <div className="mx-5 mt-4 p-3 bg-red-50 dark:bg-red-950/40 border border-red-100 dark:border-red-800 rounded-xl text-xs text-red-700 dark:text-red-300 flex items-center gap-2">
                 <AlertTriangle className="w-4 h-4 text-red-500 shrink-0" />
                 {error}
                 <button onClick={() => setError(null)} className="ml-auto text-red-400 hover:text-red-600">
@@ -611,14 +611,14 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
 
               return (
                 <>
-                  <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50">
+                  <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-800/50">
                     <div className="flex flex-wrap gap-2">
                       <button
                         onClick={() => setFilterCategory("RAW")}
                         className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
                           filterCategory === "RAW"
                             ? "bg-blue-600 text-white shadow-xs"
-                            : "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                            : "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-700 hover:bg-blue-100 dark:hover:bg-blue-900"
                         }`}
                       >
                         <span className={`w-2 h-2 rounded-full ${filterCategory === "RAW" ? "bg-white" : "bg-blue-500"}`}></span>
@@ -629,7 +629,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                         className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
                           filterCategory === "DIMENSION"
                             ? "bg-purple-600 text-white shadow-xs"
-                            : "bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
+                            : "bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700 hover:bg-purple-100 dark:hover:bg-purple-900"
                         }`}
                       >
                         <span className={`w-2 h-2 rounded-full ${filterCategory === "DIMENSION" ? "bg-white" : "bg-purple-500"}`}></span>
@@ -640,7 +640,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                         className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
                           filterCategory === "TARGET"
                             ? "bg-amber-600 text-white shadow-xs"
-                            : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                            : "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-700 hover:bg-amber-100 dark:hover:bg-amber-900"
                         }`}
                       >
                         <span className={`w-2 h-2 rounded-full ${filterCategory === "TARGET" ? "bg-white" : "bg-amber-500"}`}></span>
@@ -670,9 +670,9 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                   </div>
 
                   {filterCategory === "TARGET" && (
-                    <div className="px-5 py-2.5 bg-amber-50/70 border-b border-amber-100/80 flex items-center justify-between text-[11px] text-amber-900">
+                    <div className="px-5 py-2.5 bg-amber-50/70 dark:bg-amber-950/40 border-b border-amber-100/80 dark:border-amber-800/60 flex items-center justify-between text-[11px] text-amber-900 dark:text-amber-200">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold px-2 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] uppercase tracking-wide">
+                        <span className="font-bold px-2 py-0.5 rounded bg-amber-100 dark:bg-amber-900 text-amber-800 dark:text-amber-200 text-[10px] uppercase tracking-wide">
                           Target Master Rule
                         </span>
                         <span>Strictly <strong>ONE active Target master file</strong> (multi-sheet: Admission, Lead, CUCET targets). Row-level target matching by Date, Month, Campus, and Target For.</span>
@@ -680,9 +680,9 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                     </div>
                   )}
                   {filterCategory === "DIMENSION" && (
-                    <div className="px-5 py-2.5 bg-purple-50/70 border-b border-purple-100/80 flex items-center justify-between text-[11px] text-purple-900">
+                    <div className="px-5 py-2.5 bg-purple-50/70 dark:bg-purple-950/40 border-b border-purple-100/80 dark:border-purple-800/60 flex items-center justify-between text-[11px] text-purple-900 dark:text-purple-200">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold px-2 py-0.5 rounded bg-purple-100 text-purple-800 text-[10px] uppercase tracking-wide">
+                        <span className="font-bold px-2 py-0.5 rounded bg-purple-100 dark:bg-purple-900 text-purple-800 dark:text-purple-200 text-[10px] uppercase tracking-wide">
                           Dimension Master Rule
                         </span>
                         <span>Strictly <strong>ONE active Dimension master file</strong>. Multi-sheet reference tables applied universally across all reporting periods.</span>
@@ -690,9 +690,9 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                     </div>
                   )}
                   {filterCategory === "RAW" && (
-                    <div className="px-5 py-2.5 bg-blue-50/70 border-b border-blue-100/80 flex items-center justify-between text-[11px] text-blue-900">
+                    <div className="px-5 py-2.5 bg-blue-50/70 dark:bg-blue-950/40 border-b border-blue-100/80 dark:border-blue-800/60 flex items-center justify-between text-[11px] text-blue-900 dark:text-blue-200">
                       <div className="flex items-center gap-2">
-                        <span className="font-bold px-2 py-0.5 rounded bg-blue-100 text-blue-800 text-[10px] uppercase tracking-wide">
+                        <span className="font-bold px-2 py-0.5 rounded bg-blue-100 dark:bg-blue-900 text-blue-800 dark:text-blue-200 text-[10px] uppercase tracking-wide">
                           RAW CRM Multi-Dataset Rule
                         </span>
                         <span>Multiple RAW datasets <strong>coexist across Academic Years and Campuses</strong>. Replacement occurs only for matching (Academic Year, Campus).</span>
@@ -703,7 +703,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                   <div className="overflow-x-auto">
                     <table className="w-full text-xs">
                       <thead>
-                        <tr className="bg-slate-50 text-slate-500 border-b border-slate-100">
+                        <tr className="bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-b border-slate-100 dark:border-slate-700">
                           <th className="text-left py-2.5 px-5 font-semibold uppercase tracking-wider">Dataset Name</th>
                           <th className="text-left py-2.5 px-3 font-semibold uppercase tracking-wider">Type</th>
                           <th className="text-left py-2.5 px-3 font-semibold uppercase tracking-wider">Campus</th>
@@ -713,9 +713,12 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                           <th className="text-right py-2.5 px-5 font-semibold uppercase tracking-wider">Actions</th>
                         </tr>
                       </thead>
-                      <tbody className="divide-y divide-slate-50">
+                      <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                         {visibleDatasets.map((ds) => {
-                          const isEnabled = bool(ds.is_analytics_enabled || ds.is_active);
+                          const isProductionReady = (ds.row_count ?? 0) > 0 && ds.status === "completed";
+                          const isEnabled = Boolean(ds.is_analytics_enabled && isProductionReady);
+                          const isIncomplete = ds.status === "initiated" || (ds.row_count ?? 0) === 0;
+                          const isFailed = ds.status === "failed";
                           const wbType = (ds.workbook_type || "RAW").toUpperCase();
                           const isDimension = wbType === "DIMENSION";
                           const isTarget = wbType === "TARGET";
@@ -724,45 +727,66 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                           const periodDisplay = isDimension ? "Reference" : isTarget ? "Target Master" : String(ds.academic_year || ds.academic_label || "Unspecified");
 
                         return (
-                          <tr key={ds.id} className={`transition-colors ${isEnabled ? "bg-indigo-50/20" : "hover:bg-slate-50/50"}`}>
-                            <td className="py-3 px-5 font-semibold text-slate-800 truncate max-w-[220px]">
+                          <tr key={ds.id} className={`transition-colors ${isEnabled ? "bg-indigo-50/20 dark:bg-indigo-950/20" : "hover:bg-slate-50/50 dark:hover:bg-slate-800/50"}`}>
+                            <td className="py-3 px-5 font-semibold text-slate-800 dark:text-slate-200 truncate max-w-[220px]">
                               {ds.dataset_name || ds.original_filename}
                             </td>
                             <td className="py-3 px-3">
                               <span className={`px-2 py-0.5 rounded-md text-[10px] font-extrabold uppercase border ${
                                 isDimension
-                                  ? "bg-purple-50 text-purple-700 border-purple-200"
+                                  ? "bg-purple-50 dark:bg-purple-950 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-700"
                                   : isTarget
-                                  ? "bg-amber-50 text-amber-700 border-amber-200"
-                                  : "bg-blue-50 text-blue-700 border-blue-200"
+                                  ? "bg-amber-50 dark:bg-amber-950 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-700"
+                                  : "bg-blue-50 dark:bg-blue-950 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-700"
                               }`}>
                                 {wbType}
                               </span>
                             </td>
                             <td className="py-3 px-3">
-                              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 text-slate-700">
+                              <span className="px-2 py-0.5 rounded-md text-[11px] font-bold bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300">
                                 {campusDisplay}
                               </span>
                             </td>
-                            <td className="py-3 px-3 font-semibold text-indigo-700">
-                              {periodDisplay}
+                            <td className="py-3 px-3 font-semibold text-indigo-700 dark:text-indigo-400">
+                              <div className="flex flex-col">
+                                <span>{periodDisplay}</span>
+                                {!isDimension && !isTarget && isProductionReady && (
+                                  <span className={`text-[10px] font-bold ${ds.is_completed || (ds.months_covered && ds.months_covered.length >= 12) ? "text-emerald-600 dark:text-emerald-400" : "text-amber-600 dark:text-amber-400"}`}>
+                                    {ds.is_completed || (ds.months_covered && ds.months_covered.length >= 12)
+                                      ? "✓ 12/12 Months (Complete)"
+                                      : ds.months_covered && ds.months_covered.length > 0
+                                      ? `${ds.months_covered.length}/12 Months Ingested`
+                                      : "Active Period"}
+                                  </span>
+                                )}
+                              </div>
                             </td>
-                            <td className="py-3 px-3 text-right font-mono font-semibold text-slate-700">
+                            <td className="py-3 px-3 text-right font-mono font-semibold text-slate-700 dark:text-slate-300">
                               {(ds.row_count ?? 0).toLocaleString()}
                             </td>
                             <td className="py-3 px-3 text-center">
-                              <button
-                                onClick={() => handleToggleAnalytics(ds.id, isEnabled)}
-                                disabled={actionLoading === ds.id}
-                                className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all ${
-                                  isEnabled
-                                    ? "bg-emerald-100 text-emerald-800 border border-emerald-300 hover:bg-emerald-200"
-                                    : "bg-slate-100 text-slate-500 border border-slate-200 hover:bg-slate-200"
-                                }`}
-                              >
-                                {isEnabled ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <ToggleLeft className="w-3 h-3 text-slate-400" />}
-                                {isEnabled ? "ENABLED" : "DISABLED"}
-                              </button>
+                              {isFailed ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-red-100 dark:bg-red-950 text-red-800 dark:text-red-300 border border-red-300 dark:border-red-700">
+                                  <AlertTriangle className="w-3 h-3 text-red-600" /> FAILED
+                                </span>
+                              ) : isIncomplete ? (
+                                <span className="inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                  <Loader2 className="w-3 h-3 text-amber-600 animate-spin" /> INCOMPLETE
+                                </span>
+                              ) : (
+                                <button
+                                  onClick={() => handleToggleAnalytics(ds.id, isEnabled)}
+                                  disabled={actionLoading === ds.id}
+                                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full text-[10px] font-extrabold transition-all cursor-pointer ${
+                                    isEnabled
+                                      ? "bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 hover:bg-emerald-200 dark:hover:bg-emerald-900"
+                                      : "bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-700 hover:bg-slate-200 dark:hover:bg-slate-700"
+                                  }`}
+                                >
+                                  {isEnabled ? <CheckCircle2 className="w-3 h-3 text-emerald-600" /> : <ToggleLeft className="w-3 h-3 text-slate-400" />}
+                                  {isEnabled ? "ENABLED" : "DISABLED"}
+                                </button>
+                              )}
                             </td>
                             <td className="py-3 px-5 text-right">
                               <div className="flex items-center justify-end gap-1.5">
@@ -774,14 +798,14 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                                     setEditName(ds.dataset_name || ds.original_filename);
                                     setEditType((ds.workbook_type || "RAW").toUpperCase());
                                   }}
-                                  className="p-1 rounded-lg text-slate-600 hover:bg-slate-100 border border-slate-200"
+                                  className="p-1 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 border border-slate-200 dark:border-slate-700"
                                   title="Edit metadata"
                                 >
                                   <Edit2 className="w-3.5 h-3.5" />
                                 </button>
                                 <button
                                   onClick={() => setDeleteConfirm({ id: ds.id, name: ds.dataset_name, period: ds.academic_label, rowCount: ds.row_count })}
-                                  className="px-2 py-1 rounded-lg text-[11px] font-semibold text-red-600 bg-red-50 border border-red-200 hover:bg-red-100"
+                                  className="px-2 py-1 rounded-lg text-[11px] font-semibold text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900"
                                 >
                                   Delete
                                 </button>
@@ -794,11 +818,11 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                   </table>
                 </div>
 
-                <div className="border-t border-slate-100 p-5 flex flex-wrap items-center gap-2">
+                <div className="border-t border-slate-100 dark:border-slate-800 p-5 flex flex-wrap items-center gap-2">
                   {allowReset && (
                     <button
                       onClick={() => setResetConfirm(true)}
-                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-red-50 text-red-700 border border-red-200 hover:bg-red-100"
+                      className="flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold bg-red-50 dark:bg-red-950 text-red-700 dark:text-red-300 border border-red-200 dark:border-red-800 hover:bg-red-100 dark:hover:bg-red-900"
                     >
                       <ShieldAlert className="w-3.5 h-3.5" />
                       Reset All Uploaded Data

@@ -206,84 +206,98 @@ def get_admissions_by_gender(
         ORDER BY 1, admissions DESC;
     """
     try:
-        db.execute(text("SET LOCAL jit = off;"))
-    except Exception:
-        pass
-    rows = db.execute(text(sql), params).fetchall()
+        try:
+            db.execute(text("SET LOCAL jit = off;"))
+        except Exception:
+            pass
+        rows = db.execute(text(sql), params).fetchall()
 
-    # Track discovered canonical genders dynamically
-    genders_found = set()
-    gender_totals: Dict[str, int] = {}
-    months_dict: Dict[str, Dict[str, Any]] = {}
+        # Track discovered canonical genders dynamically
+        genders_found = set()
+        gender_totals: Dict[str, int] = {}
+        months_dict: Dict[str, Dict[str, Any]] = {}
 
-    for r in rows:
-        m_key = str(r[0] or "")
-        if not m_key:
-            continue
-        g_name = str(r[1])
-        adm_count = int(r[2])
+        for r in rows:
+            m_key = str(r[0] or "")
+            if not m_key:
+                continue
+            g_name = str(r[1])
+            adm_count = int(r[2])
 
-        genders_found.add(g_name)
-        gender_totals[g_name] = gender_totals.get(g_name, 0) + adm_count
+            genders_found.add(g_name)
+            gender_totals[g_name] = gender_totals.get(g_name, 0) + adm_count
 
-        if m_key not in months_dict:
-            m_parts = m_key.split("-")
-            m_num = m_parts[1] if len(m_parts) > 1 else "01"
-            y_num = m_parts[0] if len(m_parts) > 0 else str(year)
-            short_name = MONTH_NAMES.get(m_num, m_num)
-            months_dict[m_key] = {
-                "month_key": m_key,
-                "month": short_name,
-                "month_display": f"{short_name} {y_num}",
-                "total": 0,
-            }
+            if m_key not in months_dict:
+                m_parts = m_key.split("-")
+                m_num = m_parts[1] if len(m_parts) > 1 else "01"
+                y_num = m_parts[0] if len(m_parts) > 0 else str(year)
+                short_name = MONTH_NAMES.get(m_num, m_num)
+                months_dict[m_key] = {
+                    "month_key": m_key,
+                    "month": short_name,
+                    "month_display": f"{short_name} {y_num}",
+                    "total": 0,
+                }
 
-        months_dict[m_key][g_name] = adm_count
-        months_dict[m_key]["total"] += adm_count
+            months_dict[m_key][g_name] = adm_count
+            months_dict[m_key]["total"] += adm_count
 
-    # Prefer canonical order: Male, Female, then others
-    ordered_genders = []
-    if "Male" in genders_found:
-        ordered_genders.append("Male")
-    if "Female" in genders_found:
-        ordered_genders.append("Female")
-    for g in sorted(genders_found):
-        if g not in ordered_genders:
-            ordered_genders.append(g)
+        # Prefer canonical order: Male, Female, then others
+        ordered_genders = []
+        if "Male" in genders_found:
+            ordered_genders.append("Male")
+        if "Female" in genders_found:
+            ordered_genders.append("Female")
+        for g in sorted(genders_found):
+            if g not in ordered_genders:
+                ordered_genders.append(g)
 
-    # Sort months chronologically
-    sorted_months = sorted(months_dict.values(), key=lambda x: x["month_key"])
+        # Sort months chronologically
+        sorted_months = sorted(months_dict.values(), key=lambda x: x["month_key"])
 
-    # Ensure all gender keys exist with 0 default in each month item
-    for m in sorted_months:
+        # Ensure all gender keys exist with 0 default in each month item
+        for m in sorted_months:
+            for g in ordered_genders:
+                if g not in m:
+                    m[g] = 0
+
+        total_admissions = sum(gender_totals.values())
+
+        # Build summary list for backwards compatibility
+        genders_summary = []
         for g in ordered_genders:
-            if g not in m:
-                m[g] = 0
+            cnt = gender_totals.get(g, 0)
+            share = round((cnt / total_admissions * 100), 2) if total_admissions > 0 else 0.0
+            genders_summary.append({
+                "gender": g,
+                "admissions": cnt,
+                "share_pct": share,
+            })
 
-    total_admissions = sum(gender_totals.values())
-
-    # Build summary list for backwards compatibility
-    genders_summary = []
-    for g in ordered_genders:
-        cnt = gender_totals.get(g, 0)
-        share = round((cnt / total_admissions * 100), 2) if total_admissions > 0 else 0.0
-        genders_summary.append({
-            "gender": g,
-            "admissions": cnt,
-            "share_pct": share,
-        })
-
-    return {
-        "status": "success",
-        "academic_year": year,
-        "campus": campus or "All",
-        "total_admissions": total_admissions,
-        "gender_categories": ordered_genders,
-        "months": sorted_months,
-        "genders": genders_summary,
-        "from_date": from_date,
-        "to_date": to_date,
-    }
+        return {
+            "status": "success",
+            "academic_year": year,
+            "campus": campus or "All",
+            "total_admissions": total_admissions,
+            "gender_categories": ordered_genders,
+            "months": sorted_months,
+            "genders": genders_summary,
+            "from_date": from_date,
+            "to_date": to_date,
+        }
+    except Exception as e:
+        logger.warning("Error fetching admissions by gender for year=%s: %s", year, e)
+        return {
+            "status": "success",
+            "academic_year": year,
+            "campus": campus or "All",
+            "total_admissions": 0,
+            "gender_categories": [],
+            "months": [],
+            "genders": [],
+            "from_date": from_date,
+            "to_date": to_date,
+        }
 
 
 def get_admissions_by_india_state(

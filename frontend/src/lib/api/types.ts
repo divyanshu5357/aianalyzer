@@ -724,6 +724,10 @@ export interface AdminDatasetItem {
   workbook_type?: "RAW" | "DIMENSION" | "TARGET" | string | null;
   upload_version: number | null;
   file_checksum: string | null;
+  start_month?: number | null;
+  end_month?: number | null;
+  months_covered?: number[] | null;
+  is_completed?: boolean;
   quality_score: number | null;
   created_at: string;
   category: "production" | "test_benchmark";

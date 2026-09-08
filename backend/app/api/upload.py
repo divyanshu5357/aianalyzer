@@ -95,6 +95,12 @@ class UploadCompleteRequest(BaseModel):
     job_id: str
     files: list[UploadCompleteFile]
 
+class UploadAbortRequest(BaseModel):
+    job_id: Optional[str] = None
+    dataset_id: Optional[str] = None
+    filename: Optional[str] = None
+    reason: Optional[str] = None
+
 
 
 # ---------------------------------------------------------------------------
@@ -386,7 +392,7 @@ def _detect_and_check(
         }
 
 
-def _process_job_background(job_id: str, saved_files_info: list[dict]):
+def _process_direct_upload_background(job_id: str, saved_files_info: list[dict]):
     """Background task to run expensive ingestion steps asynchronously."""
     from app.database.connection import SessionLocal
     from app.ingestion.job_tracker import mark_job_completed, mark_job_failed
@@ -555,7 +561,7 @@ async def upload_datasets(
                 db=db,
             )
             db.commit()
-            background_tasks.add_task(_process_job_background, job_id, saved_files_info)
+            background_tasks.add_task(_process_direct_upload_background, job_id, saved_files_info)
             return {
                 "status": "processing",
                 "job_id": job_id,
@@ -756,20 +762,38 @@ def initiate_upload(body: UploadInitiateRequest, db: Session = Depends(get_db)):
                 detail=f"S3 storage unavailable: {e}. Please use direct file upload.",
             )
 
-        # Pre-seed system.datasets row with user-selected metadata
+        # Clean up any previous uncompleted/stale initiated records for this filename to prevent duplicate accumulation
+        try:
+            db.execute(
+                text("""
+                    DELETE FROM system.datasets
+                    WHERE status IN ('initiated', 'failed')
+                      AND COALESCE(row_count, 0) = 0
+                      AND is_analytics_enabled = FALSE
+                      AND original_filename = :orig
+                """),
+                {"orig": file_info.filename},
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+
+        # Pre-seed system.datasets row with user-selected metadata (not active until ingestion finishes)
         try:
             db.execute(
                 text("""
                     INSERT INTO system.datasets (
                         id, dataset_name, original_filename, dataset_type, 
-                        academic_year, campus_name, workbook_type, status, is_active, is_analytics_enabled
+                        academic_year, campus_name, workbook_type, status, is_active, is_analytics_enabled, row_count
                     ) VALUES (
                         :id, :name, :orig, :dtype, 
-                        :year, :campus, :wb_type, 'initiated', TRUE, TRUE
+                        :year, :campus, :wb_type, 'initiated', FALSE, FALSE, 0
                     ) ON CONFLICT (id) DO UPDATE SET
                         academic_year = COALESCE(EXCLUDED.academic_year, system.datasets.academic_year),
                         campus_name = COALESCE(EXCLUDED.campus_name, system.datasets.campus_name),
-                        workbook_type = EXCLUDED.workbook_type
+                        workbook_type = EXCLUDED.workbook_type,
+                        is_active = FALSE,
+                        is_analytics_enabled = FALSE
                 """),
                 {
                     "id": dataset_id,
@@ -799,7 +823,7 @@ def initiate_upload(body: UploadInitiateRequest, db: Session = Depends(get_db)):
     }
 
 
-def _process_job_background(job_id: str, files_info: list):
+def _process_storage_upload_background(job_id: str, files_info: list):
     from app.ingestion.async_worker import run_async_ingestion_job
     from app.database.connection import SessionLocal
 
@@ -858,7 +882,7 @@ def complete_upload(
             "s3_key": f.s3_key
         })
 
-    background_tasks.add_task(_process_job_background, body.job_id, saved_files_info)
+    background_tasks.add_task(_process_storage_upload_background, body.job_id, saved_files_info)
     
     return {
         "status": "processing",
@@ -869,23 +893,88 @@ def complete_upload(
 
 
 @router.put("/upload/storage-direct")
+@router.post("/upload/storage-direct")
 async def direct_storage_upload(
     request: Request,
     key: str = Query(...),
-    file: Optional[UploadFile] = File(None),
 ):
-    """Direct upload endpoint for storage mode (supports raw byte body or multipart form)."""
+    """Direct upload endpoint for storage mode (supports streaming raw byte body or multipart form)."""
+    import urllib.parse
+    import tempfile
+    import os
     from app.storage.service import get_storage_provider
+
+    clean_key = urllib.parse.unquote(key).strip()
+    if not clean_key or ".." in clean_key or clean_key.startswith("/") or clean_key.startswith("\\"):
+        raise HTTPException(status_code=400, detail="Invalid storage key path.")
+
+    content_type = request.headers.get("content-type", "application/octet-stream")
     provider = get_storage_provider()
-    if file is not None:
-        content = await file.read()
-        content_type = file.content_type
-    else:
-        content = await request.body()
-        content_type = request.headers.get("content-type", "application/octet-stream")
-    
-    provider.put_object(key, content, content_type=content_type)
-    return {"status": "uploaded", "key": key}
+
+    try:
+        if "multipart/form-data" in content_type:
+            form = await request.form()
+            file = form.get("file")
+            if not file or not hasattr(file, "file"):
+                raise HTTPException(status_code=400, detail="No file field found in multipart payload.")
+            provider.put_object(clean_key, file.file, content_type=file.content_type)
+        else:
+            # Stream raw body chunks to a temporary file on disk to prevent RAM exhaustion / OOM
+            with tempfile.NamedTemporaryFile(delete=False, prefix="storage_upload_") as tmp_file:
+                tmp_path = tmp_file.name
+                async for chunk in request.stream():
+                    if chunk:
+                        tmp_file.write(chunk)
+                tmp_file.flush()
+
+            try:
+                with open(tmp_path, "rb") as f:
+                    provider.put_object(clean_key, f, content_type=content_type)
+            finally:
+                if os.path.exists(tmp_path):
+                    try:
+                        os.unlink(tmp_path)
+                    except Exception:
+                        pass
+
+        return {"status": "uploaded", "key": clean_key}
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.exception("Storage direct upload failed for key=%s: %s", clean_key, exc)
+        raise HTTPException(status_code=500, detail=f"Storage upload failed: {type(exc).__name__}")
+
+
+@router.post("/upload/abort")
+def abort_upload(body: UploadAbortRequest, db: Session = Depends(get_db)):
+    """Clean up incomplete initiated upload records when upload fails or is cancelled."""
+    try:
+        if body.dataset_id:
+            db.execute(
+                text("""
+                    DELETE FROM system.datasets
+                    WHERE id = :ds_id
+                      AND status IN ('initiated', 'failed')
+                      AND COALESCE(row_count, 0) = 0
+                """),
+                {"ds_id": body.dataset_id},
+            )
+            db.commit()
+        elif body.filename:
+            db.execute(
+                text("""
+                    DELETE FROM system.datasets
+                    WHERE original_filename = :fname
+                      AND status IN ('initiated', 'failed')
+                      AND COALESCE(row_count, 0) = 0
+                """),
+                {"fname": body.filename},
+            )
+            db.commit()
+    except Exception as exc:
+        logger.warning("Failed to clean up aborted upload: %s", exc)
+        db.rollback()
+    return {"status": "aborted"}
 
 
 @router.get("/upload/{job_id}/status")

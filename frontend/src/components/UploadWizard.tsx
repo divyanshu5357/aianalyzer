@@ -28,6 +28,7 @@ import {
   initiateStorageUpload,
   completeStorageUpload,
   uploadFileToStorageDirect,
+  abortStorageUpload,
   getIngestionJobStatus,
   classifyWorkbook,
   detectMultisheetRelationships,
@@ -144,19 +145,20 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
     if (!filename) return;
     const fLower = filename.toLowerCase();
 
-    // Auto-detect type from filename
+    // User's explicit workbook type selection is authoritative.
+    // Filename detection only issues a hint/notice if there is an apparent mismatch.
     if (fLower.includes("dimension")) {
-      setSelectedType("dimension");
-      setUploadMode("replacement");
-      setDetectedTypeNotice("Auto-detected Dimension Master from filename");
+      if (selectedType !== "dimension") {
+        setDetectedTypeNotice("Note: Filename suggests Dimension Master workbook.");
+      }
     } else if (fLower.includes("target") || fLower.includes("tgt")) {
-      setSelectedType("target");
-      setUploadMode("replacement");
-      setDetectedTypeNotice("Auto-detected Target Master from filename");
+      if (selectedType !== "target") {
+        setDetectedTypeNotice("Note: Filename suggests Target Master workbook.");
+      }
     } else if (fLower.includes("raw") || fLower.includes("lead") || fLower.includes("crm")) {
-      setSelectedType("raw_data");
-      setUploadMode("monthly");
-      setDetectedTypeNotice("Auto-detected RAW CRM Data from filename");
+      if (selectedType !== "raw_data") {
+        setDetectedTypeNotice("Note: Filename suggests RAW CRM dataset.");
+      }
     }
 
     const yearMatch = filename.match(/(?<![0-9])(20\d{2})(?![0-9])/);
@@ -166,10 +168,12 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
         setSelectedYear(yr);
       }
     }
-    if (fLower.includes("mohali")) {
-      setSelectedCampus("Mohali");
-    } else if (fLower.includes("unnao")) {
-      setSelectedCampus("Unnao");
+    if (selectedType === "raw_data") {
+      if (fLower.includes("mohali")) {
+        setSelectedCampus("Mohali");
+      } else if (fLower.includes("unnao")) {
+        setSelectedCampus("Unnao");
+      }
     }
   };
 
@@ -191,25 +195,30 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
   };
 
   const startUpload = async () => {
-    if (!selectedFile) return;
+    if (!selectedFile || isUploading) return;
 
     setIsUploading(true);
     setUploadError(null);
     setUploadProgress(10);
 
+    let currentDsId: string | null = null;
+    let currentJobId: string | null = null;
+
     try {
-      // 1. Initiate session with dynamic metadata
+      // 1. Initiate session with dynamic metadata (only relevant fields based on workbook type)
       const initRes = await initiateStorageUpload(
         [{ filename: selectedFile.name, content_type: selectedFile.type || "application/octet-stream" }],
         selectedType,
         uploadMode,
         selectedYear,
-        selectedMonth,
-        selectedCampus
+        selectedType === "raw_data" ? selectedMonth : undefined,
+        selectedType === "raw_data" ? selectedCampus : undefined
       );
 
+      currentJobId = initRes.job_id;
       setCompletedJobId(initRes.job_id);
       const file_session = initRes.files[0];
+      currentDsId = file_session.dataset_id;
       setDatasetId(file_session.dataset_id);
       setUploadProgress(40);
 
@@ -228,6 +237,14 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
       runInspection(file_session.dataset_id, selectedFile.name);
     } catch (err: any) {
       console.error("[UPLOAD WIZARD ERROR]", err);
+      // Clean up incomplete temporary initiated dataset so no 0-row ghost datasets remain
+      if (currentDsId || currentJobId) {
+        try {
+          await abortStorageUpload(currentDsId || undefined, currentJobId || undefined, selectedFile.name);
+        } catch {
+          // ignore abort failure
+        }
+      }
       setUploadError(err.message || "Failed to upload file");
       setIsUploading(false);
     }
@@ -373,7 +390,7 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
   };
 
   return (
-    <div className={`w-full max-w-5xl mx-auto rounded-3xl border shadow-xl transition-all ${isDark ? "bg-slate-900 border-slate-800 text-slate-100" : "bg-white border-slate-200 text-slate-900"}`}>
+    <div className="w-full max-w-5xl mx-auto rounded-3xl border shadow-xl transition-all bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-800 text-slate-900 dark:text-slate-100">
       {/* Wizard Header & 6-Step Progress Tracker */}
       <div className="p-6 border-b border-slate-200/60 dark:border-slate-800">
         <div className="flex items-center justify-between mb-6">
@@ -409,9 +426,7 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
                     ? "bg-indigo-600 text-white ring-4 ring-indigo-500/20"
                     : currentStep > s.num
                     ? "bg-emerald-500 text-white"
-                    : isDark
-                    ? "bg-slate-800 text-slate-500"
-                    : "bg-slate-100 text-slate-400"
+                    : "bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500"
                 }`}
               >
                 {currentStep > s.num ? <Check className="w-4 h-4" /> : s.num}
@@ -469,9 +484,7 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
                 className={`cursor-pointer p-6 rounded-2xl border-2 transition-all hover:shadow-lg flex flex-col justify-between ${
                   selectedType === "raw_data"
                     ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20"
-                    : isDark
-                    ? "border-slate-800 bg-slate-800/40"
-                    : "border-slate-200 bg-white"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40"
                 }`}
               >
                 <div>
@@ -503,9 +516,7 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
                 className={`cursor-pointer p-6 rounded-2xl border-2 transition-all hover:shadow-lg flex flex-col justify-between ${
                   selectedType === "dimension"
                     ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20"
-                    : isDark
-                    ? "border-slate-800 bg-slate-800/40"
-                    : "border-slate-200 bg-white"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40"
                 }`}
               >
                 <div>
@@ -537,9 +548,7 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
                 className={`cursor-pointer p-6 rounded-2xl border-2 transition-all hover:shadow-lg flex flex-col justify-between ${
                   selectedType === "target"
                     ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20"
-                    : isDark
-                    ? "border-slate-800 bg-slate-800/40"
-                    : "border-slate-200 bg-white"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40"
                 }`}
               >
                 <div>
@@ -713,20 +722,33 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
               </div>
             )}
 
-            {/* Target Period & Campus Scope Configuration */}
+            {/* Dynamic Scope Configuration based on Workbook Purpose */}
             <div className="bg-slate-50 dark:bg-slate-800/80 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-3">
               <div className="flex items-center justify-between">
                 <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
-                  Target Period & Campus Scope
+                  {selectedType === "dimension"
+                    ? "Dimension Master Scope"
+                    : selectedType === "target"
+                    ? "Target Master Scope"
+                    : "RAW CRM Period & Campus Scope"}
                 </span>
                 <span className="text-[11px] text-slate-600 dark:text-slate-300 font-medium">
-                  Auto-detected from filename or customize below:
+                  {selectedType === "dimension"
+                    ? "Universal reference master for all reporting"
+                    : selectedType === "target"
+                    ? "Target benchmark master across sheets"
+                    : "Specify Academic Year, Campus, and Month for CRM leads"}
                 </span>
               </div>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+
+              <div className={`grid gap-3 ${selectedType === "raw_data" ? "grid-cols-1 sm:grid-cols-3" : "grid-cols-1 sm:grid-cols-2 max-w-lg"}`}>
                 <div>
                   <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Academic Year (Period)
+                    {selectedType === "dimension"
+                      ? "Effective Academic Year"
+                      : selectedType === "target"
+                      ? "Benchmark Academic Year"
+                      : "Academic Year (Period)"}
                   </label>
                   <select
                     value={selectedYear}
@@ -740,38 +762,43 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
                     ))}
                   </select>
                 </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Campus Scope
-                  </label>
-                  <select
-                    value={selectedCampus}
-                    onChange={(e) => setSelectedCampus(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-                  >
-                    {availableCampuses.map((c) => (
-                      <option key={c} value={c}>
-                        {c}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-                <div>
-                  <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Data Month Scope
-                  </label>
-                  <select
-                    value={selectedMonth}
-                    onChange={(e) => setSelectedMonth(e.target.value)}
-                    className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
-                  >
-                    {availableMonths.map((m) => (
-                      <option key={m} value={m}>
-                        {m}
-                      </option>
-                    ))}
-                  </select>
-                </div>
+
+                {selectedType === "raw_data" && (
+                  <>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Campus Scope
+                      </label>
+                      <select
+                        value={selectedCampus}
+                        onChange={(e) => setSelectedCampus(e.target.value)}
+                        className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                      >
+                        {availableCampuses.map((c) => (
+                          <option key={c} value={c}>
+                            {c}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Data Month Scope
+                      </label>
+                      <select
+                        value={selectedMonth}
+                        onChange={(e) => setSelectedMonth(e.target.value)}
+                        className="w-full px-3 py-2 text-xs font-bold rounded-xl border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-900 text-slate-900 dark:text-white focus:ring-2 focus:ring-indigo-500"
+                      >
+                        {availableMonths.map((m) => (
+                          <option key={m} value={m}>
+                            {m}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 

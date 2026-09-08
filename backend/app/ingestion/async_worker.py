@@ -260,10 +260,14 @@ def run_async_ingestion_job(
                 if months_covered:
                     start_month = min(months_covered)
                     end_month = max(months_covered)
+                    is_completed_12m = len(months_covered) >= 12
                     db.execute(
                         text("""
                             UPDATE system.datasets
-                            SET start_month = :s_m, end_month = :e_m, months_covered = CAST(:m_cov AS jsonb)
+                            SET start_month = :s_m, 
+                                end_month = :e_m, 
+                                months_covered = CAST(:m_cov AS jsonb),
+                                is_period_active = :period_active
                             WHERE id = :ds_id
                         """),
                         {
@@ -271,24 +275,47 @@ def run_async_ingestion_job(
                             "s_m": start_month,
                             "e_m": end_month,
                             "m_cov": json.dumps(months_covered),
+                            "period_active": False if is_completed_12m else True,
                         },
                     )
                     db.commit()
         except Exception as cov_err:
             logger.warning("Failed to calculate coverage metadata for %s: %s", dataset_id, cov_err)
 
-        # Activate dataset for its scope & enable analytics
-        try:
+        # Activate dataset for its scope & enable analytics only if valid data was ingested
+        final_row_count = normalized_rows if normalized_rows > 0 else staged_rows
+        if final_row_count > 0:
+            try:
+                db.execute(
+                    text("""
+                        UPDATE system.datasets 
+                        SET status = 'completed',
+                            row_count = :row_count,
+                            analytics_status = 'AGGREGATING' 
+                        WHERE id = :ds_id
+                    """),
+                    {"ds_id": str(dataset_id), "row_count": final_row_count},
+                )
+                db.commit()
+                from app.database.repository import set_active_dataset, enable_dataset_analytics
+                enable_dataset_analytics(db, str(dataset_id), force=True)
+                set_active_dataset(db, str(dataset_id), allow_benchmark=True)
+            except Exception as act_err:
+                logger.warning("Failed to auto-activate dataset %s post-ingestion: %s", dataset_id, act_err)
+        else:
+            logger.warning("Dataset %s has 0 rows post-ingestion; leaving inactive", dataset_id)
             db.execute(
-                text("UPDATE system.datasets SET analytics_status = 'AGGREGATING' WHERE id = :ds_id"),
+                text("""
+                    UPDATE system.datasets 
+                    SET status = 'failed', 
+                        is_active = FALSE, 
+                        is_analytics_enabled = FALSE, 
+                        analytics_status = 'FAILED' 
+                    WHERE id = :ds_id
+                """),
                 {"ds_id": str(dataset_id)},
             )
             db.commit()
-            from app.database.repository import set_active_dataset, enable_dataset_analytics
-            enable_dataset_analytics(db, str(dataset_id), force=True)
-            set_active_dataset(db, str(dataset_id), allow_benchmark=True)
-        except Exception as act_err:
-            logger.warning("Failed to auto-activate dataset %s post-ingestion: %s", dataset_id, act_err)
 
         try:
             from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped
@@ -338,10 +365,17 @@ def run_async_ingestion_job(
         err_msg = str(e)
         mark_job_failed(job_id, error=err_msg, db=db)
 
-        # Update dataset status in system.datasets to failed
+        # Update dataset status in system.datasets to failed and guarantee it is not active
         try:
             db.execute(
-                text("UPDATE system.datasets SET status = 'failed', analytics_status = 'FAILED' WHERE id = :ds_id"),
+                text("""
+                    UPDATE system.datasets 
+                    SET status = 'failed', 
+                        analytics_status = 'FAILED', 
+                        is_active = FALSE, 
+                        is_analytics_enabled = FALSE 
+                    WHERE id = :ds_id
+                """),
                 {"ds_id": str(dataset_id)},
             )
             db.commit()

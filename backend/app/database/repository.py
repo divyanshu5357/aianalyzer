@@ -241,7 +241,7 @@ def set_active_dataset(db: Session, dataset_id, *, allow_benchmark: bool = False
 def get_active_dataset(db: Session):
     """
     Retrieve the active dataset ID from system.datasets.
-    Restricted strictly to active/enabled RAW workbooks.
+    Restricted strictly to completed, valid RAW workbooks with non-zero rows.
     Returns None if no raw dataset is explicitly active or enabled.
     """
     return db.execute(
@@ -249,7 +249,10 @@ def get_active_dataset(db: Session):
             """
             SELECT id
             FROM system.datasets
-            WHERE (is_active = TRUE OR is_analytics_enabled = TRUE) AND workbook_type = 'RAW'
+            WHERE (is_active = TRUE OR is_analytics_enabled = TRUE)
+              AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
+              AND status = 'completed'
+              AND COALESCE(row_count, 0) > 0
             ORDER BY is_active DESC, is_analytics_enabled DESC, created_at DESC
             LIMIT 1
             """
@@ -261,6 +264,7 @@ def get_active_dataset_info(db: Session):
     """
     Retrieve full metadata for the primary enabled active RAW dataset.
     Falls back to any enabled RAW dataset if none explicitly active.
+    Only considers completed datasets with valid non-zero rows.
     """
     row = db.execute(
         text(
@@ -274,6 +278,8 @@ def get_active_dataset_info(db: Session):
             LEFT JOIN system.data_quality_reports q ON q.dataset_id = d.id
             WHERE (d.is_analytics_enabled = TRUE OR d.is_active = TRUE)
               AND UPPER(COALESCE(d.workbook_type, 'RAW')) = 'RAW'
+              AND d.status = 'completed'
+              AND COALESCE(d.row_count, 0) > 0
             ORDER BY d.is_active DESC, d.is_analytics_enabled DESC, d.created_at DESC
             LIMIT 1
             """
@@ -307,7 +313,8 @@ def resolve_raw_dataset(
 ) -> tuple[Any, int, int]:
     """
     Dedicated RAW dataset resolver for actual leads, admissions, and conversion metrics.
-    Guarantees that DIMENSION and TARGET datasets are NEVER selected as RAW datasets.
+    Guarantees that DIMENSION and TARGET datasets are NEVER selected as RAW datasets,
+    and that incomplete/0-row datasets are never selected.
     """
     from datetime import datetime
     from app.agent.agent_service import get_active_dataset_years
@@ -319,6 +326,8 @@ def resolve_raw_dataset(
                 WHERE is_analytics_enabled = TRUE 
                   AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW' 
                   AND academic_year = :yr
+                  AND status = 'completed'
+                  AND COALESCE(row_count, 0) > 0
                 ORDER BY is_active DESC, created_at DESC
                 LIMIT 1
             """),

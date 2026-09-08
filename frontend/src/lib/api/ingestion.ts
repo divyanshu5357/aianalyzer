@@ -215,12 +215,38 @@ export async function uploadFileToStorageDirect(
       };
     }
     xhr.onload = () => {
-      if (xhr.status >= 200 && xhr.status < 300) resolve();
-      else reject(new Error(`Storage upload failed with status ${xhr.status}`));
+      if (xhr.status >= 200 && xhr.status < 300) {
+        resolve();
+      } else {
+        let msg = `Storage upload failed with status ${xhr.status}`;
+        try {
+          const res = JSON.parse(xhr.responseText);
+          if (res?.detail) {
+            msg = typeof res.detail === "string" ? res.detail : JSON.stringify(res.detail);
+          }
+        } catch {}
+        reject(new Error(msg));
+      }
     };
     xhr.onerror = () => reject(new Error("Network error during storage upload"));
     xhr.send(file);
   });
+}
+
+export async function abortStorageUpload(
+  datasetId?: string,
+  jobId?: string,
+  filename?: string
+): Promise<void> {
+  try {
+    await fetch(`${API_BASE_URL}/api/data/upload/abort`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ dataset_id: datasetId, job_id: jobId, filename }),
+    });
+  } catch (err) {
+    console.warn("Failed to notify server of aborted upload:", err);
+  }
 }
 
 export async function completeStorageUpload(

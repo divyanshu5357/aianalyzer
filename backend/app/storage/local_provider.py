@@ -97,12 +97,16 @@ class LocalStorageProvider(ObjectStorageProvider):
     def create_presigned_upload_url(
         self, key: str, expires_in: int = 3600, content_type: Optional[str] = None
     ) -> Dict[str, Any]:
+        import urllib.parse
+        encoded_key = urllib.parse.quote(key, safe="/")
         return {
-            "url": f"/api/data/upload/storage-direct?key={key}",
+            "url": f"/api/data/upload/storage-direct?key={encoded_key}",
             "method": "PUT",
             "headers": {"Content-Type": content_type} if content_type else {},
             "key": key,
         }
 
     def create_presigned_download_url(self, key: str, expires_in: int = 3600) -> str:
-        return f"/api/data/upload/storage-direct?key={key}"
+        import urllib.parse
+        encoded_key = urllib.parse.quote(key, safe="/")
+        return f"/api/data/upload/storage-direct?key={encoded_key}"

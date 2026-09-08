@@ -91,6 +91,9 @@ def ensure_all_database_tables(db: Session) -> None:
             ("month", "VARCHAR(50)"),
             ("month_num", "INT"),
             ("workbook_type", "VARCHAR(50) DEFAULT 'RAW'"),
+            ("start_month", "INT"),
+            ("end_month", "INT"),
+            ("months_covered", "JSONB DEFAULT '[]'::jsonb"),
         ]
         for col_name, col_type in dataset_columns:
             try:
@@ -809,6 +812,115 @@ def ensure_all_database_tables(db: Session) -> None:
                 );
                 CREATE INDEX IF NOT EXISTS idx_prog_refunds_lookup ON analytics.program_refunds_summary (academic_year, LOWER(campus_name), LOWER(program_code));
                 CREATE INDEX IF NOT EXISTS idx_dashboard_agg_prog_lookup ON analytics.dashboard_agg (academic_year, LOWER(campus_name), LOWER(program_code));
+                """
+            )
+        )
+
+        # 17. Helper Functions: system.parse_month and system.parse_date
+        db.execute(
+            text(
+                """
+                CREATE OR REPLACE FUNCTION system.parse_month(dt_text text, fallback_date_text text DEFAULT NULL::text)
+                RETURNS character varying
+                LANGUAGE plpgsql
+                IMMUTABLE
+                AS $function$
+                DECLARE
+                    cleaned TEXT;
+                    parts TEXT[];
+                    y INT;
+                    m INT;
+                    d INT;
+                    offset_days INT;
+                    base_dt DATE;
+                BEGIN
+                    IF dt_text IS NULL OR TRIM(dt_text) = '' OR LOWER(TRIM(dt_text)) = 'null' THEN
+                        RETURN NULL;
+                    END IF;
+
+                    cleaned := TRIM(dt_text);
+
+                    -- Standard YYYY-MM-DD
+                    IF cleaned ~ '^[0-9]{4}-[0-9]{2}' THEN
+                        RETURN SUBSTRING(cleaned FROM 1 FOR 7);
+                    END IF;
+
+                    -- Standard DD/MM/YYYY
+                    IF cleaned ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}' THEN
+                        parts := string_to_array(split_part(cleaned, ' ', 1), '/');
+                        d := parts[1]::INT;
+                        m := parts[2]::INT;
+                        y := parts[3]::INT;
+                        IF y < 100 THEN
+                            y := 2000 + y;
+                        END IF;
+                        IF m >= 1 AND m <= 12 AND d >= 1 AND d <= 31 AND y >= 2000 AND y <= 2100 THEN
+                            RETURN TO_CHAR(MAKE_DATE(y, m, d), 'YYYY-MM');
+                        END IF;
+                    END IF;
+
+                    -- Formula strings e.g. =TEXT(DATEVALUE(...)+22, "yyyy-mm-dd 11:30:00")
+                    IF cleaned ~ '^=' THEN
+                        IF cleaned ~ '\\+([0-9]+)' THEN
+                            offset_days := (regexp_match(cleaned, '\\+([0-9]+)'))[1]::INT;
+                        ELSE
+                            offset_days := 22;
+                        END IF;
+
+                        IF fallback_date_text IS NOT NULL AND fallback_date_text ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
+                            base_dt := CAST(SUBSTRING(fallback_date_text FROM 1 FOR 10) AS DATE) + offset_days;
+                            RETURN TO_CHAR(base_dt, 'YYYY-MM');
+                        END IF;
+                    END IF;
+
+                    RETURN NULL;
+                END;
+                $function$;
+
+                CREATE OR REPLACE FUNCTION system.parse_date(dt_text text)
+                RETURNS date
+                LANGUAGE plpgsql
+                IMMUTABLE
+                AS $function$
+                DECLARE
+                    cleaned TEXT;
+                BEGIN
+                    IF dt_text IS NULL OR TRIM(dt_text) = '' OR LOWER(TRIM(dt_text)) = 'null' THEN
+                        RETURN NULL;
+                    END IF;
+
+                    cleaned := TRIM(dt_text);
+
+                    IF cleaned ~ '^[0-9]{4}-[0-9]{2}-[0-9]{2}' THEN
+                        RETURN CAST(SUBSTRING(cleaned FROM 1 FOR 10) AS DATE);
+                    END IF;
+
+                    IF cleaned ~ '^[0-9]{1,2}/[0-9]{1,2}/[0-9]{2,4}' THEN
+                        BEGIN
+                            RETURN TO_DATE(split_part(cleaned, ' ', 1), 'DD/MM/YYYY');
+                        EXCEPTION WHEN OTHERS THEN
+                            RETURN NULL;
+                        END;
+                    END IF;
+
+                    RETURN NULL;
+                END;
+                $function$;
+                """
+            )
+        )
+
+        # 18. Cleanup ghost datasets: deactivate datasets that failed or have 0 rows
+        db.execute(
+            text(
+                """
+                UPDATE system.datasets
+                SET is_active = FALSE, is_analytics_enabled = FALSE
+                WHERE (status IN ('initiated', 'failed') OR COALESCE(row_count, 0) = 0)
+                  AND (is_analytics_enabled = TRUE OR is_active = TRUE);
+
+                DELETE FROM system.datasets
+                WHERE dataset_name LIKE 'probe%' AND COALESCE(row_count, 0) = 0;
                 """
             )
         )

@@ -89,6 +89,9 @@ def list_all_datasets() -> dict[str, Any]:
                     d.is_analytics_enabled,
                     d.upload_version,
                     d.file_checksum,
+                    d.start_month,
+                    d.end_month,
+                    d.months_covered,
                     d.created_at,
                     q.quality_score
                 FROM system.datasets d
@@ -103,6 +106,18 @@ def list_all_datasets() -> dict[str, Any]:
             name = r["dataset_name"] or ""
             category = "test_benchmark" if is_benchmark_dataset(name) else "production"
             wb_type = str(r.get("workbook_type") or "RAW").upper()
+            m_cov = r.get("months_covered")
+            if isinstance(m_cov, str):
+                try:
+                    import json
+                    m_cov = json.loads(m_cov)
+                except Exception:
+                    m_cov = []
+            elif not isinstance(m_cov, list):
+                m_cov = []
+            month_count = len(m_cov)
+            is_completed = month_count >= 12
+
             datasets.append(
                 {
                     "id": str(r["id"]),
@@ -120,6 +135,10 @@ def list_all_datasets() -> dict[str, Any]:
                     "workbook_type": wb_type,
                     "upload_version": r.get("upload_version"),
                     "file_checksum": r.get("file_checksum"),
+                    "start_month": r.get("start_month"),
+                    "end_month": r.get("end_month"),
+                    "months_covered": m_cov,
+                    "is_completed": is_completed,
                     "quality_score": (
                         float(r["quality_score"])
                         if r["quality_score"] is not None
