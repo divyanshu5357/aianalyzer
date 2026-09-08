@@ -490,9 +490,10 @@ def update_dataset_metadata(
     academic_year: int,
     campus_name: str,
     dataset_name: str | None = None,
+    workbook_type: str | None = None,
 ) -> dict:
     """
-    Update dataset academic_year, campus_name, and dataset_name metadata.
+    Update dataset academic_year, campus_name, dataset_name, and workbook_type metadata.
     Updates system.datasets and analytics.uploaded_metrics metadata without touching metric rows.
     """
     params = {
@@ -502,10 +503,16 @@ def update_dataset_metadata(
         "label": str(academic_year),
     }
 
-    name_sql = ""
+    extra_sql = ""
     if dataset_name:
-        name_sql = ", dataset_name = :dname"
+        extra_sql += ", dataset_name = :dname"
         params["dname"] = str(dataset_name).strip()
+
+    if workbook_type:
+        wb_upper = str(workbook_type).strip().upper()
+        if wb_upper in ("RAW", "DIMENSION", "TARGET"):
+            extra_sql += ", workbook_type = :wb_type"
+            params["wb_type"] = wb_upper
 
     db.execute(
         text(f"""
@@ -513,7 +520,7 @@ def update_dataset_metadata(
             SET academic_year = :year,
                 campus_name = :campus,
                 academic_label = :label
-                {name_sql}
+                {extra_sql}
             WHERE id = :id
         """),
         params,

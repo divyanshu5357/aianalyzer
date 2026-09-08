@@ -291,12 +291,13 @@ class UpdateMetadataRequest(BaseModel):
     academic_year: int
     campus_name: str
     dataset_name: str | None = None
+    workbook_type: str | None = None
 
 
 @router.patch("/datasets/{dataset_id}/metadata")
 def update_dataset_metadata_endpoint(dataset_id: str, req: UpdateMetadataRequest) -> dict[str, Any]:
     """
-    Edit dataset Academic Year and Campus metadata.
+    Edit dataset Academic Year, Campus, Name, and Workbook Type metadata.
     Does NOT rewrite or modify underlying metrics or historical records.
     """
     db = SessionLocal()
@@ -308,6 +309,7 @@ def update_dataset_metadata_endpoint(dataset_id: str, req: UpdateMetadataRequest
             academic_year=req.academic_year,
             campus_name=req.campus_name,
             dataset_name=req.dataset_name,
+            workbook_type=req.workbook_type,
         )
         return {"status": "updated", **res}
     finally:

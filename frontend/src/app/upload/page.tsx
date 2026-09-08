@@ -9,10 +9,18 @@ import { DatasetManager } from "../../components/DatasetManager";
 export default function UploadPage() {
   const { activeDataset, fetchActiveDataset, fetchPeriods, theme } = useApp();
   const isDark = theme === "dark";
+  const [wizardType, setWizardType] = React.useState<"raw_data" | "dimension" | "target">("raw_data");
 
   const handleDataChange = () => {
     fetchActiveDataset();
     fetchPeriods();
+  };
+
+  const handleSelectUploadType = (type: "raw_data" | "dimension" | "target") => {
+    setWizardType(type);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
   };
 
   return (
@@ -35,10 +43,10 @@ export default function UploadPage() {
       </div>
 
       {/* Production Upload Wizard */}
-      <UploadWizard onComplete={handleDataChange} isDark={isDark} />
+      <UploadWizard onComplete={handleDataChange} isDark={isDark} initialType={wizardType} />
 
       {/* Dataset Management Section */}
-      <DatasetManager onDatasetChange={handleDataChange} />
+      <DatasetManager onDatasetChange={handleDataChange} onSelectUploadType={handleSelectUploadType} />
     </div>
   );
 }

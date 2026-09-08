@@ -205,8 +205,9 @@ export async function updateDatasetMetadata(
   datasetId: string,
   academicYear: number,
   campusName: string,
-  datasetName?: string
-): Promise<{ status: string; academic_year: number; campus_name: string }> {
+  datasetName?: string,
+  workbookType?: string
+): Promise<{ status: string; academic_year: number; campus_name: string; workbook_type?: string }> {
   const response = await fetch(`${API_BASE_URL}/api/admin/datasets/${datasetId}/metadata`, {
     method: "PATCH",
     headers: { "Content-Type": "application/json" },
@@ -214,6 +215,7 @@ export async function updateDatasetMetadata(
       academic_year: academicYear,
       campus_name: campusName,
       dataset_name: datasetName,
+      workbook_type: workbookType,
     }),
   });
   if (!response.ok) {

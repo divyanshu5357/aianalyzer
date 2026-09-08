@@ -92,8 +92,22 @@ def run_async_ingestion_job(
 
         from app.mapping.workbook_classifier import classify_workbook
         multisheet_profile = profile_multisheet_file(temp_path)
+        multisheet_profile["filename"] = original_filename
+        multisheet_profile["original_filename"] = original_filename
         wb_classification = classify_workbook(multisheet_profile)
         wb_type = wb_classification.get("workbook_type", "RAW")
+
+        # Check existing dataset workbook_type set during upload initiate
+        existing_wb = db.execute(
+            text("SELECT workbook_type FROM system.datasets WHERE id = :ds_id"),
+            {"ds_id": str(dataset_id)},
+        ).scalar()
+        if existing_wb and str(existing_wb).strip().upper() in ("DIMENSION", "TARGET"):
+            wb_type = str(existing_wb).strip().upper()
+        elif "dimension" in original_filename.lower():
+            wb_type = "DIMENSION"
+        elif any(k in original_filename.lower() for k in ("target", "tgt")):
+            wb_type = "TARGET"
         total_rows = (
             multisheet_profile.get("total_rows")
             or multisheet_profile.get("rows")

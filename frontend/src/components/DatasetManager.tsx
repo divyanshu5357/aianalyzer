@@ -39,6 +39,7 @@ import {
 
 interface DatasetManagerProps {
   onDatasetChange?: () => void;
+  onSelectUploadType?: (type: "raw_data" | "dimension" | "target") => void;
 }
 
 interface ConfirmDialogProps {
@@ -132,7 +133,7 @@ const ConfirmDialog: React.FC<ConfirmDialogProps> = ({
   );
 };
 
-export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange }) => {
+export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange, onSelectUploadType }) => {
   const { availableCampuses: contextCampuses, periods } = useApp();
 
   const availableYears = useMemo(() => {
@@ -180,6 +181,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange 
     return "All Campuses";
   });
   const [editName, setEditName] = useState<string>("");
+  const [editType, setEditType] = useState<string>("RAW");
 
   // Conflict warning modal state
   const [conflictWarning, setConflictWarning] = useState<{ id: string; name: string; message: string } | null>(null);
@@ -244,7 +246,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange 
     if (!editingDataset) return;
     setActionLoading(editingDataset.id);
     try {
-      await updateDatasetMetadata(editingDataset.id, editYear, editCampus, editName);
+      await updateDatasetMetadata(editingDataset.id, editYear, editCampus, editName, editType);
       showSuccess("Dataset metadata updated successfully.");
       setEditingDataset(null);
       await fetchData();
@@ -334,6 +336,18 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange 
                 </button>
               </div>
               <div className="space-y-4 text-xs">
+                <div>
+                  <label className="block font-semibold text-slate-700 mb-1">Workbook Type / Role</label>
+                  <select
+                    value={editType}
+                    onChange={(e) => setEditType(e.target.value)}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-slate-900 bg-white focus:ring-2 focus:ring-indigo-500/20 focus:border-indigo-500 font-bold"
+                  >
+                    <option value="RAW">RAW CRM Leads Data (Coexists across Year & Campus)</option>
+                    <option value="DIMENSION">DIMENSION Master Tables (Single Reference Master)</option>
+                    <option value="TARGET">TARGET Master Tables (Single Target Master)</option>
+                  </select>
+                </div>
                 <div>
                   <label className="block font-semibold text-slate-700 mb-1">Dataset Name</label>
                   <input
@@ -597,40 +611,62 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange 
 
               return (
                 <>
-                  <div className="px-5 py-3 flex flex-wrap gap-2 border-b border-slate-100 bg-slate-50/50">
-                    <button
-                      onClick={() => setFilterCategory("RAW")}
-                      className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-                        filterCategory === "RAW"
-                          ? "bg-blue-600 text-white shadow-xs"
-                          : "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${filterCategory === "RAW" ? "bg-white" : "bg-blue-500"}`}></span>
-                      Raw Data ({rawCount})
-                    </button>
-                    <button
-                      onClick={() => setFilterCategory("DIMENSION")}
-                      className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-                        filterCategory === "DIMENSION"
-                          ? "bg-purple-600 text-white shadow-xs"
-                          : "bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${filterCategory === "DIMENSION" ? "bg-white" : "bg-purple-500"}`}></span>
-                      Dimension Data ({dimCount})
-                    </button>
-                    <button
-                      onClick={() => setFilterCategory("TARGET")}
-                      className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 ${
-                        filterCategory === "TARGET"
-                          ? "bg-amber-600 text-white shadow-xs"
-                          : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
-                      }`}
-                    >
-                      <span className={`w-2 h-2 rounded-full ${filterCategory === "TARGET" ? "bg-white" : "bg-amber-500"}`}></span>
-                      Target Data ({tgtCount})
-                    </button>
+                  <div className="px-5 py-3 flex flex-wrap items-center justify-between gap-2 border-b border-slate-100 bg-slate-50/50">
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        onClick={() => setFilterCategory("RAW")}
+                        className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          filterCategory === "RAW"
+                            ? "bg-blue-600 text-white shadow-xs"
+                            : "bg-blue-50 text-blue-700 border border-blue-200 hover:bg-blue-100"
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${filterCategory === "RAW" ? "bg-white" : "bg-blue-500"}`}></span>
+                        Raw Data ({rawCount})
+                      </button>
+                      <button
+                        onClick={() => setFilterCategory("DIMENSION")}
+                        className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          filterCategory === "DIMENSION"
+                            ? "bg-purple-600 text-white shadow-xs"
+                            : "bg-purple-50 text-purple-700 border border-purple-200 hover:bg-purple-100"
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${filterCategory === "DIMENSION" ? "bg-white" : "bg-purple-500"}`}></span>
+                        Dimension Data ({dimCount})
+                      </button>
+                      <button
+                        onClick={() => setFilterCategory("TARGET")}
+                        className={`px-3 py-1 rounded-lg text-xs font-extrabold transition-all flex items-center gap-1.5 cursor-pointer ${
+                          filterCategory === "TARGET"
+                            ? "bg-amber-600 text-white shadow-xs"
+                            : "bg-amber-50 text-amber-700 border border-amber-200 hover:bg-amber-100"
+                        }`}
+                      >
+                        <span className={`w-2 h-2 rounded-full ${filterCategory === "TARGET" ? "bg-white" : "bg-amber-500"}`}></span>
+                        Target Data ({tgtCount})
+                      </button>
+                    </div>
+
+                    {onSelectUploadType && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (filterCategory === "DIMENSION") onSelectUploadType("dimension");
+                          else if (filterCategory === "TARGET") onSelectUploadType("target");
+                          else onSelectUploadType("raw_data");
+                        }}
+                        className={`px-3 py-1 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer shadow-xs ${
+                          filterCategory === "DIMENSION"
+                            ? "bg-purple-600 hover:bg-purple-700 text-white"
+                            : filterCategory === "TARGET"
+                            ? "bg-amber-600 hover:bg-amber-700 text-white"
+                            : "bg-blue-600 hover:bg-blue-700 text-white"
+                        }`}
+                      >
+                        <span>+ Upload {filterCategory === "DIMENSION" ? "Dimension Master" : filterCategory === "TARGET" ? "Target Master" : "RAW CRM Data"}</span>
+                      </button>
+                    )}
                   </div>
 
                   {filterCategory === "TARGET" && (
@@ -736,6 +772,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange 
                                     setEditYear(ds.academic_year || (periods && (periods[0]?.period_end_year || periods[0]?.period_start_year)) || new Date().getFullYear());
                                     setEditCampus(ds.campus_name || availableCampuses[0] || "All Campuses");
                                     setEditName(ds.dataset_name || ds.original_filename);
+                                    setEditType((ds.workbook_type || "RAW").toUpperCase());
                                   }}
                                   className="p-1 rounded-lg text-slate-600 hover:bg-slate-100 border border-slate-200"
                                   title="Edit metadata"
