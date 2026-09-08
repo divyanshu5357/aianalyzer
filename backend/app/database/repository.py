@@ -251,7 +251,7 @@ def get_active_dataset(db: Session):
             FROM system.datasets
             WHERE (is_active = TRUE OR is_analytics_enabled = TRUE)
               AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
-              AND status = 'completed'
+              AND status NOT IN ('failed', 'initiated')
               AND COALESCE(row_count, 0) > 0
             ORDER BY is_active DESC, is_analytics_enabled DESC, created_at DESC
             LIMIT 1
@@ -278,7 +278,7 @@ def get_active_dataset_info(db: Session):
             LEFT JOIN system.data_quality_reports q ON q.dataset_id = d.id
             WHERE (d.is_analytics_enabled = TRUE OR d.is_active = TRUE)
               AND UPPER(COALESCE(d.workbook_type, 'RAW')) = 'RAW'
-              AND d.status = 'completed'
+              AND d.status NOT IN ('failed', 'initiated')
               AND COALESCE(d.row_count, 0) > 0
             ORDER BY d.is_active DESC, d.is_analytics_enabled DESC, d.created_at DESC
             LIMIT 1
@@ -326,7 +326,7 @@ def resolve_raw_dataset(
                 WHERE is_analytics_enabled = TRUE 
                   AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW' 
                   AND academic_year = :yr
-                  AND status = 'completed'
+                  AND status NOT IN ('failed', 'initiated')
                   AND COALESCE(row_count, 0) > 0
                 ORDER BY is_active DESC, created_at DESC
                 LIMIT 1

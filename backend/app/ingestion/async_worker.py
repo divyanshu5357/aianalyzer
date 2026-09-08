@@ -80,13 +80,6 @@ def run_async_ingestion_job(
                 sha.update(chunk)
         checksum = sha.hexdigest()
 
-        # Check duplicate file checksum
-        existing = find_dataset_by_checksum(db, checksum)
-        if existing and str(existing.get("dataset_id")) != str(dataset_id):
-            message = "Duplicate file checksum detected."
-            mark_job_completed(job_id, message=message, result_data={"upload_status": "duplicate_file", "existing": existing}, db=db)
-            return {"status": "duplicate_file", "existing_dataset": existing}
-
         # ── Stage 2: Profiling ─────────────────────────────────────────────
         update_job_progress(job_id, stage="profiling", progress_percent=30.0, message="Profiling file columns and multi-sheet structure...", db=db)
 

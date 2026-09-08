@@ -715,7 +715,7 @@ export const DatasetManager: React.FC<DatasetManagerProps> = ({ onDatasetChange,
                       </thead>
                       <tbody className="divide-y divide-slate-50 dark:divide-slate-800">
                         {visibleDatasets.map((ds) => {
-                          const isProductionReady = (ds.row_count ?? 0) > 0 && ds.status === "completed";
+                          const isProductionReady = (ds.row_count ?? 0) > 0 && ds.status !== "failed" && ds.status !== "initiated";
                           const isEnabled = Boolean(ds.is_analytics_enabled && isProductionReady);
                           const isIncomplete = ds.status === "initiated" || (ds.row_count ?? 0) === 0;
                           const isFailed = ds.status === "failed";

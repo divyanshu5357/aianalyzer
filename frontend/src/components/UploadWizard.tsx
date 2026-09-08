@@ -348,8 +348,8 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
         selectedType
       );
 
-      // Advance to Step 6: Process
-      setCurrentStep(6);
+      // Advance to Step 5: Process
+      setCurrentStep(5);
       pollProcessingJob();
     } catch (err: any) {
       setUploadError(err.message);
@@ -1096,7 +1096,32 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
             {isProcessing ? (
               <div className="py-16 text-center space-y-4">
                 <Loader2 className="w-10 h-10 text-indigo-600 animate-spin mx-auto" />
-                <h4 className="font-bold text-sm">Processing Ingestion & Incremental ProspectID Upsert...</h4>
+                <h4 className="font-bold text-sm text-slate-900 dark:text-white">Processing Ingestion & Incremental ProspectID Upsert...</h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400">Normalizing schema and calculating analytics metrics</p>
+              </div>
+            ) : jobStatus?.status === "failed" ? (
+              <div className="py-10 text-center space-y-4">
+                <div className="w-14 h-14 rounded-full bg-rose-100 dark:bg-rose-950/80 text-rose-600 flex items-center justify-center mx-auto mb-3">
+                  <AlertTriangle className="w-8 h-8" />
+                </div>
+                <h3 className="text-lg font-bold text-slate-900 dark:text-white">Ingestion Failed</h3>
+                <p className="text-xs text-rose-600 dark:text-rose-400 max-w-md mx-auto">
+                  {jobStatus.error || "An error occurred during dataset normalization."}
+                </p>
+                <div className="flex justify-center gap-3 pt-4">
+                  <button
+                    onClick={() => setCurrentStep(4)}
+                    className="px-5 py-2.5 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-semibold hover:bg-slate-50 dark:hover:bg-slate-800"
+                  >
+                    Back to Mappings
+                  </button>
+                  <button
+                    onClick={resetWizard}
+                    className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold shadow-lg shadow-indigo-500/20"
+                  >
+                    Start Over
+                  </button>
+                </div>
               </div>
             ) : (
               <div>
