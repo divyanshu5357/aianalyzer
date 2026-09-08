@@ -1,8 +1,9 @@
 import logging
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy.orm import Session
 from sqlalchemy.exc import DisconnectionError, InterfaceError, OperationalError, TimeoutError
 from app.api.cleaning import router as cleaning_router
 from app.api.health import router as health_router
@@ -24,7 +25,7 @@ from app.api.counsellor import router as counsellor_router
 from app.api.conversations import router as conversations_router
 from app.api.programs import router as programs_router
 from app.api.states import router as states_router
-from app.database.connection import SessionLocal
+from app.database.connection import SessionLocal, get_db
 from app.database.ai_audit import ensure_ai_audit_tables, seed_initial_golden_cases
 from app.database.schema_init import ensure_all_database_tables
 
@@ -173,3 +174,11 @@ def root():
         "status": "running",
         "version": "0.1.0",
     }
+
+
+@app.get("/api/data-control/history", tags=["Data Control"])
+def legacy_data_control_history(db: Session = Depends(get_db)):
+    """Convenience alias for /api/dashboard/data-control."""
+    from app.api.dashboard import get_data_control_history
+    return get_data_control_history(db=db)
+

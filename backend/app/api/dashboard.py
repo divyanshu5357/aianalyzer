@@ -493,6 +493,7 @@ def get_dashboard_performance_rankings(
 
 
 @router.get("/data-control")
+@router.get("/data-control/history")
 def get_data_control_history(db: Session = Depends(get_db)):
     """Returns Data Control / Upload History directly from system.datasets with real PostgreSQL counts."""
     rows = db.execute(

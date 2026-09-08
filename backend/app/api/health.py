@@ -9,6 +9,7 @@ router = APIRouter()
 
 
 @router.get("/health")
+@router.get("/api/health")
 def health_check(db: Session = Depends(get_db)):
     result = db.execute(text("SELECT 1"))
     value = result.scalar()

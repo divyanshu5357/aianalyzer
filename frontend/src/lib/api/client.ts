@@ -3,8 +3,21 @@
  */
 import type { DashboardFilters } from "./types";
 
-export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_URL !== undefined ? process.env.NEXT_PUBLIC_API_URL : "";
+const rawApiUrl = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/+$/, "");
+
+/**
+ * Standardized API Base URL:
+ * - When NEXT_PUBLIC_API_URL is configured to a valid HTTPS endpoint, browser calls it directly.
+ * - When in browser over HTTPS and NEXT_PUBLIC_API_URL is HTTP (insecure), falls back to ""
+ *   so requests route through the Next.js /api rewrite proxy without browser Mixed-Content rejection.
+ * - When NEXT_PUBLIC_API_URL is empty/undefined, defaults to "" (using Next.js /api rewrite proxy).
+ */
+export const API_BASE_URL: string = (() => {
+  if (typeof window !== "undefined" && window.location.protocol === "https:" && rawApiUrl.startsWith("http://")) {
+    return "";
+  }
+  return rawApiUrl;
+})();
 
 /**
  * Robust API error reader that handles JSON error structures and plain text fallbacks.

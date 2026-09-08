@@ -56,6 +56,7 @@ import {
   ActiveDatasetInfo,
   GenderMonthItem,
   StateAdmissionItem,
+  API_BASE_URL,
 } from "../lib/api";
 import { NavTab } from "./Sidebar";
 import IndiaStateMap from "./maps/IndiaStateMap";
@@ -125,8 +126,11 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
   const fetchControlHistory = () => {
     setDataControlLoading(true);
-    fetch("/api/data-control/history")
-      .then((res) => res.json())
+    fetch(`${API_BASE_URL}/api/dashboard/data-control`)
+      .then((res) => {
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        return res.json();
+      })
       .then((data) => {
         if (data?.history) {
           setDataControlHistory(data.history);

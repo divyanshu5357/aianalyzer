@@ -214,14 +214,16 @@ def refresh_dashboard_agg_scoped(
 
 
 def delete_dashboard_agg_for_dataset(db: Session, dataset_id: str) -> int:
-    """Remove all dashboard_agg rows owned by a dataset.
+    """Deletes aggregated rows belonging to a specific dataset.
 
-    Used during dataset deletion — no re-insertion needed.
+    Used when a dataset is deleted or replaced to purge its contribution
+    from the pre-aggregated dashboard table without a full rebuild.
+
     Returns the number of deleted aggregate rows.
     """
     ds_id_str = str(dataset_id)
     result = db.execute(
-        text("DELETE FROM analytics.dashboard_agg WHERE dataset_id = :ds_id"),
+        text("DELETE FROM analytics.dashboard_agg WHERE dataset_id = CAST(:ds_id AS uuid)"),
         {"ds_id": ds_id_str},
     )
     deleted = result.rowcount

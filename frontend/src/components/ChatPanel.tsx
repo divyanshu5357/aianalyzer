@@ -11,7 +11,7 @@ import {
   UploadCloud,
   Download,
 } from "lucide-react";
-import { askAgent, ChatResponse } from "../lib/api";
+import { askAgent, ChatResponse, API_BASE_URL } from "../lib/api";
 import { AnalyticsRenderer } from "./AnalyticsRenderer";
 import { useApp } from "../context/AppContext";
 
@@ -42,8 +42,7 @@ export const ChatPanel: React.FC<ChatPanelProps> = ({
 
   const handleDownloadTranscript = (format: "txt" | "csv") => {
     const convId = activeConversationId || "active";
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-    window.open(`${API_BASE}/api/conversations/${convId}/transcript?format=${format}`, "_blank");
+    window.open(`${API_BASE_URL}/api/conversations/${convId}/transcript?format=${format}`, "_blank");
   };
 
   useEffect(() => {

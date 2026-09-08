@@ -103,17 +103,7 @@ def classify_workbook(file_profile: Dict[str, Any]) -> Dict[str, Any]:
     Classifies an entire multi-sheet workbook into RAW, DIMENSION, or TARGET based on filename and sheet profiles.
     """
     fname = str(file_profile.get("filename") or file_profile.get("original_filename") or "").strip().lower()
-    
-    # Filename-based explicit classification checks
-    if any(k in fname for k in ("tgt", "target")):
-        return {"workbook_type": "TARGET", "confidence": 0.98, "sheet_count": len(file_profile.get("sheets", [])), "sheets_summary": []}
-
-    if "dimension" in fname:
-        return {"workbook_type": "DIMENSION", "confidence": 0.98, "sheet_count": len(file_profile.get("sheets", [])), "sheets_summary": []}
-
     sheets = file_profile.get("sheets", [])
-    if not sheets:
-        return {"workbook_type": "RAW", "confidence": 0.60, "sheets_summary": []}
 
     sheets_summary = []
     types_count: Dict[str, int] = {}
@@ -128,6 +118,26 @@ def classify_workbook(file_profile: Dict[str, Any]) -> Dict[str, Any]:
             "confidence": res["confidence"],
             "primary_entity": res["primary_entity"],
         })
+
+    # Filename-based explicit classification checks
+    if any(k in fname for k in ("tgt", "target")):
+        return {
+            "workbook_type": "TARGET",
+            "confidence": 0.98,
+            "sheet_count": len(sheets),
+            "sheets_summary": sheets_summary,
+        }
+
+    if "dimension" in fname:
+        return {
+            "workbook_type": "DIMENSION",
+            "confidence": 0.98,
+            "sheet_count": len(sheets),
+            "sheets_summary": sheets_summary,
+        }
+
+    if not sheets:
+        return {"workbook_type": "RAW", "confidence": 0.60, "sheet_count": 0, "sheets_summary": []}
 
     # Overall workbook classification decision
     if types_count.get("TARGET_TABLE", 0) > 0:

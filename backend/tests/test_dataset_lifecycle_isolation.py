@@ -28,12 +28,14 @@ from app.analytics.aggregate_refresh import refresh_dashboard_agg
 
 def _get_leads(ov: dict) -> int:
     """Helper to safely extract leads from get_agg_overview response."""
-    return ov.get("kpis", {}).get("leads", {}).get("cy", 0)
+    val = ov.get("kpis", {}).get("leads", {}).get("cy")
+    return val if val is not None else 0
 
 
 def _get_admissions(ov: dict) -> int:
     """Helper to safely extract admissions from get_agg_overview response."""
-    return ov.get("kpis", {}).get("admissions", {}).get("cy", 0)
+    val = ov.get("kpis", {}).get("admissions", {}).get("cy")
+    return val if val is not None else 0
 
 
 class TestDatasetLifecycleIsolation(unittest.TestCase):
