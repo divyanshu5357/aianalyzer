@@ -51,6 +51,7 @@ def ensure_all_database_tables(db: Session) -> None:
                     dataset_name VARCHAR(255) NOT NULL,
                     original_filename VARCHAR(500),
                     dataset_type VARCHAR(100),
+                    workbook_type VARCHAR(50) DEFAULT 'RAW',
                     row_count BIGINT DEFAULT 0,
                     column_count INTEGER DEFAULT 0,
                     status VARCHAR(50) DEFAULT 'uploaded',
@@ -89,6 +90,7 @@ def ensure_all_database_tables(db: Session) -> None:
             ("end_date", "TIMESTAMP"),
             ("month", "VARCHAR(50)"),
             ("month_num", "INT"),
+            ("workbook_type", "VARCHAR(50) DEFAULT 'RAW'"),
         ]
         for col_name, col_type in dataset_columns:
             try:
@@ -100,6 +102,31 @@ def ensure_all_database_tables(db: Session) -> None:
             except Exception as e:
                 logger.debug("Column system.datasets.%s add notice: %s", col_name, e)
                 db.rollback()
+
+        # Ensure default is set to 'RAW'
+        try:
+            db.execute(text("ALTER TABLE system.datasets ALTER COLUMN workbook_type SET DEFAULT 'RAW';"))
+            db.commit()
+        except Exception as e:
+            logger.debug("system.datasets workbook_type set default notice: %s", e)
+            db.rollback()
+
+        # Ensure pre-existing rows without workbook_type or with old default 'raw_data' resolve to 'RAW'
+        # while strictly preserving explicit DIMENSION and TARGET values.
+        try:
+            db.execute(
+                text(
+                    """
+                    UPDATE system.datasets
+                    SET workbook_type = 'RAW'
+                    WHERE workbook_type IS NULL OR workbook_type = 'raw_data' OR workbook_type = 'raw';
+                    """
+                )
+            )
+            db.commit()
+        except Exception as e:
+            logger.debug("system.datasets workbook_type normalization notice: %s", e)
+            db.rollback()
 
         # 4. system.data_quality_reports
         db.execute(
@@ -791,3 +818,13 @@ def ensure_all_database_tables(db: Session) -> None:
     except Exception as exc:
         logger.error("Error ensuring database tables on startup: %s", exc)
         db.rollback()
+
+
+if __name__ == "__main__":
+    from app.database.connection import SessionLocal
+    logging.basicConfig(level=logging.INFO)
+    logger.info("Running standalone database schema initialization against DATABASE_URL...")
+    with SessionLocal() as db_session:
+        ensure_all_database_tables(db_session)
+    logger.info("Database schema verification and initialization completed.")
+
