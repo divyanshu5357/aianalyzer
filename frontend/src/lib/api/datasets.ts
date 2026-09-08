@@ -15,6 +15,7 @@ import type {
   AnalyticsWorkspaceResponse,
   AnalyticsWorkspaceOptionsResponse,
   AnalyticsWorkspaceKind,
+  MastersStatusResponse,
 } from "./types";
 
 export async function getActiveDataset(): Promise<{ active: boolean; dataset: ActiveDatasetInfo | null }> {
@@ -305,6 +306,15 @@ export async function resetAllData(
   if (!response.ok) {
     const err = await response.json().catch(() => ({}));
     throw new Error((err as { detail?: string }).detail || "Failed to reset data");
+  }
+  return response.json();
+}
+
+export async function getMastersStatus(): Promise<MastersStatusResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/admin/masters-status`);
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(parseApiError(errorText, "Failed to fetch master status"));
   }
   return response.json();
 }

@@ -320,7 +320,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       const formattedPp = `${isPositive ? "+" : ""}${change} pp`;
       textStr = formattedPp;
     } else {
-      const formattedNum = `${isPositive ? "+" : ""}${change.toLocaleString()}`;
+      const formattedNum = `${isPositive ? "+" : ""}${(change ?? 0).toLocaleString()}`;
       const formattedPct = growthPct !== null && growthPct !== undefined ? `${isPositive ? "+" : ""}${growthPct}%` : "N/A";
       textStr = `${formattedNum} (${formattedPct})`;
     }
@@ -462,13 +462,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             </div>
             <div className="space-y-1">
               <div className={`text-2xl font-black ${isDark ? "text-white" : "text-slate-900"}`}>
-                {overview.kpis.admissions.cy.toLocaleString()}
+                {(overview?.kpis?.admissions?.cy ?? 0).toLocaleString()}
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview.kpis.admissions.py != null ? `PY: ${overview.kpis.admissions.py.toLocaleString()}` : "Single Year Scope"}
+                  {overview?.kpis?.admissions?.py != null ? `PY: ${(overview.kpis.admissions.py ?? 0).toLocaleString()}` : "Single Year Scope"}
                 </span>
-                {renderMetricDiff(overview.kpis.admissions.change, overview.kpis.admissions.growth_pct)}
+                {renderMetricDiff(overview?.kpis?.admissions?.change ?? 0, overview?.kpis?.admissions?.growth_pct ?? null)}
               </div>
             </div>
           </div>
@@ -491,19 +491,19 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             </div>
             <div className="space-y-1">
               <div className={`text-2xl font-black ${isDark ? "text-white" : "text-slate-900"}`}>
-                {overview.kpis.leads.cy.toLocaleString()}
+                {(overview?.kpis?.leads?.cy ?? 0).toLocaleString()}
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview.kpis.leads.py != null ? `PY: ${overview.kpis.leads.py.toLocaleString()}` : "Single Year Scope"}
+                  {overview?.kpis?.leads?.py != null ? `PY: ${(overview.kpis.leads.py ?? 0).toLocaleString()}` : "Single Year Scope"}
                 </span>
-                {renderMetricDiff(overview.kpis.leads.change, overview.kpis.leads.growth_pct)}
+                {renderMetricDiff(overview?.kpis?.leads?.change ?? 0, overview?.kpis?.leads?.growth_pct ?? null)}
               </div>
             </div>
           </div>
 
           {/* CUCET Card (if available) */}
-          {overview.has_cucet && overview.kpis.cucet ? (
+          {overview?.has_cucet && overview?.kpis?.cucet ? (
             <div
               className={`p-5 rounded-2xl border transition-all ${
                 isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
@@ -521,13 +521,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               </div>
               <div className="space-y-1">
                 <div className={`text-2xl font-black ${isDark ? "text-white" : "text-slate-900"}`}>
-                  {overview.kpis.cucet.cy.toLocaleString()}
+                  {(overview.kpis.cucet.cy ?? 0).toLocaleString()}
                 </div>
                 <div className="flex items-center justify-between text-xs pt-1">
                   <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                    {overview.kpis.cucet.py != null ? `PY: ${overview.kpis.cucet.py.toLocaleString()}` : "Single Year Scope"}
+                    {overview.kpis.cucet.py != null ? `PY: ${(overview.kpis.cucet.py ?? 0).toLocaleString()}` : "Single Year Scope"}
                   </span>
-                  {renderMetricDiff(overview.kpis.cucet.change, overview.kpis.cucet.growth_pct)}
+                  {renderMetricDiff(overview.kpis.cucet.change ?? 0, overview.kpis.cucet.growth_pct ?? null)}
                 </div>
               </div>
             </div>
@@ -853,7 +853,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300">
-                    {totalGenderAdmissions.toLocaleString()} Total Admitted
+                    {(totalGenderAdmissions ?? 0).toLocaleString()} Total Admitted
                   </span>
                 </div>
               </div>
@@ -894,7 +894,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                           boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                         }}
                         formatter={(val: any, name: any) => [
-                          `${Number(val).toLocaleString()} admissions`,
+                          `${Number(val ?? 0).toLocaleString()} admissions`,
                           name,
                         ]}
                         labelFormatter={(label: any, payload: any) => {
@@ -955,7 +955,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-indigo-50 dark:bg-indigo-950/60 border border-indigo-200 dark:border-indigo-800 text-indigo-800 dark:text-indigo-300">
-                    {totalIndiaAdmissions.toLocaleString()} India Total
+                    {(totalIndiaAdmissions ?? 0).toLocaleString()} India Total
                   </span>
                 </div>
               </div>
@@ -1042,14 +1042,14 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                             {item.entity}
                           </div>
                           <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            CY: {item.cy_admission?.toLocaleString() ?? "0"}
-                            {item.py_admission != null ? ` | PY: ${item.py_admission.toLocaleString()}` : ""}
+                            CY: {(item.cy_admission ?? 0).toLocaleString()}
+                            {item.py_admission != null ? ` | PY: ${(item.py_admission ?? 0).toLocaleString()}` : ""}
                           </div>
                         </div>
                         <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
                           {item.admission_change != null
-                            ? `${item.admission_change >= 0 ? "+" : ""}${item.admission_change.toLocaleString()}`
-                            : `CY: ${item.cy_admission?.toLocaleString() ?? "0"}`}
+                            ? `${item.admission_change >= 0 ? "+" : ""}${(item.admission_change ?? 0).toLocaleString()}`
+                            : `CY: ${(item.cy_admission ?? 0).toLocaleString()}`}
                           <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </span>
                       </div>
@@ -1084,21 +1084,21 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                             {item.entity}
                           </div>
                           <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            CY: {item.cy_admission?.toLocaleString() ?? "0"}
-                            {item.py_admission != null ? ` | PY: ${item.py_admission.toLocaleString()}` : ""}
+                            CY: {(item.cy_admission ?? 0).toLocaleString()}
+                            {item.py_admission != null ? ` | PY: ${(item.py_admission ?? 0).toLocaleString()}` : ""}
                           </div>
                         </div>
                         <span className="text-xs font-bold text-rose-500 flex items-center gap-1">
                           {item.admission_change != null
-                            ? item.admission_change.toLocaleString()
-                            : `CY: ${item.cy_admission?.toLocaleString() ?? "0"}`}
+                            ? (item.admission_change ?? 0).toLocaleString()
+                            : `CY: ${(item.cy_admission ?? 0).toLocaleString()}`}
                           <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </span>
                       </div>
                     ))
                   ) : (
                     <div className={`p-4 rounded-xl text-xs italic ${isDark ? "bg-[#0B0F19] text-slate-500" : "bg-slate-50 text-slate-500"}`}>
-                      No declining areas found for this selection.
+                      No decline areas detected for this selection.
                     </div>
                   )}
                 </div>
@@ -1204,19 +1204,19 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                     <div className={`p-3 rounded-xl border ${isDark ? "bg-[#1E293B]/50 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
                       <div className={`text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>CY Admissions</div>
                       <div className="text-base font-extrabold text-blue-500">
-                        {entityDetail.overview.admissions.cy.toLocaleString()}
+                        {(entityDetail?.overview?.admissions?.cy ?? 0).toLocaleString()}
                       </div>
                     </div>
                     <div className={`p-3 rounded-xl border ${isDark ? "bg-[#1E293B]/50 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
                       <div className={`text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>CY Leads</div>
                       <div className="text-base font-extrabold text-indigo-500">
-                        {entityDetail.overview.leads.cy.toLocaleString()}
+                        {(entityDetail?.overview?.leads?.cy ?? 0).toLocaleString()}
                       </div>
                     </div>
                     <div className={`p-3 rounded-xl border ${isDark ? "bg-[#1E293B]/50 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
                       <div className={`text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>Conv %</div>
                       <div className="text-base font-extrabold text-emerald-500">
-                        {entityDetail.overview.conversion_rate.cy}%
+                        {entityDetail?.overview?.conversion_rate?.cy ?? 0}%
                       </div>
                     </div>
                   </div>

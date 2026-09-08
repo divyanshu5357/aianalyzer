@@ -23,6 +23,9 @@ import {
   Calendar,
   Zap,
   RefreshCw,
+  Lock,
+  Unlock,
+  Info,
 } from "lucide-react";
 import {
   initiateStorageUpload,
@@ -34,6 +37,8 @@ import {
   detectMultisheetRelationships,
   approveBatchMappings,
   inspectUploadedFile,
+  getMastersStatus,
+  MastersStatusResponse,
 } from "../lib/api";
 import { MappingReviewModal, MappingSuggestionItem } from "./MappingReviewModal";
 
@@ -94,6 +99,37 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
     if (contextCampuses && contextCampuses.length > 0) return contextCampuses[0];
     return "All Campuses";
   });
+
+  // Master Status & Prerequisites
+  const [mastersStatus, setMastersStatus] = useState<MastersStatusResponse | null>(null);
+  const [isLoadingMasters, setIsLoadingMasters] = useState<boolean>(true);
+  const [prerequisiteNotice, setPrerequisiteNotice] = useState<string | null>(null);
+
+  const fetchMasters = useCallback(async () => {
+    setIsLoadingMasters(true);
+    try {
+      const res = await getMastersStatus();
+      setMastersStatus(res);
+      // If user hasn't explicitly chosen and masters are missing, default to missing master
+      if (!initialType && !res.can_upload_raw) {
+        if (!res.has_dimension_master) {
+          setSelectedType("dimension");
+          setUploadMode("replacement");
+        } else if (!res.has_target_master) {
+          setSelectedType("target");
+          setUploadMode("replacement");
+        }
+      }
+    } catch (err) {
+      console.error("[MASTER STATUS ERROR]", err);
+    } finally {
+      setIsLoadingMasters(false);
+    }
+  }, [initialType]);
+
+  React.useEffect(() => {
+    fetchMasters();
+  }, [fetchMasters]);
 
   // Sync initialType when passed
   React.useEffect(() => {
@@ -196,6 +232,19 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
 
   const startUpload = async () => {
     if (!selectedFile || isUploading) return;
+
+    // Prerequisite check: RAW CRM uploads require both masters
+    if (selectedType === "raw_data" && mastersStatus && !mastersStatus.can_upload_raw) {
+      setUploadError(
+        "Prerequisites not met: RAW CRM uploads require both Dimension Master and Target Master to be uploaded first. " +
+        (!mastersStatus.has_dimension_master && !mastersStatus.has_target_master
+          ? "Please upload both Dimension Master and Target Master first."
+          : !mastersStatus.has_dimension_master
+          ? "Please upload the Dimension Master first."
+          : "Please upload the Target Master first.")
+      );
+      return;
+    }
 
     setIsUploading(true);
     setUploadError(null);
@@ -371,6 +420,7 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
         if (statusRes.status === "completed" || statusRes.status === "failed") {
           clearInterval(interval);
           setIsProcessing(false);
+          fetchMasters();
           if (onComplete) onComplete(statusRes);
         }
       } catch {
@@ -467,6 +517,262 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
 
       {/* Step Content Container */}
       <div className="p-8">
+        {/* MASTER PREREQUISITES & SYSTEM READINESS DISPLAY */}
+        {(currentStep === 1 || currentStep === 2) && (
+          <div className="mb-8 p-5 bg-slate-50/70 dark:bg-slate-850/50 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-slate-800">
+              <div>
+                <div className="flex items-center gap-2">
+                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
+                    <ShieldCheck className="w-4 h-4 text-indigo-500" />
+                    Master Data Verification & Prerequisites
+                  </h4>
+                  {isLoadingMasters ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 animate-pulse">
+                      <Loader2 className="w-3 h-3 animate-spin" /> Verifying...
+                    </span>
+                  ) : mastersStatus?.can_upload_raw ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                      <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                      All Masters Active — RAW Ingestion Unlocked
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                      <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                      Prerequisites Incomplete — RAW Ingestion Locked
+                    </span>
+                  )}
+                </div>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+                  Dimension Master and Target Master provide schema mapping, normalization references (Program, State, Source, EMP), and target benchmarks.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => fetchMasters()}
+                disabled={isLoadingMasters}
+                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs shrink-0 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMasters ? "animate-spin text-indigo-500" : ""}`} />
+                <span>Refresh Status</span>
+              </button>
+            </div>
+
+            {/* Master Status Cards */}
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
+              {/* Card 1: Dimension Master */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  mastersStatus?.has_dimension_master
+                    ? "bg-white dark:bg-slate-800/90 border-purple-200 dark:border-purple-800/60 shadow-xs"
+                    : "bg-amber-50/40 dark:bg-amber-950/20 border-2 border-dashed border-amber-300 dark:border-amber-700/60"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300">
+                      <Layers className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">Dimension Master</h5>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Programs, States, Sources, EMP</span>
+                    </div>
+                  </div>
+                  {mastersStatus?.has_dimension_master ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                      <Check className="w-3 h-3 text-emerald-600" /> Active
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                      <AlertTriangle className="w-3 h-3 text-amber-600" /> Missing
+                    </span>
+                  )}
+                </div>
+
+                {mastersStatus?.has_dimension_master && mastersStatus.dimension_master ? (
+                  <div className="space-y-2.5 mt-3 text-xs">
+                    <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileSpreadsheet className="w-4 h-4 text-purple-500 shrink-0" />
+                        <span className="font-bold text-slate-900 dark:text-white truncate" title={mastersStatus.dimension_master.original_filename || mastersStatus.dimension_master.dataset_name}>
+                          {mastersStatus.dimension_master.original_filename || mastersStatus.dimension_master.dataset_name}
+                        </span>
+                      </div>
+                      <span className="px-2 py-0.5 text-[11px] font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 rounded-lg shrink-0">
+                        {(mastersStatus.dimension_master.row_count ?? 0).toLocaleString()} rows
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1.5 font-medium">
+                        <span>Detected Sheets ({mastersStatus.dimension_master.sheet_count || mastersStatus.dimension_master.sheets?.length || 0})</span>
+                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">Multi-Sheet Master</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {mastersStatus.dimension_master.sheets && mastersStatus.dimension_master.sheets.length > 0 ? (
+                          mastersStatus.dimension_master.sheets.map((sheet) => (
+                            <span
+                              key={sheet}
+                              className="px-2 py-0.5 text-[10px] font-bold rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
+                            >
+                              {sheet}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">No sheet breakdown recorded</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleTypeSelect("dimension");
+                          setCurrentStep(2);
+                        }}
+                        className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        Replace Dimension Master <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      No active Dimension Master. Required for mapping raw records to Programs, States, Sources, and Counsellors.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleTypeSelect("dimension");
+                        setCurrentStep(2);
+                      }}
+                      className="w-full py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" /> Upload Dimension Master
+                    </button>
+                  </div>
+                )}
+              </div>
+
+              {/* Card 2: Target Master */}
+              <div
+                className={`p-4 rounded-2xl border transition-all ${
+                  mastersStatus?.has_target_master
+                    ? "bg-white dark:bg-slate-800/90 border-amber-200 dark:border-amber-800/60 shadow-xs"
+                    : "bg-amber-50/40 dark:bg-amber-950/20 border-2 border-dashed border-amber-300 dark:border-amber-700/60"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2 mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300">
+                      <Target className="w-4 h-4" />
+                    </div>
+                    <div>
+                      <h5 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">Target Master</h5>
+                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Admissions, Leads, CUCET Goals</span>
+                    </div>
+                  </div>
+                  {mastersStatus?.has_target_master ? (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                      <Check className="w-3 h-3 text-emerald-600" /> Active
+                    </span>
+                  ) : (
+                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                      <AlertTriangle className="w-3 h-3 text-amber-600" /> Missing
+                    </span>
+                  )}
+                </div>
+
+                {mastersStatus?.has_target_master && mastersStatus.target_master ? (
+                  <div className="space-y-2.5 mt-3 text-xs">
+                    <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
+                      <div className="flex items-center gap-2 min-w-0">
+                        <FileSpreadsheet className="w-4 h-4 text-amber-500 shrink-0" />
+                        <span className="font-bold text-slate-900 dark:text-white truncate" title={mastersStatus.target_master.original_filename || mastersStatus.target_master.dataset_name}>
+                          {mastersStatus.target_master.original_filename || mastersStatus.target_master.dataset_name}
+                        </span>
+                      </div>
+                      <span className="px-2 py-0.5 text-[11px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded-lg shrink-0">
+                        {(mastersStatus.target_master.row_count ?? 0).toLocaleString()} rows
+                      </span>
+                    </div>
+
+                    <div>
+                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1.5 font-medium">
+                        <span>Detected Sheets ({mastersStatus.target_master.sheet_count || mastersStatus.target_master.sheets?.length || 0})</span>
+                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Multi-Sheet Master</span>
+                      </div>
+                      <div className="flex flex-wrap gap-1.5">
+                        {mastersStatus.target_master.sheets && mastersStatus.target_master.sheets.length > 0 ? (
+                          mastersStatus.target_master.sheets.map((sheet) => (
+                            <span
+                              key={sheet}
+                              className="px-2 py-0.5 text-[10px] font-bold rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
+                            >
+                              {sheet}
+                            </span>
+                          ))
+                        ) : (
+                          <span className="text-[10px] text-slate-400 italic">No sheet breakdown recorded</span>
+                        )}
+                      </div>
+                    </div>
+
+                    <div className="pt-2 flex justify-end">
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleTypeSelect("target");
+                          setCurrentStep(2);
+                        }}
+                        className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 transition-all cursor-pointer"
+                      >
+                        Replace Target Master <ArrowRight className="w-3 h-3" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="mt-3 space-y-3">
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      No active Target Master. Required for comparing admissions, leads, and CUCET against performance goals.
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        handleTypeSelect("target");
+                        setCurrentStep(2);
+                      }}
+                      className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
+                    >
+                      <Upload className="w-3.5 h-3.5" /> Upload Target Master
+                    </button>
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* Prerequisite Notice / Alert */}
+            {prerequisiteNotice && (
+              <div className="mt-4 p-3.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-2xl text-xs flex items-center justify-between shadow-xs">
+                <div className="flex items-center gap-2.5">
+                  <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  <span className="font-semibold">{prerequisiteNotice}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setPrerequisiteNotice(null)}
+                  className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 cursor-pointer p-1"
+                >
+                  <X className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+
         {/* STEP 1: SELECT WORKBOOK TYPE */}
         {currentStep === 1 && (
           <div className="space-y-6">
@@ -480,22 +786,44 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               {/* Raw Data Card */}
               <div
-                onClick={() => handleTypeSelect("raw_data")}
-                className={`cursor-pointer p-6 rounded-2xl border-2 transition-all hover:shadow-lg flex flex-col justify-between ${
-                  selectedType === "raw_data"
-                    ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20"
-                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40"
+                onClick={() => {
+                  if (mastersStatus && !mastersStatus.can_upload_raw) {
+                    setPrerequisiteNotice(
+                      "RAW CRM uploads are locked: Both Dimension Master and Target Master must be uploaded first so Program, State, Source, EMP, and targets can be mapped."
+                    );
+                    return;
+                  }
+                  handleTypeSelect("raw_data");
+                }}
+                className={`p-6 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                  mastersStatus && !mastersStatus.can_upload_raw
+                    ? "opacity-75 border-slate-300 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 cursor-not-allowed"
+                    : selectedType === "raw_data"
+                    ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 cursor-pointer hover:shadow-lg"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 cursor-pointer hover:shadow-lg"
                 }`}
               >
                 <div>
-                  <div className="w-12 h-12 rounded-xl bg-blue-100 dark:bg-blue-900/40 text-blue-600 flex items-center justify-center mb-4">
-                    <Database className="w-6 h-6" />
+                  <div className="flex items-center justify-between mb-4">
+                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                      mastersStatus && !mastersStatus.can_upload_raw
+                        ? "bg-slate-200 dark:bg-slate-800 text-slate-500"
+                        : "bg-blue-100 dark:bg-blue-900/40 text-blue-600"
+                    }`}>
+                      <Database className="w-6 h-6" />
+                    </div>
+                    {mastersStatus && !mastersStatus.can_upload_raw ? (
+                      <span className="px-2.5 py-1 text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded-full flex items-center gap-1">
+                        <Lock className="w-3 h-3" /> Locked
+                      </span>
+                    ) : (
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-full">
+                        Coexistence
+                      </span>
+                    )}
                   </div>
                   <div className="flex items-center gap-2 mb-1">
                     <h4 className="font-bold text-base">RAW CRM Data</h4>
-                    <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-full">
-                      Coexistence
-                    </span>
                   </div>
                   <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
                     RAW CRM — Multiple datasets allowed by Academic Year + Campus
@@ -503,10 +831,24 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
                   <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
                     CRM Lead dumps, monthly or cumulative enquiries. Distinct datasets coexist across academic years and campuses. Replacement occurs only when both year and campus match.
                   </p>
+                  {mastersStatus && !mastersStatus.can_upload_raw && (
+                    <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-[11px] text-amber-800 dark:text-amber-200 font-semibold flex items-center gap-1.5">
+                      <Lock className="w-3.5 h-3.5 shrink-0 text-amber-600" />
+                      <span>Requires Dimension & Target Masters</span>
+                    </div>
+                  )}
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-200/40 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-indigo-600">
-                  <span>Select RAW CRM</span>
-                  <ArrowRight className="w-4 h-4" />
+                <div className="mt-4 pt-4 border-t border-slate-200/40 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+                  {mastersStatus && !mastersStatus.can_upload_raw ? (
+                    <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
+                      <Lock className="w-3.5 h-3.5" /> Locked (Upload Masters)
+                    </span>
+                  ) : (
+                    <>
+                      <span className="text-indigo-600">Select RAW CRM</span>
+                      <ArrowRight className="w-4 h-4 text-indigo-600" />
+                    </>
+                  )}
                 </div>
               </div>
 
@@ -577,8 +919,15 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
 
             <div className="flex justify-end pt-4">
               <button
-                onClick={() => setCurrentStep(2)}
-                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all"
+                onClick={() => {
+                  if (selectedType === "raw_data" && mastersStatus && !mastersStatus.can_upload_raw) {
+                    setPrerequisiteNotice("Please upload both Dimension Master and Target Master before proceeding with RAW CRM data.");
+                    return;
+                  }
+                  setCurrentStep(2);
+                }}
+                disabled={selectedType === "raw_data" && mastersStatus !== null && !mastersStatus.can_upload_raw}
+                className="px-6 py-2.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-bold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all cursor-pointer"
               >
                 Proceed to File Upload <ArrowRight className="w-4 h-4" />
               </button>
@@ -600,19 +949,38 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
               <button
                 type="button"
-                onClick={() => handleTypeSelect("raw_data")}
+                onClick={() => {
+                  if (mastersStatus && !mastersStatus.can_upload_raw) {
+                    setPrerequisiteNotice("RAW CRM uploads are locked until both Dimension Master and Target Master are uploaded.");
+                    return;
+                  }
+                  handleTypeSelect("raw_data");
+                }}
                 className={`p-3.5 rounded-2xl border-2 text-left transition-all flex items-center gap-3 cursor-pointer ${
                   selectedType === "raw_data"
                     ? "border-blue-600 bg-blue-50/90 dark:bg-blue-950/60 text-blue-950 dark:text-blue-100 shadow-md ring-2 ring-blue-500/20"
+                    : mastersStatus && !mastersStatus.can_upload_raw
+                    ? "border-slate-200 dark:border-slate-800 bg-slate-100/50 dark:bg-slate-900/30 opacity-70 cursor-not-allowed"
                     : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:border-blue-300"
                 }`}
               >
-                <div className={`p-2.5 rounded-xl ${selectedType === "raw_data" ? "bg-blue-600 text-white" : "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300"}`}>
-                  <Database className="w-5 h-5" />
+                <div className={`p-2.5 rounded-xl ${
+                  selectedType === "raw_data"
+                    ? "bg-blue-600 text-white"
+                    : "bg-blue-100 dark:bg-blue-900 text-blue-600 dark:text-blue-300"
+                }`}>
+                  {mastersStatus && !mastersStatus.can_upload_raw ? <Lock className="w-5 h-5 text-amber-500" /> : <Database className="w-5 h-5" />}
                 </div>
                 <div>
-                  <span className="font-extrabold text-xs block text-slate-900 dark:text-white">RAW CRM Leads</span>
-                  <span className="text-[11px] text-slate-500 dark:text-slate-400">Leads & Applications Dump</span>
+                  <span className="font-extrabold text-xs block text-slate-900 dark:text-white flex items-center gap-1.5">
+                    RAW CRM Leads
+                    {mastersStatus && !mastersStatus.can_upload_raw && (
+                      <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold">(Locked)</span>
+                    )}
+                  </span>
+                  <span className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {mastersStatus && !mastersStatus.can_upload_raw ? "Upload Masters First" : "Leads & Applications Dump"}
+                  </span>
                 </div>
               </button>
 
@@ -858,8 +1226,12 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
               </button>
               <button
                 onClick={startUpload}
-                disabled={!selectedFile || isUploading}
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all cursor-pointer"
+                disabled={
+                  !selectedFile ||
+                  isUploading ||
+                  (selectedType === "raw_data" && mastersStatus !== null && !mastersStatus.can_upload_raw)
+                }
+                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all cursor-pointer"
               >
                 {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload & Inspect Sheets"} <ArrowRight className="w-4 h-4" />
               </button>

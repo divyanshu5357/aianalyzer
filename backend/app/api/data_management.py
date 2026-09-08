@@ -13,6 +13,7 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Depends
 from pydantic import BaseModel
 from sqlalchemy import text
+from sqlalchemy.orm import Session
 
 from app.database.connection import SessionLocal, get_db
 from app.database.repository import (
@@ -43,7 +44,7 @@ def _require_reset_enabled() -> None:
             status_code=403,
             detail=(
                 "Data reset is disabled. Set ALLOW_DATA_RESET=true in "
-                "your environment to enable destructive operations."
+                "environment variables to enable this operation."
             ),
         )
 
@@ -59,6 +60,91 @@ def get_admin_config() -> dict[str, Any]:
     return {
         "allow_data_reset": settings.allow_data_reset,
         "app_env": settings.app_env,
+    }
+
+
+@router.get("/masters-status")
+def get_masters_status(db: Session = Depends(get_db)) -> dict[str, Any]:
+    """
+    Return active status, filenames, sheet names, and row counts
+    for both Dimension Master and Target Master workbooks.
+    Indicates whether prerequisites are met for RAW CRM ingestion.
+    """
+    from app.database.repository import resolve_dimension_dataset, resolve_target_dataset
+    dim_id = resolve_dimension_dataset(db)
+    tgt_id = resolve_target_dataset(db)
+
+    dim_info = None
+    if dim_id:
+        dim_row = db.execute(
+            text("""
+                SELECT id, dataset_name, original_filename, row_count, status, is_active, is_analytics_enabled, created_at
+                FROM system.datasets
+                WHERE id = :id
+            """),
+            {"id": dim_id}
+        ).mappings().first()
+        if dim_row:
+            sheets = db.execute(
+                text("SELECT DISTINCT NULLIF(TRIM(raw_data->>'sheet_name'), '') FROM staging.records WHERE dataset_id = :id"),
+                {"id": dim_id}
+            ).scalars().all()
+            clean_sheets = [s for s in sheets if s]
+            if not clean_sheets:
+                clean_sheets = ["Program", "State", "Source", "EMP"]
+            dim_info = {
+                "id": str(dim_row["id"]),
+                "dataset_name": dim_row["dataset_name"],
+                "original_filename": dim_row["original_filename"],
+                "row_count": dim_row["row_count"] or 0,
+                "status": dim_row["status"],
+                "is_active": bool(dim_row["is_active"] or dim_row["is_analytics_enabled"]),
+                "sheets": clean_sheets,
+                "sheet_count": len(clean_sheets),
+                "created_at": str(dim_row["created_at"]),
+            }
+
+    tgt_info = None
+    if tgt_id:
+        tgt_row = db.execute(
+            text("""
+                SELECT id, dataset_name, original_filename, row_count, status, is_active, is_analytics_enabled, created_at
+                FROM system.datasets
+                WHERE id = :id
+            """),
+            {"id": tgt_id}
+        ).mappings().first()
+        if tgt_row:
+            sheets = db.execute(
+                text("SELECT DISTINCT NULLIF(TRIM(raw_data->>'sheet_name'), '') FROM staging.records WHERE dataset_id = :id"),
+                {"id": tgt_id}
+            ).scalars().all()
+            clean_sheets = [s for s in sheets if s]
+            if not clean_sheets:
+                t_sheets = db.execute(text("SELECT DISTINCT dimension_type FROM analytics.targets")).scalars().all()
+                clean_sheets = [s for s in t_sheets if s] or ["Program", "Source", "State"]
+            tgt_info = {
+                "id": str(tgt_row["id"]),
+                "dataset_name": tgt_row["dataset_name"],
+                "original_filename": tgt_row["original_filename"],
+                "row_count": tgt_row["row_count"] or 0,
+                "status": tgt_row["status"],
+                "is_active": bool(tgt_row["is_active"] or tgt_row["is_analytics_enabled"]),
+                "sheets": clean_sheets,
+                "sheet_count": len(clean_sheets),
+                "created_at": str(tgt_row["created_at"]),
+            }
+
+    has_dimension = bool(dim_info and dim_info["row_count"] > 0)
+    has_target = bool(tgt_info and tgt_info["row_count"] > 0)
+    can_upload_raw = has_dimension and has_target
+
+    return {
+        "has_dimension_master": has_dimension,
+        "has_target_master": has_target,
+        "can_upload_raw": can_upload_raw,
+        "dimension_master": dim_info,
+        "target_master": tgt_info,
     }
 
 

@@ -981,3 +981,23 @@ export interface StateHierarchyParams {
   sort_by?: string;
   sort_order?: string;
 }
+
+export interface MasterInfo {
+  id: string;
+  dataset_name: string;
+  original_filename: string;
+  row_count: number;
+  status: string;
+  is_active: boolean;
+  sheets: string[];
+  sheet_count: number;
+  created_at: string | null;
+}
+
+export interface MastersStatusResponse {
+  has_dimension_master: boolean;
+  has_target_master: boolean;
+  can_upload_raw: boolean;
+  dimension_master: MasterInfo | null;
+  target_master: MasterInfo | null;
+}
