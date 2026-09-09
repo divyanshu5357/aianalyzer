@@ -63,3 +63,25 @@ class ObjectStorageProvider(ABC):
     def create_presigned_download_url(self, key: str, expires_in: int = 3600) -> str:
         """Generate presigned download URL."""
         pass
+
+    @abstractmethod
+    def initiate_multipart_upload(self, key: str, content_type: Optional[str] = None) -> str:
+        """Initiate multipart upload and return upload_id."""
+        pass
+
+    @abstractmethod
+    def create_presigned_part_url(
+        self, key: str, upload_id: str, part_number: int, expires_in: int = 3600
+    ) -> str:
+        """Generate presigned upload URL for a specific part number."""
+        pass
+
+    @abstractmethod
+    def complete_multipart_upload(self, key: str, upload_id: str, parts: list[dict]) -> dict:
+        """Complete multipart upload with list of uploaded parts [{PartNumber, ETag}]."""
+        pass
+
+    @abstractmethod
+    def abort_multipart_upload(self, key: str, upload_id: str) -> bool:
+        """Abort multipart upload and discard uploaded parts."""
+        pass

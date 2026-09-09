@@ -27,11 +27,12 @@ GET /api/data/active
 
 import hashlib
 import logging
+import math
 from pathlib import Path
 from uuid import uuid4
 
 from typing import Optional, Any
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query, BackgroundTasks, Request
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile, Query, BackgroundTasks, Request, Response
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from sqlalchemy import text
@@ -99,6 +100,40 @@ class UploadAbortRequest(BaseModel):
     job_id: Optional[str] = None
     dataset_id: Optional[str] = None
     filename: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class CompletedPart(BaseModel):
+    part_number: int
+    etag: str
+
+
+class MultipartInitiateRequest(BaseModel):
+    filename: str
+    file_size: int
+    content_type: Optional[str] = "application/octet-stream"
+    part_size: Optional[int] = 10 * 1024 * 1024
+    workbook_type: Optional[str] = "raw_data"
+    upload_mode: Optional[str] = "monthly"
+    academic_year: Optional[Any] = None
+    month: Optional[str] = None
+    campus_name: Optional[str] = None
+
+
+class MultipartCompleteRequest(BaseModel):
+    job_id: str
+    dataset_id: str
+    s3_key: str
+    upload_id: str
+    parts: list[CompletedPart]
+    expected_size: Optional[int] = None
+
+
+class MultipartAbortRequest(BaseModel):
+    job_id: Optional[str] = None
+    dataset_id: Optional[str] = None
+    s3_key: str
+    upload_id: str
     reason: Optional[str] = None
 
 
@@ -985,3 +1020,267 @@ def get_upload_job_status(job_id: str, db: Session = Depends(get_db)):
     if not status_info:
         raise HTTPException(status_code=404, detail="Upload session job not found.")
     return status_info
+
+
+# ---------------------------------------------------------------------------
+# Direct-to-S3 Multipart Upload Endpoints (High Performance, 350MB - 1GB+)
+# ---------------------------------------------------------------------------
+
+@router.post("/upload/multipart/initiate")
+def initiate_multipart_upload_endpoint(
+    body: MultipartInitiateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Initiates an S3 multipart upload session for large files (350MB - 1GB+).
+    Returns presigned part upload URLs so the browser uploads directly to S3.
+    """
+    import re
+    from app.services.s3_storage import initiate_multipart_upload, create_presigned_part_url
+    from app.ingestion.job_tracker import create_job
+
+    dataset_id = str(uuid4())
+    job_id = str(uuid4())
+
+    extension = Path(body.filename).suffix.lower()
+    if extension not in ALLOWED_EXTENSIONS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unsupported file type '{extension}'. Allowed: {', '.join(sorted(ALLOWED_EXTENSIONS))}",
+        )
+
+    safe_filename = re.sub(r'[^a-zA-Z0-9.-]', '_', body.filename)
+    object_key = f"uploads/{dataset_id}/{safe_filename}"
+
+    # S3 requires minimum 5MB per part (except last part)
+    part_size = max(5 * 1024 * 1024, body.part_size or 10 * 1024 * 1024)
+    total_parts = max(1, math.ceil(body.file_size / part_size))
+
+    try:
+        upload_id = initiate_multipart_upload(object_key, body.content_type)
+    except Exception as e:
+        logger.exception("Failed to initiate multipart upload: %s", e)
+        raise HTTPException(status_code=500, detail=f"Storage initialization failed: {e}")
+
+    # Generate presigned part URLs
+    parts = []
+    for i in range(1, total_parts + 1):
+        url = create_presigned_part_url(object_key, upload_id, i, expires_in=7200)
+        parts.append({
+            "part_number": i,
+            "url": url,
+        })
+
+    # Clean up stale uncompleted initiated rows for this filename
+    try:
+        db.execute(
+            text("""
+                DELETE FROM system.datasets
+                WHERE status IN ('initiated', 'failed', 'PENDING', 'ABORTED')
+                  AND COALESCE(row_count, 0) = 0
+                  AND is_analytics_enabled = FALSE
+                  AND original_filename = :orig
+            """),
+            {"orig": body.filename},
+        )
+        db.commit()
+    except Exception:
+        db.rollback()
+
+    wb_type = (body.workbook_type or "RAW").upper()
+    if wb_type == "RAW_DATA":
+        wb_type = "RAW"
+
+    # Pre-seed system.datasets row with PENDING status
+    try:
+        db.execute(
+            text("""
+                INSERT INTO system.datasets (
+                    id, dataset_name, original_filename, dataset_type, 
+                    academic_year, campus_name, workbook_type, status, is_active, is_analytics_enabled, row_count
+                ) VALUES (
+                    :id, :name, :orig, :dtype, 
+                    :year, :campus, :wb_type, 'PENDING', FALSE, FALSE, 0
+                ) ON CONFLICT (id) DO UPDATE SET
+                    academic_year = COALESCE(EXCLUDED.academic_year, system.datasets.academic_year),
+                    campus_name = COALESCE(EXCLUDED.campus_name, system.datasets.campus_name),
+                    workbook_type = EXCLUDED.workbook_type,
+                    status = 'PENDING',
+                    is_active = FALSE,
+                    is_analytics_enabled = FALSE
+            """),
+            {
+                "id": dataset_id,
+                "name": body.filename,
+                "orig": body.filename,
+                "dtype": extension.lstrip("."),
+                "year": body.academic_year,
+                "campus": body.campus_name,
+                "wb_type": wb_type,
+            },
+        )
+        db.commit()
+    except Exception as db_err:
+        logger.warning("Failed to pre-seed system.datasets row: %s", db_err)
+        db.rollback()
+
+    create_job(
+        job_id=job_id,
+        filename=body.filename,
+        dataset_id=dataset_id,
+        db=db,
+    )
+    db.commit()
+
+    return {
+        "job_id": job_id,
+        "dataset_id": dataset_id,
+        "s3_key": object_key,
+        "upload_id": upload_id,
+        "part_size": part_size,
+        "total_parts": total_parts,
+        "parts": parts,
+    }
+
+
+@router.put("/upload/multipart/part-direct")
+async def multipart_part_direct_upload(
+    request: Request,
+    key: str = Query(...),
+    upload_id: str = Query(...),
+    part_number: int = Query(...),
+):
+    """Direct upload endpoint for local storage multipart parts (dev/test fallback)."""
+    import urllib.parse
+    from app.storage.service import get_storage_provider
+    from app.storage.local_provider import LocalStorageProvider
+
+    clean_key = urllib.parse.unquote(key).strip()
+    provider = get_storage_provider()
+    if isinstance(provider, LocalStorageProvider):
+        part_dir = provider._resolve_path(f"_parts/{upload_id}")
+        part_dir.mkdir(parents=True, exist_ok=True)
+        part_file = part_dir / f"part_{part_number}"
+        content = await request.body()
+        with part_file.open("wb") as f:
+            f.write(content)
+        return Response(status_code=200, headers={"ETag": f'"etag_part_{part_number}"'})
+    raise HTTPException(status_code=400, detail="part-direct is only supported for local storage provider.")
+
+
+@router.post("/upload/multipart/complete")
+def complete_multipart_upload_endpoint(
+    body: MultipartCompleteRequest,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db)
+):
+    """
+    Completes S3 multipart upload after browser uploads all parts directly to S3.
+    Verifies object in S3, marks status='STORAGE_UPLOADED', and triggers async worker.
+    """
+    from app.services.s3_storage import complete_multipart_upload, check_object_exists
+    from app.ingestion.job_tracker import update_job_progress
+
+    # Security: Verify key belongs to dataset_id to prevent arbitrary object overwrite
+    if not body.s3_key.startswith(f"uploads/{body.dataset_id}/"):
+        raise HTTPException(status_code=403, detail="Unauthorized storage key for dataset.")
+
+    if not body.parts:
+        raise HTTPException(status_code=400, detail="No parts provided for multipart complete.")
+
+    try:
+        complete_multipart_upload(
+            object_key=body.s3_key,
+            upload_id=body.upload_id,
+            parts=[{"PartNumber": p.part_number, "ETag": p.etag} for p in body.parts],
+        )
+    except Exception as e:
+        logger.exception("Failed to complete multipart upload in storage: %s", e)
+        raise HTTPException(status_code=500, detail=f"Failed to complete multipart upload: {e}")
+
+    # Verify object exists in storage
+    if not check_object_exists(body.s3_key):
+        raise HTTPException(status_code=502, detail="Object verification failed in storage.")
+
+    # Update dataset status to STORAGE_UPLOADED (still inactive until ingestion finishes)
+    try:
+        db.execute(
+            text("UPDATE system.datasets SET status = 'STORAGE_UPLOADED', is_active = FALSE, is_analytics_enabled = FALSE WHERE id = :ds_id"),
+            {"ds_id": body.dataset_id},
+        )
+        db.commit()
+    except Exception as e:
+        logger.warning("Failed to update dataset status to STORAGE_UPLOADED: %s", e)
+        db.rollback()
+
+    # Look up original filename
+    ds_row = db.execute(
+        text("SELECT original_filename FROM system.datasets WHERE id = :ds_id"),
+        {"ds_id": body.dataset_id},
+    ).mappings().first()
+    filename = ds_row["original_filename"] if ds_row else Path(body.s3_key).name
+
+    update_job_progress(
+        body.job_id,
+        stage="upload_complete",
+        progress_percent=20.0,
+        message="S3 multipart upload completed. Enqueueing ingestion...",
+        db=db,
+    )
+    db.commit()
+
+    saved_files_info = [{
+        "dataset_id": body.dataset_id,
+        "filename": filename,
+        "s3_key": body.s3_key,
+    }]
+
+    background_tasks.add_task(_process_storage_upload_background, body.job_id, saved_files_info)
+
+    return {
+        "status": "processing",
+        "job_id": body.job_id,
+        "dataset_id": body.dataset_id,
+        "message": "Multipart upload complete. Ingestion started in background.",
+    }
+
+
+@router.post("/upload/multipart/abort")
+def abort_multipart_upload_endpoint(
+    body: MultipartAbortRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    Aborts S3 multipart upload and cleans up initiated records.
+    """
+    from app.services.s3_storage import abort_multipart_upload
+    from app.ingestion.job_tracker import mark_job_failed
+
+    if body.s3_key and body.upload_id:
+        try:
+            abort_multipart_upload(body.s3_key, body.upload_id)
+        except Exception as e:
+            logger.warning("Failed to abort storage multipart upload: %s", e)
+
+    if body.job_id:
+        try:
+            mark_job_failed(body.job_id, error=body.reason or "Upload aborted by user", db=db)
+        except Exception:
+            pass
+
+    if body.dataset_id:
+        try:
+            db.execute(
+                text("""
+                    UPDATE system.datasets
+                    SET status = 'ABORTED', is_active = FALSE, is_analytics_enabled = FALSE
+                    WHERE id = :ds_id AND COALESCE(row_count, 0) = 0
+                """),
+                {"ds_id": body.dataset_id},
+            )
+            db.commit()
+        except Exception as exc:
+            logger.warning("Failed to mark dataset aborted: %s", exc)
+            db.rollback()
+
+    return {"status": "aborted"}

@@ -110,3 +110,49 @@ class LocalStorageProvider(ObjectStorageProvider):
         import urllib.parse
         encoded_key = urllib.parse.quote(key, safe="/")
         return f"/api/data/upload/storage-direct?key={encoded_key}"
+
+    def initiate_multipart_upload(self, key: str, content_type: Optional[str] = None) -> str:
+        import uuid
+        upload_id = uuid.uuid4().hex
+        part_dir = self._resolve_path(f"_parts/{upload_id}")
+        part_dir.mkdir(parents=True, exist_ok=True)
+        return upload_id
+
+    def upload_part(self, key: str, upload_id: str, part_number: int, data: bytes) -> str:
+        part_dir = self._resolve_path(f"_parts/{upload_id}")
+        part_dir.mkdir(parents=True, exist_ok=True)
+        part_file = part_dir / f"part_{part_number}"
+        with part_file.open("wb") as f:
+            f.write(data)
+        return f'"etag_part_{part_number}"'
+
+    def create_presigned_part_url(
+        self, key: str, upload_id: str, part_number: int, expires_in: int = 3600
+    ) -> str:
+        import urllib.parse
+        encoded_key = urllib.parse.quote(key, safe="/")
+        return f"/api/data/upload/multipart/part-direct?key={encoded_key}&upload_id={upload_id}&part_number={part_number}"
+
+    def complete_multipart_upload(self, key: str, upload_id: str, parts: list[dict]) -> dict:
+        target_path = self._resolve_path(key)
+        target_path.parent.mkdir(parents=True, exist_ok=True)
+        part_dir = self._resolve_path(f"_parts/{upload_id}")
+
+        sorted_parts = sorted(
+            parts, key=lambda x: int(x.get("PartNumber") if x.get("PartNumber") is not None else x.get("part_number", 0))
+        )
+        with target_path.open("wb") as out_f:
+            for p in sorted_parts:
+                p_num = p.get("PartNumber") if p.get("PartNumber") is not None else p.get("part_number")
+                p_file = part_dir / f"part_{p_num}"
+                if p_file.exists():
+                    with p_file.open("rb") as in_f:
+                        shutil.copyfileobj(in_f, out_f)
+        shutil.rmtree(part_dir, ignore_errors=True)
+        return {"Location": str(target_path), "Bucket": "local", "Key": key, "key": key}
+
+    def abort_multipart_upload(self, key: str, upload_id: str) -> bool:
+        part_dir = self._resolve_path(f"_parts/{upload_id}")
+        if part_dir.exists():
+            shutil.rmtree(part_dir, ignore_errors=True)
+        return True

@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useState, useCallback, useMemo } from "react";
+import React, { useState, useCallback, useMemo, useRef } from "react";
 import { useApp } from "../context/AppContext";
 import {
   FileSpreadsheet,
@@ -32,6 +32,10 @@ import {
   completeStorageUpload,
   uploadFileToStorageDirect,
   abortStorageUpload,
+  initiateMultipartUpload,
+  uploadFileMultipartDirect,
+  completeMultipartUpload,
+  abortMultipartUpload,
   getIngestionJobStatus,
   classifyWorkbook,
   detectMultisheetRelationships,
@@ -163,6 +167,10 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
   const [jobStatus, setJobStatus] = useState<any>(null);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
 
+  // Cancellation and Multipart State Refs
+  const isCancelledRef = useRef<boolean>(false);
+  const currentMultipartRef = useRef<{ jobId?: string; datasetId?: string; s3Key?: string; uploadId?: string } | null>(null);
+
   // ---------------------------------------------------------------------------
   // Step Handlers
   // ---------------------------------------------------------------------------
@@ -246,57 +254,122 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
       return;
     }
 
+    isCancelledRef.current = false;
     setIsUploading(true);
     setUploadError(null);
-    setUploadProgress(10);
+    setUploadProgress(5);
 
     let currentDsId: string | null = null;
     let currentJobId: string | null = null;
+    let currentS3Key: string | null = null;
+    let currentUploadId: string | null = null;
 
     try {
-      // 1. Initiate session with dynamic metadata (only relevant fields based on workbook type)
-      const initRes = await initiateStorageUpload(
-        [{ filename: selectedFile.name, content_type: selectedFile.type || "application/octet-stream" }],
-        selectedType,
-        uploadMode,
-        selectedYear,
-        selectedType === "raw_data" ? selectedMonth : undefined,
-        selectedType === "raw_data" ? selectedCampus : undefined
-      );
+      if (selectedFile.size >= 5 * 1024 * 1024) {
+        // High-Performance Direct-to-S3 Multipart Upload (5MB to 1GB+)
+        const mpInit = await initiateMultipartUpload(
+          selectedFile,
+          selectedType,
+          uploadMode,
+          selectedYear,
+          selectedType === "raw_data" ? selectedMonth : undefined,
+          selectedType === "raw_data" ? selectedCampus : undefined
+        );
 
-      currentJobId = initRes.job_id;
-      setCompletedJobId(initRes.job_id);
-      const file_session = initRes.files[0];
-      currentDsId = file_session.dataset_id;
-      setDatasetId(file_session.dataset_id);
-      setUploadProgress(40);
+        currentJobId = mpInit.job_id;
+        currentDsId = mpInit.dataset_id;
+        currentS3Key = mpInit.s3_key;
+        currentUploadId = mpInit.upload_id;
+        currentMultipartRef.current = {
+          jobId: mpInit.job_id,
+          datasetId: mpInit.dataset_id,
+          s3Key: mpInit.s3_key,
+          uploadId: mpInit.upload_id,
+        };
 
-      // 2. Direct storage upload
-      await uploadFileToStorageDirect(file_session.upload_url, selectedFile);
-      setUploadProgress(70);
+        setCompletedJobId(mpInit.job_id);
+        setDatasetId(mpInit.dataset_id);
+        setUploadProgress(10);
 
-      // 3. Complete session
-      await completeStorageUpload(initRes.job_id, [
-        { dataset_id: file_session.dataset_id, filename: selectedFile.name, s3_key: file_session.s3_key },
-      ]);
-      setUploadProgress(100);
-      setIsUploading(false);
+        const completedParts = await uploadFileMultipartDirect(
+          selectedFile,
+          mpInit,
+          (pct) => setUploadProgress(Math.max(10, Math.min(95, pct))),
+          () => isCancelledRef.current
+        );
 
-      // Advance to Step 3: Inspect via real backend API
-      runInspection(file_session.dataset_id, selectedFile.name);
+        if (isCancelledRef.current) {
+          throw new Error("Upload cancelled by user");
+        }
+
+        await completeMultipartUpload(
+          mpInit.job_id,
+          mpInit.dataset_id,
+          mpInit.s3_key,
+          mpInit.upload_id,
+          completedParts,
+          selectedFile.size
+        );
+
+        setUploadProgress(100);
+        setIsUploading(false);
+        currentMultipartRef.current = null;
+        runInspection(mpInit.dataset_id, selectedFile.name);
+      } else {
+        // Single-shot direct storage upload for small files (< 5MB)
+        const initRes = await initiateStorageUpload(
+          [{ filename: selectedFile.name, content_type: selectedFile.type || "application/octet-stream" }],
+          selectedType,
+          uploadMode,
+          selectedYear,
+          selectedType === "raw_data" ? selectedMonth : undefined,
+          selectedType === "raw_data" ? selectedCampus : undefined
+        );
+
+        currentJobId = initRes.job_id;
+        setCompletedJobId(initRes.job_id);
+        const file_session = initRes.files[0];
+        currentDsId = file_session.dataset_id;
+        setDatasetId(file_session.dataset_id);
+        setUploadProgress(40);
+
+        await uploadFileToStorageDirect(file_session.upload_url, selectedFile);
+        setUploadProgress(70);
+
+        await completeStorageUpload(initRes.job_id, [
+          { dataset_id: file_session.dataset_id, filename: selectedFile.name, s3_key: file_session.s3_key },
+        ]);
+        setUploadProgress(100);
+        setIsUploading(false);
+        runInspection(file_session.dataset_id, selectedFile.name);
+      }
     } catch (err: any) {
       console.error("[UPLOAD WIZARD ERROR]", err);
-      // Clean up incomplete temporary initiated dataset so no 0-row ghost datasets remain
-      if (currentDsId || currentJobId) {
+      if (currentUploadId && currentS3Key) {
+        try {
+          await abortMultipartUpload(currentJobId || undefined, currentDsId || undefined, currentS3Key, currentUploadId, err.message);
+        } catch {}
+      } else if (currentDsId || currentJobId) {
         try {
           await abortStorageUpload(currentDsId || undefined, currentJobId || undefined, selectedFile.name);
-        } catch {
-          // ignore abort failure
-        }
+        } catch {}
       }
+      currentMultipartRef.current = null;
       setUploadError(err.message || "Failed to upload file");
       setIsUploading(false);
     }
+  };
+
+  const handleCancelUpload = async () => {
+    isCancelledRef.current = true;
+    if (currentMultipartRef.current) {
+      const { jobId, datasetId, s3Key, uploadId } = currentMultipartRef.current;
+      await abortMultipartUpload(jobId, datasetId, s3Key, uploadId, "Upload cancelled by user");
+      currentMultipartRef.current = null;
+    }
+    setIsUploading(false);
+    setUploadProgress(0);
+    setUploadError("Upload cancelled by user.");
   };
 
   const runInspection = async (dsId: string, filename: string) => {
@@ -1224,17 +1297,28 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
               >
                 <ArrowLeft className="w-4 h-4" /> Back
               </button>
-              <button
-                onClick={startUpload}
-                disabled={
-                  !selectedFile ||
-                  isUploading ||
-                  (selectedType === "raw_data" && mastersStatus !== null && !mastersStatus.can_upload_raw)
-                }
-                className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all cursor-pointer"
-              >
-                {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload & Inspect Sheets"} <ArrowRight className="w-4 h-4" />
-              </button>
+              <div className="flex items-center gap-2">
+                {isUploading && (
+                  <button
+                    type="button"
+                    onClick={handleCancelUpload}
+                    className="px-4 py-2.5 border border-red-300 dark:border-red-700 bg-red-50 dark:bg-red-950/40 text-red-600 dark:text-red-400 rounded-xl text-xs font-bold hover:bg-red-100 dark:hover:bg-red-900/60 cursor-pointer"
+                  >
+                    Cancel Upload
+                  </button>
+                )}
+                <button
+                  onClick={startUpload}
+                  disabled={
+                    !selectedFile ||
+                    isUploading ||
+                    (selectedType === "raw_data" && mastersStatus !== null && !mastersStatus.can_upload_raw)
+                  }
+                  className="px-6 py-2.5 bg-gradient-to-r from-indigo-600 to-blue-600 hover:from-indigo-700 hover:to-blue-700 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl text-xs font-extrabold flex items-center gap-2 shadow-lg shadow-indigo-500/20 transition-all cursor-pointer"
+                >
+                  {isUploading ? <Loader2 className="w-4 h-4 animate-spin" /> : "Upload & Inspect Sheets"} <ArrowRight className="w-4 h-4" />
+                </button>
+              </div>
             </div>
           </div>
         )}

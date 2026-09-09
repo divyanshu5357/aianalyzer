@@ -249,6 +249,207 @@ export async function abortStorageUpload(
   }
 }
 
+export interface MultipartInitiateResponse {
+  job_id: string;
+  dataset_id: string;
+  s3_key: string;
+  upload_id: string;
+  part_size: number;
+  total_parts: number;
+  parts: Array<{ part_number: number; url: string }>;
+}
+
+export async function initiateMultipartUpload(
+  file: File,
+  workbookType: string = "raw_data",
+  uploadMode: string = "monthly",
+  academicYear?: number,
+  month?: string,
+  campusName?: string
+): Promise<MultipartInitiateResponse> {
+  const response = await fetch(`${API_BASE_URL}/api/data/upload/multipart/initiate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      filename: file.name,
+      file_size: file.size,
+      content_type: file.type || "application/octet-stream",
+      part_size: 10 * 1024 * 1024,
+      workbook_type: workbookType,
+      upload_mode: uploadMode,
+      academic_year: academicYear,
+      month: month,
+      campus_name: campusName,
+    }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to initiate multipart upload");
+  }
+  return response.json();
+}
+
+export async function uploadPartToStorage(
+  url: string,
+  chunk: Blob,
+  partNumber: number,
+  onProgress?: (loaded: number, total: number) => void
+): Promise<{ part_number: number; etag: string }> {
+  const fullUrl = url.startsWith("http") ? url : `${API_BASE_URL}${url}`;
+  return new Promise((resolve, reject) => {
+    const xhr = new XMLHttpRequest();
+    xhr.open("PUT", fullUrl, true);
+    if (onProgress) {
+      xhr.upload.onprogress = (e) => {
+        if (e.lengthComputable) onProgress(e.loaded, e.total);
+      };
+    }
+    xhr.onload = () => {
+      if (xhr.status >= 200 && xhr.status < 300) {
+        let etag = xhr.getResponseHeader("ETag") || "";
+        if (!etag) {
+          try {
+            const res = JSON.parse(xhr.responseText);
+            if (res?.ETag) etag = res.ETag;
+          } catch {}
+        }
+        if (!etag) {
+          etag = `"etag_part_${partNumber}"`;
+        }
+        resolve({ part_number: partNumber, etag });
+      } else {
+        reject(new Error(`Part ${partNumber} upload failed with status ${xhr.status}`));
+      }
+    };
+    xhr.onerror = () => reject(new Error(`Network error during part ${partNumber} upload`));
+    xhr.send(chunk);
+  });
+}
+
+export async function completeMultipartUpload(
+  jobId: string,
+  datasetId: string,
+  s3Key: string,
+  uploadId: string,
+  parts: Array<{ part_number: number; etag: string }>,
+  expectedSize?: number
+): Promise<any> {
+  const response = await fetch(`${API_BASE_URL}/api/data/upload/multipart/complete`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      job_id: jobId,
+      dataset_id: datasetId,
+      s3_key: s3Key,
+      upload_id: uploadId,
+      parts,
+      expected_size: expectedSize,
+    }),
+  });
+  if (!response.ok) {
+    const errorText = await response.text();
+    throw new Error(errorText || "Failed to complete multipart upload");
+  }
+  return response.json();
+}
+
+export async function abortMultipartUpload(
+  jobId?: string,
+  datasetId?: string,
+  s3Key?: string,
+  uploadId?: string,
+  reason?: string
+): Promise<void> {
+  if (!s3Key || !uploadId) return;
+  try {
+    await fetch(`${API_BASE_URL}/api/data/upload/multipart/abort`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_id: jobId,
+        dataset_id: datasetId,
+        s3_key: s3Key,
+        upload_id: uploadId,
+        reason,
+      }),
+    });
+  } catch (err) {
+    console.warn("Failed to notify server of aborted multipart upload:", err);
+  }
+}
+
+export async function uploadFileMultipartDirect(
+  file: File,
+  initRes: MultipartInitiateResponse,
+  onProgress?: (percent: number, loaded: number, total: number) => void,
+  checkCancelled?: () => boolean
+): Promise<Array<{ part_number: number; etag: string }>> {
+  const partSize = initRes.part_size;
+  const parts = initRes.parts;
+  const totalParts = parts.length;
+  const completedParts: Array<{ part_number: number; etag: string }> = [];
+  const partProgress = new Array(totalParts).fill(0);
+
+  const concurrency = 3;
+  let currentIndex = 0;
+
+  const updateOverallProgress = () => {
+    const loadedBytes = partProgress.reduce((a, b) => a + b, 0);
+    const pct = Math.min(100, Math.round((loadedBytes / file.size) * 100));
+    if (onProgress) onProgress(pct, loadedBytes, file.size);
+  };
+
+  const uploadWorker = async (): Promise<void> => {
+    while (currentIndex < totalParts) {
+      if (checkCancelled && checkCancelled()) {
+        throw new Error("Upload cancelled by user");
+      }
+      const partIdx = currentIndex++;
+      const partInfo = parts[partIdx];
+      const start = (partInfo.part_number - 1) * partSize;
+      const end = Math.min(file.size, start + partSize);
+      const chunk = file.slice(start, end);
+
+      let attempt = 0;
+      const maxRetries = 3;
+      let success = false;
+
+      while (attempt < maxRetries && !success) {
+        if (checkCancelled && checkCancelled()) {
+          throw new Error("Upload cancelled by user");
+        }
+        attempt++;
+        try {
+          const res = await uploadPartToStorage(
+            partInfo.url,
+            chunk,
+            partInfo.part_number,
+            (loaded) => {
+              partProgress[partIdx] = loaded;
+              updateOverallProgress();
+            }
+          );
+          partProgress[partIdx] = chunk.size;
+          updateOverallProgress();
+          completedParts.push(res);
+          success = true;
+        } catch (err) {
+          if (attempt >= maxRetries) {
+            throw new Error(`Part ${partInfo.part_number} failed after ${maxRetries} attempts: ${err}`);
+          }
+          await new Promise((r) => setTimeout(r, 1000 * attempt));
+        }
+      }
+    }
+  };
+
+  const workers = Array.from({ length: Math.min(concurrency, totalParts) }, () => uploadWorker());
+  await Promise.all(workers);
+
+  completedParts.sort((a, b) => a.part_number - b.part_number);
+  return completedParts;
+}
+
 export async function completeStorageUpload(
   jobId: string,
   files: Array<{ dataset_id: string; filename: string; s3_key: string }>
