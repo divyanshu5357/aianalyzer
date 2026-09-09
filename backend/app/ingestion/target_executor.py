@@ -7,6 +7,41 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 
+def ensure_targets_table(db: Session) -> None:
+    """Ensures analytics.targets table and indexes exist idempotently."""
+    try:
+        db.execute(
+            text(
+                """
+                CREATE SCHEMA IF NOT EXISTS analytics;
+                CREATE TABLE IF NOT EXISTS analytics.targets (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    target_batch_id VARCHAR(100),
+                    dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
+                    academic_year INT NOT NULL,
+                    campus_name VARCHAR(100) DEFAULT 'All',
+                    month INT,
+                    dimension_type VARCHAR(50) NOT NULL,
+                    dimension_value VARCHAR(255) NOT NULL,
+                    target_leads INT DEFAULT 0,
+                    target_admissions INT DEFAULT 0,
+                    target_cucet INT DEFAULT 0,
+                    created_at TIMESTAMPTZ DEFAULT NOW(),
+                    updated_at TIMESTAMPTZ DEFAULT NOW()
+                );
+                CREATE INDEX IF NOT EXISTS idx_targets_scope
+                ON analytics.targets (academic_year, LOWER(campus_name), dimension_type, LOWER(dimension_value), month);
+                CREATE INDEX IF NOT EXISTS idx_targets_dataset_id ON analytics.targets (dataset_id);
+                CREATE INDEX IF NOT EXISTS idx_targets_batch_id ON analytics.targets (target_batch_id);
+                """
+            )
+        )
+        db.commit()
+    except Exception as e:
+        logger.warning("Notice ensuring analytics.targets table: %s", e)
+        db.rollback()
+
+
 def execute_target_ingestion(
     db: Session,
     dataset_id: str,
@@ -19,6 +54,8 @@ def execute_target_ingestion(
     and inserts normalized target records into analytics.targets.
     Supports multi-sheet real target workbooks (Source, Program, State) as well as legacy schemas.
     """
+    ensure_targets_table(db)
+
     if not target_batch_id:
         target_batch_id = f"target_batch_{uuid.uuid4().hex[:8]}"
 

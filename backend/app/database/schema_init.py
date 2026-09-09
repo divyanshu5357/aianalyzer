@@ -210,9 +210,11 @@ def ensure_all_database_tables(db: Session) -> None:
                     is_active BOOLEAN NOT NULL DEFAULT TRUE,
                     match_type VARCHAR(100),
                     metadata JSONB DEFAULT '{}'::jsonb,
+                    workbook_type VARCHAR(50) DEFAULT 'raw_data',
                     created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 );
+                ALTER TABLE intelligence.schema_mappings ADD COLUMN IF NOT EXISTS workbook_type VARCHAR(50) DEFAULT 'raw_data';
                 CREATE INDEX IF NOT EXISTS idx_schema_mappings_source ON intelligence.schema_mappings(source_column);
                 CREATE INDEX IF NOT EXISTS idx_schema_mappings_target ON intelligence.schema_mappings(target_entity, target_column);
                 CREATE INDEX IF NOT EXISTS idx_schema_mappings_status ON intelligence.schema_mappings(status, is_active);
@@ -815,6 +817,38 @@ def ensure_all_database_tables(db: Session) -> None:
                 """
             )
         )
+
+        # 16b. analytics.targets
+        try:
+            db.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS analytics.targets (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        target_batch_id VARCHAR(100),
+                        dataset_id UUID REFERENCES system.datasets(id) ON DELETE CASCADE,
+                        academic_year INT NOT NULL,
+                        campus_name VARCHAR(100) DEFAULT 'All',
+                        month INT,
+                        dimension_type VARCHAR(50) NOT NULL,
+                        dimension_value VARCHAR(255) NOT NULL,
+                        target_leads INT DEFAULT 0,
+                        target_admissions INT DEFAULT 0,
+                        target_cucet INT DEFAULT 0,
+                        created_at TIMESTAMPTZ DEFAULT NOW(),
+                        updated_at TIMESTAMPTZ DEFAULT NOW()
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_targets_scope
+                    ON analytics.targets (academic_year, LOWER(campus_name), dimension_type, LOWER(dimension_value), month);
+                    CREATE INDEX IF NOT EXISTS idx_targets_dataset_id ON analytics.targets (dataset_id);
+                    CREATE INDEX IF NOT EXISTS idx_targets_batch_id ON analytics.targets (target_batch_id);
+                    """
+                )
+            )
+            db.commit()
+        except Exception as e:
+            logger.warning("Notice ensuring analytics.targets table: %s", e)
+            db.rollback()
 
         # 17. Helper Functions: system.parse_month and system.parse_date
         db.execute(

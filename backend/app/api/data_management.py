@@ -121,8 +121,11 @@ def get_masters_status(db: Session = Depends(get_db)) -> dict[str, Any]:
             ).scalars().all()
             clean_sheets = [s for s in sheets if s]
             if not clean_sheets:
-                t_sheets = db.execute(text("SELECT DISTINCT dimension_type FROM analytics.targets")).scalars().all()
-                clean_sheets = [s for s in t_sheets if s] or ["Program", "Source", "State"]
+                try:
+                    t_sheets = db.execute(text("SELECT DISTINCT dimension_type FROM analytics.targets")).scalars().all()
+                    clean_sheets = [s for s in t_sheets if s] or ["Program", "Source", "State"]
+                except Exception:
+                    clean_sheets = ["Program", "Source", "State"]
             tgt_info = {
                 "id": str(tgt_row["id"]),
                 "dataset_name": tgt_row["dataset_name"],

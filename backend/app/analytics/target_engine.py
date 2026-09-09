@@ -69,7 +69,12 @@ def get_target_performance(
         ORDER BY dimension_type, target_leads DESC
     """)
 
-    target_rows = db.execute(target_sql, params).mappings().all()
+    try:
+        target_rows = db.execute(target_sql, params).mappings().all()
+    except Exception as e:
+        logger.warning(f"Notice querying analytics.targets: {e}")
+        db.rollback()
+        target_rows = []
 
     # 2. Fetch Actual records from dashboard_agg with fallback to uploaded_metrics
     actual_where = "WHERE academic_year = :year"
