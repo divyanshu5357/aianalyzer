@@ -32,9 +32,17 @@ class Settings(BaseSettings):
     storage_retention_days: int = 30
     storage_delete_after_ingestion: bool = False
 
+    # Standard AWS environment variable aliases
+    aws_s3_bucket: str | None = None
+    aws_region: str | None = None
+    aws_default_region: str | None = None
+    aws_access_key_id: str | None = None
+    aws_secret_access_key: str | None = None
+
     model_config = SettingsConfigDict(
-        env_file=".env",
+        env_file=(".env", "backend/.env", "../.env"),
         case_sensitive=False,
+        extra="ignore",
     )
 
 

@@ -122,3 +122,32 @@ def test_s3_storage_provider_multipart_methods():
 
         abort = provider.abort_multipart_upload("test.csv", "s3-mock-upload-id")
         assert abort is True
+
+
+def test_health_endpoint_safe_diagnostics():
+    from app.database.connection import get_db
+    mock_db = MagicMock()
+    mock_result = MagicMock()
+    mock_result.scalar.return_value = 1
+    mock_db.execute.return_value = mock_result
+
+    def override_get_db():
+        yield mock_db
+
+    app.dependency_overrides[get_db] = override_get_db
+    try:
+        res = client.get("/health")
+        assert res.status_code == 200
+        data = res.json()
+        assert data["status"] == "healthy"
+        assert data["database"] == "connected"
+        assert "database_host" in data
+        assert "database_type" in data
+        assert "storage_provider" in data
+        assert "storage_bucket" in data
+        # Crucial security check: NEVER leak password or full credentials in response
+        assert "ai_password" not in str(data)
+        assert "postgresql://" not in str(data)
+    finally:
+        app.dependency_overrides.pop(get_db, None)
+

@@ -25,19 +25,61 @@ def get_storage_provider() -> ObjectStorageProvider:
     if _PROVIDER_INSTANCE is not None:
         return _PROVIDER_INSTANCE
 
-    provider_type = (settings.storage_provider or "local").lower()
+    import os
 
-    if provider_type in ("r2", "s3") or settings.storage_endpoint_url or settings.storage_access_key:
+    provider_type = (
+        os.getenv("STORAGE_PROVIDER")
+        or settings.storage_provider
+        or "local"
+    ).lower()
+
+    bucket = (
+        os.getenv("STORAGE_BUCKET")
+        or settings.aws_s3_bucket
+        or os.getenv("AWS_S3_BUCKET")
+        or os.getenv("S3_BUCKET")
+        or settings.storage_bucket
+        or "ai-agent-datasets"
+    )
+
+    access_key = (
+        os.getenv("STORAGE_ACCESS_KEY")
+        or settings.aws_access_key_id
+        or os.getenv("AWS_ACCESS_KEY_ID")
+        or settings.storage_access_key
+    )
+
+    secret_key = (
+        os.getenv("STORAGE_SECRET_KEY")
+        or settings.aws_secret_access_key
+        or os.getenv("AWS_SECRET_ACCESS_KEY")
+        or settings.storage_secret_key
+    )
+
+    region = (
+        os.getenv("STORAGE_REGION")
+        or settings.aws_region
+        or os.getenv("AWS_REGION")
+        or settings.aws_default_region
+        or os.getenv("AWS_DEFAULT_REGION")
+        or settings.storage_region
+        or "auto"
+    )
+
+    endpoint_url = os.getenv("STORAGE_ENDPOINT_URL") or settings.storage_endpoint_url
+    public_url = os.getenv("STORAGE_PUBLIC_URL") or settings.storage_public_url
+
+    if provider_type in ("r2", "s3") or endpoint_url or access_key or os.getenv("AWS_S3_BUCKET"):
         try:
             _PROVIDER_INSTANCE = S3R2StorageProvider(
-                endpoint_url=settings.storage_endpoint_url,
-                bucket=settings.storage_bucket,
-                access_key=settings.storage_access_key,
-                secret_key=settings.storage_secret_key,
-                region=settings.storage_region,
-                public_url=settings.storage_public_url,
+                endpoint_url=endpoint_url,
+                bucket=bucket,
+                access_key=access_key,
+                secret_key=secret_key,
+                region=region,
+                public_url=public_url,
             )
-            logger.info("Initialized S3/R2 storage provider for bucket=%s", settings.storage_bucket)
+            logger.info("Initialized S3/R2 storage provider for bucket=%s region=%s", bucket, region)
             return _PROVIDER_INSTANCE
         except Exception as e:
             logger.warning("Failed to initialize S3/R2 provider, falling back to LocalStorageProvider: %s", e)
