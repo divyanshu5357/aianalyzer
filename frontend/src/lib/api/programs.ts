@@ -39,7 +39,12 @@ export async function getProgramHierarchyChildren(
   if (params.to_date) query.set('to_date', params.to_date);
   if (params.program_group) query.set('program_group', params.program_group);
   if (params.program_code) query.set('program_code', params.program_code);
+  if (params.program) query.set('program', params.program);
+  if (params.lead_type) query.set('lead_type', params.lead_type);
   if (params.source_category) query.set('source_category', params.source_category);
+  if (params.main_source) query.set('main_source', params.main_source);
+  if (params.sub_source) query.set('sub_source', params.sub_source);
+  if (params.report_source) query.set('report_source', params.report_source);
   if (params.sort_by) query.set('sort_by', params.sort_by);
   if (params.sort_order) query.set('sort_order', params.sort_order);
 

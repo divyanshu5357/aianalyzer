@@ -170,11 +170,11 @@ export default function ProgramReportTable({
 
   const flatRows = buildFlatRows(nodes, topRows);
 
-  // Resolve child level and params for lazy loading
+  // Resolve child level and params for lazy loading (5-level hierarchy)
   function getChildParams(row: ProgramReportRow): ProgramHierarchyParams | null {
     if (row.level === 1) {
       return {
-        level: 'branch',
+        level: 'program',
         program_group: row.program_group || row.program,
         academic_year: filters.academic_year,
         campus: filters.campus,
@@ -184,10 +184,12 @@ export default function ProgramReportTable({
         sort_order: filters.sort_order,
       };
     }
-    if (row.level === 2 && row.program_code) {
+    if (row.level === 2) {
+      const pCode = row.program_code || row.program;
       return {
-        level: 'source_category',
-        program_code: row.program_code,
+        level: 'lead_type',
+        program_code: pCode,
+        program: pCode,
         program_group: row.program_group,
         academic_year: filters.academic_year,
         campus: filters.campus,
@@ -197,11 +199,36 @@ export default function ProgramReportTable({
         sort_order: filters.sort_order,
       };
     }
-    if (row.level === 3 && row.program_code && row.source_category) {
+    if (row.level === 3) {
+      const pCode = row.program_code || row.program;
+      const lt = row.lead_type || row.source_category || row.program;
       return {
-        level: 'sub_source',
-        program_code: row.program_code,
-        source_category: row.source_category,
+        level: 'main_source',
+        program_code: pCode,
+        program: pCode,
+        lead_type: lt,
+        source_category: lt,
+        program_group: row.program_group,
+        academic_year: filters.academic_year,
+        campus: filters.campus,
+        from_date: filters.from_date,
+        to_date: filters.to_date,
+        sort_by: filters.sort_by,
+        sort_order: filters.sort_order,
+      };
+    }
+    if (row.level === 4) {
+      const pCode = row.program_code || row.program;
+      const lt = row.lead_type || row.source_category;
+      const ms = row.main_source || row.sub_source || row.program;
+      return {
+        level: 'report_source',
+        program_code: pCode,
+        program: pCode,
+        lead_type: lt,
+        source_category: lt,
+        main_source: ms,
+        sub_source: ms,
         program_group: row.program_group,
         academic_year: filters.academic_year,
         campus: filters.campus,
@@ -284,19 +311,27 @@ export default function ProgramReportTable({
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const sparklineColor = (level: number) => {
-    const colors = ['#818cf8', '#34d399', '#f59e0b', '#f87171'];
+    const colors = ['#818cf8', '#818cf8', '#38bdf8', '#34d399', '#f59e0b'];
     return colors[(level - 1) % colors.length];
   };
 
   // Row background per level (theme-aware)
   const levelBg = (level: number) => {
     if (isDark) {
-      const bgs = ['', 'bg-[#1a1d2e]/60', 'bg-[#15172b]/40', 'bg-[#111320]/20'];
+      const bgs = ['', 'bg-[#1a1d2e]/60', 'bg-[#15172b]/40', 'bg-[#111320]/30', 'bg-[#0e101d]/40'];
       return bgs[level - 1] || '';
     } else {
-      const bgs = ['', 'bg-slate-50', 'bg-slate-100/60', 'bg-slate-100/40'];
+      const bgs = ['', 'bg-slate-50', 'bg-slate-100/60', 'bg-slate-100/40', 'bg-slate-100/20'];
       return bgs[level - 1] || '';
     }
+  };
+
+  const getLevelTextColor = (level: number) => {
+    if (level === 1) return isDark ? '#e2e8f0' : '#1e293b';
+    if (level === 2) return isDark ? '#c4b5fd' : '#6366f1';
+    if (level === 3) return isDark ? '#38bdf8' : '#0284c7';
+    if (level === 4) return isDark ? '#34d399' : '#059669';
+    return isDark ? '#fbbf24' : '#d97706';
   };
 
   // Frozen col background (solid, no opacity)
@@ -355,7 +390,7 @@ export default function ProgramReportTable({
             )}
             <span
               className="text-xs font-medium truncate"
-              style={{ color: row.level === 1 ? (isDark ? '#e2e8f0' : '#1e293b') : row.level === 2 ? '#c4b5fd' : row.level === 3 ? '#34d399' : '#fbbf24' }}
+              style={{ color: getLevelTextColor(row.level) }}
               title={row.program}
             >
               {row.program}

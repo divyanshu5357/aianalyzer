@@ -113,7 +113,7 @@ export default function ProgramsPage() {
               <h1 className={`text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Program Performance Report</h1>
             </div>
             <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              4-level drill-down: Program Group → Branch → Source Category → Sub-Source. All metrics server-side.
+              5-level drill-down: Program Group → Program → Lead Type → Main Source → Report Source. All metrics server-side.
             </p>
           </div>
 
@@ -137,19 +137,20 @@ export default function ProgramsPage() {
       </div>
 
       {/* Legend */}
-      <div className={`px-6 py-2 flex gap-4 border-b shrink-0 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
+      <div className={`px-6 py-2 flex gap-4 border-b shrink-0 flex-wrap ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
         {[
           { color: isDark ? 'bg-slate-300' : 'bg-slate-500', label: 'L1 Program Group' },
-          { color: 'bg-violet-400', label: 'L2 Branch' },
-          { color: 'bg-emerald-500', label: 'L3 Source Category' },
-          { color: 'bg-amber-400', label: 'L4 Sub-Source' },
+          { color: 'bg-indigo-400', label: 'L2 Program' },
+          { color: 'bg-sky-400', label: 'L3 Lead Type' },
+          { color: 'bg-emerald-400', label: 'L4 Main Source' },
+          { color: 'bg-amber-400', label: 'L5 Report Source' },
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${color}`} />
-            <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>{label}</span>
+            <span className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{label}</span>
           </div>
         ))}
-        <div className={`ml-auto text-[10px] hidden md:block ${isDark ? 'text-gray-600' : 'text-slate-400'}`}>
+        <div className={`ml-auto text-[10px] hidden md:block ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
           ▸ expand · ▾ collapse · click column ↑↓ to sort
         </div>
       </div>

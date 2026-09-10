@@ -1011,6 +1011,13 @@ def ensure_all_database_tables(db: Session) -> None:
         except Exception as agg_err:
             logger.warning("Startup aggregate self-healing notice: %s", agg_err)
 
+        # 20. Ensure organization master dimension data (course_master, source_master) is seeded
+        try:
+            from app.database.organization_seed import seed_organization_master_data
+            seed_organization_master_data(db)
+        except Exception as seed_err:
+            logger.warning("Startup master dimension seed notice: %s", seed_err)
+
         db.commit()
         logger.info("Successfully verified all PostgreSQL schemas, tables, columns, constraints, and aggregates.")
     except Exception as exc:

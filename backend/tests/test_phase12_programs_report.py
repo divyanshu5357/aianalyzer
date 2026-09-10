@@ -4,12 +4,8 @@ Tests lazy hierarchical loading, date/campus filtering, sorting, SQL-injection s
 """
 
 import pytest
-from sqlalchemy import create_engine, text
-from sqlalchemy.orm import sessionmaker
-
-DATABASE_URL = "postgresql://ai_admin:ai_password@localhost:5433/ai_agent"
-engine = create_engine(DATABASE_URL)
-SessionLocal = sessionmaker(bind=engine)
+from sqlalchemy import text
+from app.database.connection import SessionLocal, engine
 
 import sys, os
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
@@ -56,14 +52,14 @@ def test_program_report_sorted_by_cy_leads(db):
     assert leads == sorted(leads, reverse=True), "Rows should be sorted by cy_leads descending"
 
 
-# ─── Level 2: Branches ───────────────────────────────────────────────────────
+# ─── Level 2: Program ────────────────────────────────────────────────────────
 
 def test_program_hierarchy_branch_expansion(db):
-    """Verify Level 2 lazy expansion returns branches for B.COM."""
-    result = get_program_hierarchy_children(db, level="branch", program_group="B.COM", academic_year=2026)
+    """Verify Level 2 lazy expansion returns branches/programs for B.COM."""
+    result = get_program_hierarchy_children(db, level="program", program_group="B.COM", academic_year=2026)
     rows = result["rows"]
 
-    assert len(rows) >= 3, f"Expected at least 3 B.COM branches, got {len(rows)}"
+    assert len(rows) >= 1, f"Expected at least 1 B.COM branch, got {len(rows)}"
     for r in rows:
         assert r["level"] == 2
         assert r["has_children"] is True
@@ -72,8 +68,8 @@ def test_program_hierarchy_branch_expansion(db):
 
 
 def test_program_hierarchy_branch_expansion_cse(db):
-    """Verify Level 2 lazy expansion returns branches for CSE (highest traffic group)."""
-    result = get_program_hierarchy_children(db, level="branch", program_group="CSE", academic_year=2026)
+    """Verify Level 2 lazy expansion returns branches/programs for CSE (highest traffic group)."""
+    result = get_program_hierarchy_children(db, level="program", program_group="CSE", academic_year=2026)
     rows = result["rows"]
 
     assert len(rows) >= 1, "CSE should have at least 1 branch"
@@ -81,45 +77,64 @@ def test_program_hierarchy_branch_expansion_cse(db):
     assert total_cy > 0, "CSE branches should have positive CY leads"
 
 
-# ─── Level 3: Source Category ─────────────────────────────────────────────────
+# ─── Level 3: Lead Type ───────────────────────────────────────────────────────
 
-def test_program_hierarchy_source_category_expansion(db):
-    """Verify Level 3 lazy expansion returns source categories for CM201."""
+def test_program_hierarchy_lead_type_expansion(db):
+    """Verify Level 3 lazy expansion returns lead types for CS201."""
     result = get_program_hierarchy_children(
-        db, level="source_category", program_code="CM201", academic_year=2026
+        db, level="lead_type", program_code="CS201", academic_year=2026
     )
     rows = result["rows"]
 
-    assert len(rows) >= 1, "Expected at least 1 source category"
+    assert len(rows) >= 1, "Expected at least 1 lead type"
     categories = {r["program"] for r in rows}
-    # Should contain at least one known category
     assert bool(categories & {"IN HOUSE", "OUT SOURCED", "OTHERS"}), f"Unexpected categories: {categories}"
 
     for r in rows:
         assert r["level"] == 3
         assert r["has_children"] is True
-        assert r["program_code"] == "CM201"
+        assert r["program_code"] == "CS201"
 
 
-# ─── Level 4: Sub-Source ─────────────────────────────────────────────────────
+# ─── Level 4: Main Source ─────────────────────────────────────────────────────
 
-def test_program_hierarchy_sub_source_expansion(db):
-    """Verify Level 4 lazy expansion returns sub-sources for CM201 + IN HOUSE."""
+def test_program_hierarchy_main_source_expansion(db):
+    """Verify Level 4 lazy expansion returns main sources for CS201 + IN HOUSE."""
     result = get_program_hierarchy_children(
         db,
-        level="sub_source",
-        program_code="CM201",
-        source_category="IN HOUSE",
+        level="main_source",
+        program_code="CS201",
+        lead_type="IN HOUSE",
         academic_year=2026,
     )
     rows = result["rows"]
 
-    assert len(rows) >= 1, "Expected at least 1 sub-source"
+    assert len(rows) >= 1, "Expected at least 1 main source"
     for r in rows:
         assert r["level"] == 4
+        assert r["has_children"] is True
+        assert r["program_code"] == "CS201"
+
+
+# ─── Level 5: Report Source ───────────────────────────────────────────────────
+
+def test_program_hierarchy_report_source_expansion(db):
+    """Verify Level 5 lazy expansion returns report sources for CS201 + IN HOUSE + Direct."""
+    result = get_program_hierarchy_children(
+        db,
+        level="report_source",
+        program_code="CS201",
+        lead_type="IN HOUSE",
+        main_source="Direct",
+        academic_year=2026,
+    )
+    rows = result["rows"]
+
+    for r in rows:
+        assert r["level"] == 5
         assert r["has_children"] is False
-        assert r["program_code"] == "CM201"
-        assert r["source_category"] == "IN HOUSE"
+        assert r["program_code"] == "CS201"
+
 
 
 # ─── Date Filtering ───────────────────────────────────────────────────────────

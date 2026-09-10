@@ -820,7 +820,7 @@ export interface RefundPctPyCy {
 export interface ProgramReportRow {
   id: string;
   program: string;
-  level: 1 | 2 | 3 | 4;
+  level: 1 | 2 | 3 | 4 | 5;
   has_children: boolean;
   py_leads: number;
   cy_leads: number;
@@ -845,6 +845,10 @@ export interface ProgramReportRow {
   net_fee_paid_pct: 'N/A';
   program_group?: string;
   program_code?: string;
+  program_name?: string;
+  lead_type?: string;
+  main_source?: string;
+  report_source?: string;
   source_category?: string;
   sub_source?: string;
 }
@@ -869,11 +873,16 @@ export interface ProgramReportResponse {
 export interface ProgramHierarchyResponse {
   rows: ProgramReportRow[];
   count: number;
-  level: 'branch' | 'source_category' | 'sub_source';
+  level: 'program' | 'lead_type' | 'main_source' | 'report_source' | 'branch' | 'source_category' | 'sub_source';
   parent: {
     program_group?: string;
     program_code?: string;
+    program?: string;
+    lead_type?: string;
+    main_source?: string;
+    report_source?: string;
     source_category?: string;
+    sub_source?: string;
   };
 }
 
@@ -887,14 +896,19 @@ export interface ProgramReportParams {
 }
 
 export interface ProgramHierarchyParams {
-  level: 'branch' | 'source_category' | 'sub_source';
+  level: 'program' | 'lead_type' | 'main_source' | 'report_source' | 'branch' | 'source_category' | 'sub_source';
   academic_year?: number;
   campus?: string;
   from_date?: string;
   to_date?: string;
   program_group?: string;
   program_code?: string;
+  program?: string;
+  lead_type?: string;
+  main_source?: string;
+  report_source?: string;
   source_category?: string;
+  sub_source?: string;
   sort_by?: string;
   sort_order?: string;
 }

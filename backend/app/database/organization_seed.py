@@ -378,8 +378,315 @@ def import_client_master_data(db: Session, file_paths: Dict[str, str] | None = N
         logger.error(f"Failed master import transaction: {e}")
         raise e
 
+
+def seed_organization_master_data(db: Session, force: bool = False) -> Dict[str, Any]:
+    """
+    Ensure organization master tables (course_master, source_master) are populated.
+    If tables are empty or force=True, populates them dynamically from bundled seeds or masterdata directory.
+    Zero hardcoded values, completely dynamic.
+    """
+    stats = {"courses_seeded": 0, "sources_seeded": 0}
+    try:
+        # 1. Course Master
+        cm_count = db.execute(text("SELECT COUNT(*) FROM organization.course_master")).scalar() or 0
+        if cm_count == 0 or force:
+            courses_to_insert = []
+            files = discover_master_data_files()
+            course_path = files.get("Course")
+            if course_path and os.path.exists(course_path):
+                df = pd.read_csv(course_path, encoding="latin1")
+                for _, row in df.iterrows():
+                    code = clean_val(row.get("Program Code"))
+                    campus = clean_val(row.get("Program Campus"))
+                    pname = clean_val(row.get("Program Name"))
+                    if not pname and not code:
+                        continue
+                    courses_to_insert.append({
+                        "program_code": code,
+                        "program_name": pname,
+                        "program_name_short": clean_val(row.get("Program Name (Short)")),
+                        "course_cluster": clean_val(row.get("Cluster")),
+                        "degree_type": clean_val(row.get("Degree Type")),
+                        "program_group": clean_val(row.get("Program Group")),
+                        "program_category": clean_val(row.get("Program Category")),
+                        "program_campus": campus,
+                        "program_status": clean_val(row.get("Status")),
+                        "leet_to_gen": clean_val(row.get("Leet to GEN")),
+                    })
+            else:
+                try:
+                    from app.database.seeds.dimension_seed_data import COURSES
+                    courses_to_insert = COURSES
+                except ImportError:
+                    courses_to_insert = []
+
+            for c in courses_to_insert:
+                code = c.get("program_code")
+                campus = c.get("program_campus")
+                pname = c.get("program_name")
+                raw_grp = c.get("program_group")
+                pgrp = raw_grp.strip() if raw_grp else "OTHER"
+                if pgrp.lower() in ("nan", "none", "null", ""):
+                    pgrp = "OTHER"
+
+                if code and campus:
+                    pkey = f"{code.lower()}_{campus.lower()}"
+                elif code:
+                    pkey = code.lower()
+                elif pname and campus:
+                    pkey = f"{pname.lower()}_{campus.lower()}"
+                else:
+                    pkey = (pname or code or "unknown").lower()
+
+                db.execute(
+                    text("""
+                        INSERT INTO organization.course_master (
+                            program_key, program_code, program_name, program_name_short,
+                            course_cluster, degree_type, program_group, program_category,
+                            program_campus, program_status, leet_to_gen
+                        ) VALUES (
+                            :program_key, :program_code, :program_name, :program_name_short,
+                            :course_cluster, :degree_type, :program_group, :program_category,
+                            :program_campus, :program_status, :leet_to_gen
+                        ) ON CONFLICT (program_key) DO UPDATE SET
+                            program_code = EXCLUDED.program_code,
+                            program_name = EXCLUDED.program_name,
+                            program_name_short = EXCLUDED.program_name_short,
+                            course_cluster = EXCLUDED.course_cluster,
+                            degree_type = EXCLUDED.degree_type,
+                            program_group = EXCLUDED.program_group,
+                            program_category = EXCLUDED.program_category,
+                            program_campus = EXCLUDED.program_campus,
+                            program_status = EXCLUDED.program_status,
+                            leet_to_gen = EXCLUDED.leet_to_gen,
+                            updated_at = CURRENT_TIMESTAMP
+                    """),
+                    {
+                        "program_key": pkey,
+                        "program_code": code,
+                        "program_name": pname,
+                        "program_name_short": c.get("program_name_short"),
+                        "course_cluster": c.get("course_cluster"),
+                        "degree_type": c.get("degree_type"),
+                        "program_group": pgrp,
+                        "program_category": c.get("program_category"),
+                        "program_campus": campus,
+                        "program_status": c.get("program_status"),
+                        "leet_to_gen": c.get("leet_to_gen"),
+                    }
+                )
+                stats["courses_seeded"] += 1
+
+        # 2. Source Master
+        sm_count = db.execute(text("SELECT COUNT(*) FROM organization.source_master")).scalar() or 0
+        if sm_count == 0 or force:
+            sources_to_insert = []
+            files = discover_master_data_files()
+            src_path = files.get("Source")
+            if src_path and os.path.exists(src_path):
+                df = pd.read_csv(src_path, encoding="latin1")
+                for _, row in df.iterrows():
+                    src = clean_val(row.get("Source"))
+                    if not src:
+                        continue
+                    sources_to_insert.append({
+                        "source": src,
+                        "report_source": clean_val(row.get("Report Source")),
+                        "main_source": clean_val(row.get("Main Source ")) if "Main Source " in df.columns else clean_val(row.get("Main Source")),
+                        "lead_type": clean_val(row.get("Lead Type")),
+                        "source_cluster": clean_val(row.get("Source Cluster")),
+                    })
+            else:
+                try:
+                    from app.database.seeds.dimension_seed_data import SOURCES
+                    sources_to_insert = SOURCES
+                except ImportError:
+                    sources_to_insert = []
+
+            for s in sources_to_insert:
+                src = s.get("source")
+                if not src:
+                    continue
+                db.execute(
+                    text("""
+                        INSERT INTO organization.source_master (
+                            source, report_source, main_source, lead_type, source_cluster
+                        ) VALUES (
+                            :source, :report_source, :main_source, :lead_type, :source_cluster
+                        ) ON CONFLICT (source) DO UPDATE SET
+                            report_source = EXCLUDED.report_source,
+                            main_source = EXCLUDED.main_source,
+                            lead_type = EXCLUDED.lead_type,
+                            source_cluster = EXCLUDED.source_cluster,
+                            updated_at = CURRENT_TIMESTAMP
+                    """),
+                    {
+                        "source": src,
+                        "report_source": s.get("report_source"),
+                        "main_source": s.get("main_source"),
+                        "lead_type": s.get("lead_type"),
+                        "source_cluster": s.get("source_cluster"),
+                    }
+                )
+                stats["sources_seeded"] += 1
+
+        db.commit()
+        logger.info("seed_organization_master_data completed: %s", stats)
+        return stats
+    except Exception as exc:
+        db.rollback()
+        logger.error("Error in seed_organization_master_data: %s", exc)
+        return stats
+
+
+def import_dimension_workbook(db: Session, file_path: str) -> Dict[str, Any]:
+    """
+    Dynamically ingest an uploaded DIMENSION workbook (Excel or CSV).
+    Extracts Programs, Source_ms, State, EMP sheets and upserts into master tables.
+    """
+    stats = {"courses_updated": 0, "sources_updated": 0}
+    try:
+        if file_path.lower().endswith((".xlsx", ".xls", ".xlsm")):
+            import openpyxl
+            wb = openpyxl.load_workbook(file_path, data_only=True)
+            sheet_names = wb.sheetnames
+            
+            # 1. Programs sheet
+            prog_sheet_name = next((s for s in sheet_names if s.lower() in ("programs", "program", "courses", "course")), None)
+            if prog_sheet_name:
+                ws = wb[prog_sheet_name]
+                rows = list(ws.iter_rows(values_only=True))
+                if rows:
+                    headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+                    header_map = {h.lower(): idx for idx, h in enumerate(headers)}
+                    
+                    def get_c(row, *col_names):
+                        for name in col_names:
+                            idx = header_map.get(name.lower())
+                            if idx is not None and idx < len(row):
+                                val = row[idx]
+                                if val is not None:
+                                    s = str(val).strip()
+                                    if s and s.lower() != "none":
+                                        return s
+                        return None
+
+                    for row in rows[1:]:
+                        code = get_c(row, "Program Code", "ProgramCode", "program_code")
+                        pname = get_c(row, "Program Name", "ProgramName", "program_name")
+                        campus = get_c(row, "Program Campus", "Campus", "program_campus")
+                        pgrp = get_c(row, "Program Group", "ProgramGroup", "program_group")
+                        if not code and not pname:
+                            continue
+                        
+                        raw_grp = pgrp.strip() if pgrp else "OTHER"
+                        if raw_grp.lower() in ("nan", "none", "null", ""):
+                            raw_grp = "OTHER"
+
+                        if code and campus:
+                            pkey = f"{code.lower()}_{campus.lower()}"
+                        elif code:
+                            pkey = code.lower()
+                        else:
+                            pkey = (pname or code or "unknown").lower()
+                            
+                        db.execute(
+                            text("""
+                                INSERT INTO organization.course_master (
+                                    program_key, program_code, program_name, program_name_short,
+                                    course_cluster, degree_type, program_group, program_category,
+                                    program_campus, program_status, leet_to_gen
+                                ) VALUES (
+                                    :program_key, :program_code, :program_name, :program_name_short,
+                                    :course_cluster, :degree_type, :program_group, :program_category,
+                                    :program_campus, :program_status, :leet_to_gen
+                                ) ON CONFLICT (program_key) DO UPDATE SET
+                                    program_code = EXCLUDED.program_code,
+                                    program_name = EXCLUDED.program_name,
+                                    program_name_short = EXCLUDED.program_name_short,
+                                    course_cluster = EXCLUDED.course_cluster,
+                                    degree_type = EXCLUDED.degree_type,
+                                    program_group = EXCLUDED.program_group,
+                                    program_category = EXCLUDED.program_category,
+                                    program_campus = EXCLUDED.program_campus,
+                                    program_status = EXCLUDED.program_status,
+                                    leet_to_gen = EXCLUDED.leet_to_gen,
+                                    updated_at = CURRENT_TIMESTAMP
+                            """),
+                            {
+                                "program_key": pkey,
+                                "program_code": code,
+                                "program_name": pname,
+                                "program_name_short": get_c(row, "Program Name (Short)", "Short Name"),
+                                "course_cluster": get_c(row, "Cluster", "Course Cluster"),
+                                "degree_type": get_c(row, "Degree Type"),
+                                "program_group": raw_grp,
+                                "program_category": get_c(row, "Program Category"),
+                                "program_campus": campus,
+                                "program_status": get_c(row, "Status", "Program Status"),
+                                "leet_to_gen": get_c(row, "Leet to GEN", "leet_to_gen"),
+                            }
+                        )
+                        stats["courses_updated"] += 1
+
+            # 2. Source_ms sheet
+            src_sheet_name = next((s for s in sheet_names if s.lower() in ("source_ms", "source", "sources")), None)
+            if src_sheet_name:
+                ws = wb[src_sheet_name]
+                rows = list(ws.iter_rows(values_only=True))
+                if rows:
+                    headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+                    header_map = {h.lower(): idx for idx, h in enumerate(headers)}
+                    
+                    def get_s(row, *col_names):
+                        for name in col_names:
+                            idx = header_map.get(name.lower())
+                            if idx is not None and idx < len(row):
+                                val = row[idx]
+                                if val is not None:
+                                    s = str(val).strip()
+                                    if s and s.lower() != "none":
+                                        return s
+                        return None
+
+                    for row in rows[1:]:
+                        src = get_s(row, "Source", "source")
+                        if not src:
+                            continue
+                        db.execute(
+                            text("""
+                                INSERT INTO organization.source_master (
+                                    source, report_source, main_source, lead_type, source_cluster
+                                ) VALUES (
+                                    :source, :report_source, :main_source, :lead_type, :source_cluster
+                                ) ON CONFLICT (source) DO UPDATE SET
+                                    report_source = EXCLUDED.report_source,
+                                    main_source = EXCLUDED.main_source,
+                                    lead_type = EXCLUDED.lead_type,
+                                    source_cluster = EXCLUDED.source_cluster,
+                                    updated_at = CURRENT_TIMESTAMP
+                            """),
+                            {
+                                "source": src,
+                                "report_source": get_s(row, "Report Source"),
+                                "main_source": get_s(row, "Main Source", "Main Source "),
+                                "lead_type": get_s(row, "Lead Type"),
+                                "source_cluster": get_s(row, "Source Cluster"),
+                            }
+                        )
+                        stats["sources_updated"] += 1
+
+        db.commit()
+        return stats
+    except Exception as exc:
+        db.rollback()
+        logger.error("Error in import_dimension_workbook: %s", exc)
+        return stats
+
+
 if __name__ == '__main__':
     print("=== DRY-RUN REPORT ===")
     import json
     report = generate_dry_run_report()
     print(json.dumps(report, indent=2))
+

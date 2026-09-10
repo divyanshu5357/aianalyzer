@@ -222,6 +222,16 @@ def run_async_ingestion_job(
             target_res = execute_target_ingestion(db, dataset_id=str(dataset_id))
             normalized_rows = target_res.get("inserted_count", 0)
             quality_stats = {"total_rows": staged_rows, "target_rows": normalized_rows}
+        elif wb_type == "DIMENSION":
+            from app.database.organization_seed import import_dimension_workbook
+            dim_res = import_dimension_workbook(db, file_path=temp_path)
+            normalized_rows = dim_res.get("courses_updated", 0) + dim_res.get("sources_updated", 0)
+            quality_stats = {"total_rows": staged_rows, "dimension_stats": dim_res}
+            try:
+                from app.analytics.aggregate_refresh import refresh_dashboard_agg
+                refresh_dashboard_agg(db)
+            except Exception as ref_err:
+                logger.warning("Dimension upload aggregate refresh notice: %s", ref_err)
         else:
             exec_res = execute_mapping_normalization(
                 db=db,
