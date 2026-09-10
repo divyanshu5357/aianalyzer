@@ -7,8 +7,9 @@ Provides aggregated metrics across 3 hierarchy levels:
 All aggregations are computed 100% on PostgreSQL (GROUP BY, SUM). Zero raw CRM records are loaded.
 """
 
-from typing import Dict, Any, List, Optional, Set
+from typing import Dict, Any, List, Optional, Set, Tuple
 import os
+import time
 import logging
 import pandas as pd
 from sqlalchemy import text
@@ -68,6 +69,16 @@ CANONICAL_STATE_GROUPS = [
 
 _STATE_GROUP_CACHE: Optional[Dict[str, Any]] = None
 _GEMINI_LOCATION_CACHE: Dict[str, str] = {}
+_STATES_TOP_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_STATES_CHILDREN_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_STATES_CACHE_TTL = 300.0
+
+
+def clear_states_cache():
+    global _STATE_GROUP_CACHE
+    _STATE_GROUP_CACHE = None
+    _STATES_TOP_CACHE.clear()
+    _STATES_CHILDREN_CACHE.clear()
 
 
 def _resolve_location_with_gemini(raw_loc: str) -> Optional[str]:
@@ -490,6 +501,14 @@ def get_state_report_top_level(
         from app.analytics.period_helper import get_active_or_max_academic_year
         academic_year = get_active_or_max_academic_year(db)
 
+    # Server-side Cache check (5 minute TTL)
+    cache_key = f"{academic_year}:{campus}:{from_date}:{to_date}:{sort_by}:{sort_order}"
+    now_ts = time.time()
+    if cache_key in _STATES_TOP_CACHE:
+        c_time, c_data = _STATES_TOP_CACHE[cache_key]
+        if (now_ts - c_time) < _STATES_CACHE_TTL:
+            return c_data
+
     py_year = academic_year - 1
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
 
@@ -746,7 +765,7 @@ def get_state_report_top_level(
         reverse=reverse,
     )
 
-    return {
+    resp = {
         "rows": processed_rows,
         "total": total_row,
         "count": len(processed_rows),
@@ -761,6 +780,8 @@ def get_state_report_top_level(
             "sort_order": "asc" if not reverse else "desc",
         },
     }
+    _STATES_TOP_CACHE[cache_key] = (now_ts, resp)
+    return resp
 
 
 def get_state_hierarchy_children(
@@ -783,6 +804,14 @@ def get_state_hierarchy_children(
     if not academic_year:
         from app.analytics.period_helper import get_active_or_max_academic_year
         academic_year = get_active_or_max_academic_year(db)
+
+    # Server-side Cache check
+    cache_key = f"{level}:{academic_year}:{campus}:{from_date}:{to_date}:{state}:{source_category}:{sort_by}:{sort_order}"
+    now_ts = time.time()
+    if cache_key in _STATES_CHILDREN_CACHE:
+        c_time, c_data = _STATES_CHILDREN_CACHE[cache_key]
+        if (now_ts - c_time) < _STATES_CACHE_TTL:
+            return c_data
 
     py_year = academic_year - 1
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
@@ -1086,7 +1115,7 @@ def get_state_hierarchy_children(
         reverse=reverse,
     )
 
-    return {
+    resp = {
         "rows": rows,
         "count": len(rows),
         "level": level,
@@ -1103,3 +1132,5 @@ def get_state_hierarchy_children(
             "sort_order": "asc" if not reverse else "desc",
         },
     }
+    _STATES_CHILDREN_CACHE[cache_key] = (now_ts, resp)
+    return resp

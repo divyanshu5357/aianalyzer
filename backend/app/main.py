@@ -1,8 +1,10 @@
 import logging
+import threading
 
 from fastapi import FastAPI, Request, Depends
 from fastapi.responses import JSONResponse
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from sqlalchemy.orm import Session
 from sqlalchemy.exc import DisconnectionError, InterfaceError, OperationalError, TimeoutError
 from app.api.cleaning import router as cleaning_router
@@ -43,20 +45,67 @@ app = FastAPI(
 )
 
 
-@app.on_event("startup")
-def on_startup():
+def _is_db_initialized() -> bool:
     try:
         with SessionLocal() as db:
-            ensure_all_database_tables(db)
-            ensure_ai_audit_tables(db)
-            seed_initial_golden_cases(db)
+            row = db.execute(text("SELECT 1 FROM information_schema.tables WHERE table_schema = 'system' AND table_name = 'datasets' LIMIT 1;")).scalar()
+            return bool(row)
+    except Exception as e:
+        logger.warning("Could not check if DB is initialized: %s", e)
+        return False
+
+
+def _run_background_warmup():
+    """Asynchronously warm up core analytics and filter caches without delaying server startup."""
+    import time
+    time.sleep(1.0)
+    logger.info("[WARMUP] Starting background analytics cache pre-warming...")
+    try:
+        with SessionLocal() as db:
             try:
                 from app.analytics.dashboard import get_dashboard_filter_options
                 get_dashboard_filter_options(db)
-            except Exception as w_err:
-                logger.debug("Startup filter options warmup notice: %s", w_err)
+                logger.info("[WARMUP] Filter options pre-warmed.")
+            except Exception as e:
+                logger.warning("[WARMUP] Filter options warmup notice: %s", e)
+
+            try:
+                from app.analytics.period_helper import get_active_or_max_academic_year
+                ay = get_active_or_max_academic_year(db)
+                if ay:
+                    from app.analytics.dashboard import get_dashboard_overview
+                    get_dashboard_overview(db, academic_year=ay)
+                    logger.info("[WARMUP] Dashboard overview pre-warmed for AY=%s.", ay)
+
+                    from app.analytics.program_service import get_program_report_top_level
+                    get_program_report_top_level(db, academic_year=ay)
+                    logger.info("[WARMUP] Program report pre-warmed for AY=%s.", ay)
+
+                    from app.analytics.state_service import get_state_report_top_level
+                    get_state_report_top_level(db, academic_year=ay)
+                    logger.info("[WARMUP] State report pre-warmed for AY=%s.", ay)
+            except Exception as e:
+                logger.warning("[WARMUP] Analytics reports warmup notice: %s", e)
+
+        logger.info("[WARMUP] Background cache pre-warming completed successfully!")
     except Exception as e:
-        print(f"Startup database initialization warning: {e}")
+        logger.error("[WARMUP] Background warmup error: %s", e)
+
+
+@app.on_event("startup")
+def on_startup():
+    try:
+        if not _is_db_initialized():
+            logger.info("Initializing database tables for first-time setup...")
+            with SessionLocal() as db:
+                ensure_all_database_tables(db)
+                ensure_ai_audit_tables(db)
+                seed_initial_golden_cases(db)
+    except Exception as e:
+        logger.warning(f"Startup database initialization warning: {e}")
+
+    # Launch warmup in daemon thread so port 8000 binds immediately!
+    threading.Thread(target=_run_background_warmup, daemon=True).start()
 
 
 app.add_middleware(
