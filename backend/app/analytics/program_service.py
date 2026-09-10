@@ -1439,7 +1439,7 @@ def get_program_insights(
         "description": f"Allocate additional counsellor capacity to high-converting {top_good_lt['lead_type'] if top_good_lt else 'Direct'} leads and conduct rapid follow-up on CUCET registered prospects ({tot_cy_cucet:,} candidates).",
     })
 
-    return {
+    resp = {
         "program_group": program_group,
         "academic_year": academic_year,
         "campus": campus or "All Campuses",
