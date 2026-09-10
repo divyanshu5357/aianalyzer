@@ -580,6 +580,34 @@ def ensure_all_database_tables(db: Session) -> None:
             db.execute(text("CREATE INDEX IF NOT EXISTS idx_uploaded_metrics_dataset_id ON analytics.uploaded_metrics(dataset_id);"))
             db.execute(text("CREATE INDEX IF NOT EXISTS idx_uploaded_metrics_ds_year ON analytics.uploaded_metrics(dataset_id, academic_year);"))
             db.execute(text("CREATE INDEX IF NOT EXISTS idx_uploaded_metrics_program_code ON analytics.uploaded_metrics(program_code);"))
+
+            # Targeted composite indexes on analytics.dashboard_agg for dimension filters
+            db.execute(text("CREATE INDEX IF NOT EXISTS idx_dashboard_agg_year_state ON analytics.dashboard_agg (academic_year, state);"))
+            db.execute(text("CREATE INDEX IF NOT EXISTS idx_dashboard_agg_year_source ON analytics.dashboard_agg (academic_year, source);"))
+            db.execute(text("CREATE INDEX IF NOT EXISTS idx_dashboard_agg_year_lead_type ON analytics.dashboard_agg (academic_year, lead_type);"))
+            db.execute(text("CREATE INDEX IF NOT EXISTS idx_dashboard_agg_year_program_name ON analytics.dashboard_agg (academic_year, program_name);"))
+
+            # 13c. analytics.gender_monthly_agg (Pre-aggregated Gender Intake)
+            db.execute(
+                text(
+                    """
+                    CREATE TABLE IF NOT EXISTS analytics.gender_monthly_agg (
+                        id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                        dataset_id UUID NOT NULL REFERENCES system.datasets(id) ON DELETE CASCADE,
+                        academic_year INT NOT NULL,
+                        campus_name VARCHAR(255) NOT NULL DEFAULT 'All',
+                        admission_month VARCHAR(7) NOT NULL,
+                        gender VARCHAR(50) NOT NULL,
+                        admissions BIGINT NOT NULL DEFAULT 0,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        CONSTRAINT uq_gender_monthly_agg UNIQUE (dataset_id, academic_year, campus_name, admission_month, gender)
+                    );
+                    CREATE INDEX IF NOT EXISTS idx_gender_monthly_agg_lookup ON analytics.gender_monthly_agg (academic_year, LOWER(campus_name), admission_month);
+                    CREATE INDEX IF NOT EXISTS idx_gender_monthly_agg_dataset ON analytics.gender_monthly_agg (dataset_id);
+                    """
+                )
+            )
             db.commit()
         except Exception as e:
             logger.debug("dashboard_agg table creation notice: %s", e)

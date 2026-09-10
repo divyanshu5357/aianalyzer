@@ -311,15 +311,16 @@ def run_async_ingestion_job(
             db.commit()
 
         try:
-            from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped
+            from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped, refresh_gender_agg_scoped
             refresh_dashboard_agg_scoped(db, dataset_id=str(dataset_id))
+            refresh_gender_agg_scoped(db, dataset_id=str(dataset_id))
             db.execute(
                 text("UPDATE system.datasets SET analytics_status = 'ANALYTICS_READY' WHERE id = :ds_id"),
                 {"ds_id": str(dataset_id)},
             )
             db.commit()
         except Exception as ref_err:
-            logger.warning("Failed to refresh dashboard_agg post-ingestion: %s", ref_err)
+            logger.error("Failed to refresh analytics aggregates post-ingestion for dataset %s: %s", dataset_id, ref_err)
             try:
                 db.execute(
                     text("UPDATE system.datasets SET analytics_status = 'FAILED' WHERE id = :ds_id"),
@@ -328,6 +329,7 @@ def run_async_ingestion_job(
                 db.commit()
             except Exception:
                 pass
+            raise
 
         t1_overall = time.perf_counter()
         logger.info("[ASYNC WORKER] Job completed successfully job_id=%s elapsed=%.4fs normalized_rows=%d", job_id, t1_overall - t0_overall, normalized_rows)

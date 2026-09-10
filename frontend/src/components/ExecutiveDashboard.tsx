@@ -195,36 +195,57 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
     loadFilterOptions(signal);
 
-    // Fetch overview, insights, gender, and geography in PARALLEL
-    // (monthly trend and performance rankings are managed independently by their dedicated effects)
-    Promise.all([
-      getDashboardOverview(currentFilters, { signal }),
-      getDashboardInsights(currentFilters, { signal }),
-      getAdmissionsByGender(currentFilters, { signal }),
-      getAdmissionsByState(currentFilters, { signal }),
-    ])
-      .then(([overviewData, insightsData, genderRes, stateRes]) => {
+    // Progressive loading: Fetch Overview, Insights, Gender, and Geography concurrently
+    // Overview resolves first and unblocks the main dashboard UI immediately.
+    getDashboardOverview(currentFilters, { signal })
+      .then((overviewData) => {
         setOverview(overviewData);
-        setInsights(insightsData);
+        setIsLoading(false);
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed to load dashboard overview:", err);
+          setError(err?.message || "Failed to load executive dashboard aggregation.");
+          setIsLoading(false);
+        }
+      });
 
+    getDashboardInsights(currentFilters, { signal })
+      .then((insightsData) => {
+        setInsights(insightsData);
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed to load dashboard insights:", err);
+        }
+      });
+
+    getAdmissionsByGender(currentFilters, { signal })
+      .then((genderRes) => {
         setGenderMonths(genderRes?.months || []);
         setGenderCategories(genderRes?.gender_categories || []);
         setTotalGenderAdmissions(genderRes?.total_admissions || 0);
         setGenderLoading(false);
+      })
+      .catch((err) => {
+        if (err?.name !== "AbortError") {
+          console.error("Failed to load admissions by gender:", err);
+          setGenderLoading(false);
+        }
+      });
 
+    getAdmissionsByState(currentFilters, { signal })
+      .then((stateRes) => {
         setIndiaStatesData(stateRes?.states || []);
         setTotalIndiaAdmissions(stateRes?.total_india_admissions || 0);
         setHasPyStateData(stateRes?.has_py_data ?? true);
         setStateComparisonYear(stateRes?.comparison_year ?? null);
         setIndiaStatesLoading(false);
-
-        setIsLoading(false);
       })
       .catch((err) => {
         if (err?.name !== "AbortError") {
-          console.error("Failed to load dashboard dataset:", err);
-          setError(err?.message || "Failed to load executive dashboard aggregation.");
-          setIsLoading(false);
+          console.error("Failed to load admissions by state:", err);
+          setIndiaStatesLoading(false);
         }
       });
 

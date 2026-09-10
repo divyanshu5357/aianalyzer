@@ -154,63 +154,62 @@ def get_admissions_by_gender(
             "to_date": to_date,
         }
 
-    dataset_id = ds_id
-    conds = [
-        "r.dataset_id = :ds_id",
-        "(r.raw_data->>'mx_AdmissionDate') IS NOT NULL",
-        "LOWER(TRIM(r.raw_data->>'mx_AdmissionDate')) != 'null'",
-        "TRIM(r.raw_data->>'mx_AdmissionDate') != ''",
-    ]
-    params: Dict[str, Any] = {"ds_id": dataset_id}
+    conds = ["academic_year = :academic_year"]
+    params: Dict[str, Any] = {"academic_year": year}
 
     if campus and campus.lower() != "all":
-        conds.append("LOWER(COALESCE(r.raw_data->>'mx_Campus', :campus)) = LOWER(:campus)")
+        conds.append("LOWER(campus_name) = LOWER(:campus)")
         params["campus"] = campus
 
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
     if has_date_filter:
-        conds.append("system.parse_date(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) >= CAST(:from_date AS date)")
-        conds.append("system.parse_date(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) <= CAST(:to_date AS date)")
-        params["from_date"] = from_date.strip()
-        params["to_date"] = to_date.strip()
+        from_m = from_date.strip()[:7]
+        to_m = to_date.strip()[:7]
+        conds.append("admission_month >= :from_m AND admission_month <= :to_m")
+        params["from_m"] = from_m
+        params["to_m"] = to_m
     elif month and month.lower() != "all":
-        conds.append("system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) LIKE :month")
+        conds.append("admission_month LIKE :month")
         params["month"] = f"%{month}%"
-
-    if lead_type and lead_type.lower() != "all":
-        conds.append("LOWER(COALESCE(r.raw_data->>'ProspectStage', r.raw_data->>'LeadType', '')) = LOWER(:lead_type)")
-        params["lead_type"] = lead_type
-
-    if program and program.lower() != "all":
-        conds.append("LOWER(COALESCE(r.raw_data->>'Program Name', r.raw_data->>'Program Code', '')) = LOWER(:program)")
-        params["program"] = program
-
-    if source and source.lower() != "all":
-        conds.append("LOWER(COALESCE(r.raw_data->>'Source', r.raw_data->>'Origin', '')) = LOWER(:source)")
-        params["source"] = source
-
-    if state and state.lower() != "all":
-        conds.append("LOWER(COALESCE(r.raw_data->>'mx_State_New', r.raw_data->>'mx_State', '')) = LOWER(:state)")
-        params["state"] = state
 
     where_clause = " AND ".join(conds)
 
     sql = f"""
         SELECT 
-            system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) AS month_key,
-            COALESCE(NULLIF(INITCAP(TRIM(r.raw_data->>'mx_Gender_New')), ''), 'Unspecified') AS gender,
-            COUNT(DISTINCT r.raw_data->>'ProspectID') AS admissions
-        FROM staging.records r
+            admission_month AS month_key,
+            gender,
+            SUM(admissions) AS admissions
+        FROM analytics.gender_monthly_agg
         WHERE {where_clause}
         GROUP BY 1, 2
         ORDER BY 1, admissions DESC;
     """
     try:
-        try:
-            db.execute(text("SET LOCAL jit = off;"))
-        except Exception:
-            pass
         rows = db.execute(text(sql), params).fetchall()
+
+        # Safe Fallback: if no aggregate rows found, check dataset status
+        if not rows:
+            ds_status = db.execute(
+                text("""
+                    SELECT analytics_status FROM system.datasets
+                    WHERE is_analytics_enabled = TRUE
+                      AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
+                      AND academic_year = :yr
+                    LIMIT 1
+                """),
+                {"yr": year},
+            ).scalar()
+            return {
+                "status": "aggregating" if ds_status == "AGGREGATING" else "success",
+                "academic_year": year,
+                "campus": campus or "All",
+                "total_admissions": 0,
+                "gender_categories": ["Male", "Female"],
+                "months": [],
+                "genders": [],
+                "from_date": from_date,
+                "to_date": to_date,
+            }
 
         # Track discovered canonical genders dynamically
         genders_found = set()

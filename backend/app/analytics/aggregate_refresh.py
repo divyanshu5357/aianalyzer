@@ -253,3 +253,144 @@ def refresh_dashboard_agg(db: Session) -> dict:
     duration_ms = round((t_total - t0) * 1000, 2)
     logger.info("[FULL AGG REFRESH] Completed in %.2f ms", duration_ms)
     return {"total_ms": duration_ms}
+
+
+def refresh_gender_agg_scoped(
+    db: Session,
+    dataset_id: Optional[str] = None,
+) -> dict:
+    """Refresh gender_monthly_agg for a specific dataset scope only.
+
+    Populates analytics.gender_monthly_agg from staging.records once during ingestion
+    using the exact business definition:
+    - Admission: mx_AdmissionDate valid and not null
+    - Identity: ProspectID
+    - Discovered gender: INITCAP(mx_Gender_New) or 'Unspecified'
+    - Discovered month: system.parse_month(mx_AdmissionDate)
+
+    Zero runtime table scans of staging.records are required thereafter.
+    """
+    t0 = time.perf_counter()
+    if dataset_id is None:
+        return backfill_gender_agg(db)
+
+    ds_id_str = str(dataset_id)
+
+    # Step 1: Delete existing aggregates for this dataset
+    del_res = db.execute(
+        text("DELETE FROM analytics.gender_monthly_agg WHERE dataset_id = CAST(:ds_id AS uuid)"),
+        {"ds_id": ds_id_str},
+    )
+    deleted_rows = del_res.rowcount
+
+    # Step 2: Verify dataset is analytics-enabled
+    ds_row = db.execute(
+        text("SELECT is_analytics_enabled, academic_year, campus_name FROM system.datasets WHERE id = CAST(:ds_id AS uuid)"),
+        {"ds_id": ds_id_str},
+    ).mappings().first()
+
+    inserted_rows = 0
+    if ds_row and ds_row.get("is_analytics_enabled"):
+        insert_sql = text("""
+            INSERT INTO analytics.gender_monthly_agg (
+                dataset_id,
+                academic_year,
+                campus_name,
+                admission_month,
+                gender,
+                admissions,
+                created_at,
+                updated_at
+            )
+            SELECT 
+                r.dataset_id,
+                COALESCE(d.academic_year, d.period_end_year, 2026) AS academic_year,
+                COALESCE(NULLIF(TRIM(r.raw_data->>'mx_Campus'), ''), d.campus_name, 'All') AS campus_name,
+                system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) AS admission_month,
+                COALESCE(NULLIF(INITCAP(TRIM(r.raw_data->>'mx_Gender_New')), ''), 'Unspecified') AS gender,
+                COUNT(DISTINCT r.raw_data->>'ProspectID') AS admissions,
+                NOW(),
+                NOW()
+            FROM staging.records r
+            INNER JOIN system.datasets d ON d.id = r.dataset_id
+            WHERE r.dataset_id = CAST(:ds_id AS uuid)
+              AND NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '') IS NOT NULL
+              AND LOWER(TRIM(r.raw_data->>'mx_AdmissionDate')) != 'null'
+              AND TRIM(r.raw_data->>'mx_AdmissionDate') != ''
+              AND system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) IS NOT NULL
+            GROUP BY 1, 2, 3, 4, 5
+            ON CONFLICT (dataset_id, academic_year, campus_name, admission_month, gender)
+            DO UPDATE SET 
+                admissions = EXCLUDED.admissions,
+                updated_at = NOW();
+        """)
+        ins_res = db.execute(insert_sql, {"ds_id": ds_id_str})
+        inserted_rows = ins_res.rowcount or 0
+
+    db.commit()
+    t_total = time.perf_counter()
+    duration_ms = round((t_total - t0) * 1000, 2)
+    logger.info("[SCOPED GENDER AGG] dataset=%s deleted=%d inserted=%d total_ms=%.2f", ds_id_str, deleted_rows, inserted_rows, duration_ms)
+
+    return {
+        "dataset_id": ds_id_str,
+        "deleted_rows": deleted_rows,
+        "inserted_rows": inserted_rows,
+        "total_ms": duration_ms,
+    }
+
+
+def delete_gender_agg_for_dataset(db: Session, dataset_id: str) -> int:
+    """Deletes gender aggregated rows belonging to a specific dataset."""
+    ds_id_str = str(dataset_id)
+    result = db.execute(
+        text("DELETE FROM analytics.gender_monthly_agg WHERE dataset_id = CAST(:ds_id AS uuid)"),
+        {"ds_id": ds_id_str},
+    )
+    deleted = result.rowcount
+    db.commit()
+    logger.info("[GENDER AGG DELETE] Removed %d rows for dataset %s", deleted, ds_id_str)
+    return deleted
+
+
+def backfill_gender_agg(db: Session, dataset_id: Optional[str] = None) -> dict:
+    """Safely backfills analytics.gender_monthly_agg for existing datasets.
+
+    Can be run out-of-band without re-uploading the RAW dataset.
+    """
+    t0 = time.perf_counter()
+    if dataset_id:
+        target_ids = [str(dataset_id)]
+    else:
+        rows = db.execute(
+            text("""
+                SELECT id 
+                FROM system.datasets 
+                WHERE is_analytics_enabled = TRUE 
+                  AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
+                  AND status NOT IN ('failed', 'initiated')
+                ORDER BY created_at ASC
+            """)
+        ).scalars().all()
+        target_ids = [str(r) for r in rows]
+
+    total_inserted = 0
+    results = []
+    for ds_id in target_ids:
+        try:
+            res = refresh_gender_agg_scoped(db, dataset_id=ds_id)
+            total_inserted += res.get("inserted_rows", 0)
+            results.append(res)
+        except Exception as e:
+            logger.warning("Backfill failed for dataset %s: %s", ds_id, e)
+            db.rollback()
+
+    duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+    logger.info("[BACKFILL GENDER AGG] Processed %d datasets, %d rows in %.2f ms", len(target_ids), total_inserted, duration_ms)
+    return {
+        "datasets_processed": len(target_ids),
+        "total_inserted": total_inserted,
+        "duration_ms": duration_ms,
+        "details": results,
+    }
+

@@ -733,6 +733,7 @@ def get_agg_performance_rankings(
     program: str | None = None,
     from_date: str | None = None,
     to_date: str | None = None,
+    limit: int = 100,
 ) -> Dict[str, List[Dict[str, Any]]]:
     """Performance rankings using the aggregated table with fallback.
     Supports dynamic from_date and to_date range filtering with equivalent PY period.
@@ -753,6 +754,7 @@ def get_agg_performance_rankings(
         params["campus"] = campus
     where_clause += " AND academic_year = :cy_year"
     params["cy_year"] = cy_year
+    params["limit_val"] = limit
 
     # Current year rows
     if has_date_filter:
@@ -768,7 +770,7 @@ def get_agg_performance_rankings(
             HAVING SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN leads_cy ELSE 0 END) > 0 
                 OR SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN admission_cy ELSE 0 END) > 0
             ORDER BY cy_admission DESC, cy_leads DESC
-            LIMIT 100
+            LIMIT :limit_val
         """
         fallback_sql = f"""
             SELECT "{safe_dim}" as entity,
@@ -780,7 +782,7 @@ def get_agg_performance_rankings(
             HAVING SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN cy_leads ELSE 0 END) > 0 
                 OR SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN cy_admission ELSE 0 END) > 0
             ORDER BY cy_admission DESC, cy_leads DESC
-            LIMIT 100
+            LIMIT :limit_val
         """
     else:
         sql = f"""
@@ -792,7 +794,7 @@ def get_agg_performance_rankings(
             GROUP BY "{safe_dim}"
             HAVING SUM(leads_cy) > 0 OR SUM(admission_cy) > 0
             ORDER BY cy_admission DESC, cy_leads DESC
-            LIMIT 100
+            LIMIT :limit_val
         """
         fallback_sql = f"""
             SELECT "{safe_dim}" as entity,
@@ -803,7 +805,7 @@ def get_agg_performance_rankings(
             GROUP BY "{safe_dim}"
             HAVING SUM(cy_leads) > 0 OR SUM(cy_admission) > 0
             ORDER BY cy_admission DESC, cy_leads DESC
-            LIMIT 100
+            LIMIT :limit_val
         """
     cy_rows = _run_agg_query(db, sql, params, fallback_sql, params)
 
@@ -1060,6 +1062,7 @@ def get_agg_entity_detail(
         "from_date": from_date,
         "to_date": to_date,
         "program_attributes": program_meta,
+        "breakdowns": {},
         "overview": {
             "leads": {
                 "cy": cy_leads,
@@ -1270,7 +1273,7 @@ def get_agg_insights(
 
     rankings = get_agg_performance_rankings(
         db, dimension="program_name", campus=campus, years=years, state=state, source=source, program=program,
-        from_date=from_date, to_date=to_date,
+        from_date=from_date, to_date=to_date, limit=5,
     )
     improvements = rankings.get("improvements", [])
     declines = rankings.get("declines", [])
@@ -1299,7 +1302,7 @@ def get_agg_insights(
 
     src_rankings = get_agg_performance_rankings(
         db, dimension="source", campus=campus, years=years, state=state, source=source, program=program,
-        from_date=from_date, to_date=to_date,
+        from_date=from_date, to_date=to_date, limit=5,
     )
     src_improvements = src_rankings.get("improvements", [])
     if src_improvements:
