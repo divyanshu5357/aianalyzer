@@ -8,13 +8,21 @@ Provides aggregated metrics across 4 hierarchy levels:
 All aggregations are computed on PostgreSQL (GROUP BY, SUM). Zero raw CRM datasets are loaded.
 """
 
-from typing import Dict, Any, List, Optional
+from typing import Dict, Any, List, Optional, Tuple
 import logging
+import time
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.analytics.aggregate_service import get_py_date
 
 logger = logging.getLogger(__name__)
+
+# Server-side cache for top-level report (2 minute TTL)
+_PROGRAMS_TOP_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_PROGRAMS_CACHE_TTL = 120.0
+
+def clear_programs_cache():
+    _PROGRAMS_TOP_CACHE.clear()
 
 # Trusted sorting columns to prevent SQL injection
 VALID_SORT_FIELDS = {
@@ -214,128 +222,125 @@ def get_program_report_top_level(
     where_sql = " AND ".join(where_clauses)
     ref_where_sql = " AND ".join(ref_clauses)
 
-    query_sql = f"""
-        WITH prog_metrics AS (
-            SELECT 
-                LOWER(TRIM(d.program_code)) as pcode,
-                LOWER(TRIM(COALESCE(d.raw_program_code, ''))) as raw_pcode,
-                LOWER(TRIM(COALESCE(d.program_name, ''))) as pname,
-                SUM({cy_lead_expr}) as cy_leads,
-                SUM({py_lead_expr}) as py_leads,
-                SUM({cy_cucet_expr}) as cy_cucet,
-                SUM({py_cucet_expr}) as py_cucet,
-                SUM({cy_adm_expr}) as cy_adm,
-                SUM({py_adm_expr}) as py_adm
-            FROM analytics.dashboard_agg d
-            WHERE {where_sql}
-            GROUP BY LOWER(TRIM(d.program_code)), LOWER(TRIM(COALESCE(d.raw_program_code, ''))), LOWER(TRIM(COALESCE(d.program_name, '')))
-        ),
-        prog_refunds AS (
-            SELECT 
-                LOWER(TRIM(r.program_code)) as pcode,
-                SUM({cy_ref_expr}) as cy_refunds,
-                SUM({py_ref_expr}) as py_refunds
-            FROM analytics.program_refunds_summary r
-            WHERE {ref_where_sql}
-            GROUP BY LOWER(TRIM(r.program_code))
-        ),
-        courses_dim AS (
-            SELECT DISTINCT 
-                LOWER(TRIM(program_code)) as pcode,
-                LOWER(TRIM(program_name)) as pname,
-                TRIM(program_group) as program_group
-            FROM organization.course_master
-            WHERE program_group IS NOT NULL AND TRIM(program_group) != ''
-        )
+    # Check server-side cache
+    cache_key = f"{academic_year}:{campus}:{from_date}:{to_date}:{sort_by}:{sort_order}"
+    now_ts = time.time()
+    if cache_key in _PROGRAMS_TOP_CACHE:
+        c_time, c_data = _PROGRAMS_TOP_CACHE[cache_key]
+        if now_ts - c_time < _PROGRAMS_CACHE_TTL:
+            return c_data
+
+    # Load course dimension mappings (423 records, instant < 5ms)
+    courses = db.execute(
+        text("SELECT program_code, program_name, program_group FROM organization.course_master WHERE program_group IS NOT NULL AND TRIM(program_group) != ''")
+    ).fetchall()
+    code_map: Dict[str, str] = {}
+    name_map: Dict[str, str] = {}
+    for c_code, c_name, c_grp in courses:
+        if c_code and c_code.strip():
+            code_map[c_code.strip().lower()] = c_grp.strip()
+        if c_name and c_name.strip():
+            name_map[c_name.strip().lower()] = c_grp.strip()
+
+    # Pre-aggregate dashboard_agg by (year, pcode, raw_pcode, pname, created_month)
+    # Zero cross joins on 1.25M rows!
+    agg_sql = f"""
         SELECT 
-            COALESCE(NULLIF(TRIM(c.program_group), ''), 'OTHER') as program_group,
-            COALESCE(SUM(m.py_leads), 0) as py_leads,
-            COALESCE(SUM(m.cy_leads), 0) as cy_leads,
-            COALESCE(SUM(m.py_cucet), 0) as py_cucet,
-            COALESCE(SUM(m.cy_cucet), 0) as cy_cucet,
-            COALESCE(SUM(m.py_adm), 0) as py_adm,
-            COALESCE(SUM(m.cy_adm), 0) as cy_adm,
-            COALESCE(SUM(r.py_refunds), 0) as py_refunds,
-            COALESCE(SUM(r.cy_refunds), 0) as cy_refunds
-        FROM prog_metrics m
-        LEFT JOIN courses_dim c ON (
-            m.pcode = c.pcode 
-            OR m.raw_pcode = c.pcode 
-            OR m.pname = c.pcode
-            OR m.pname = c.pname
-        )
-        LEFT JOIN prog_refunds r ON m.pcode = r.pcode
-        GROUP BY COALESCE(NULLIF(TRIM(c.program_group), ''), 'OTHER')
-        HAVING COALESCE(SUM(m.cy_leads), 0) > 0 OR COALESCE(SUM(m.py_leads), 0) > 0
-    """
-
-    all_params = {**params, **ref_params}
-    result_rows = db.execute(text(query_sql), all_params).fetchall()
-
-    # Query monthly trend points for CY by program group
-    trend_where = ["d.academic_year = :cy_year", "d.created_month IS NOT NULL"]
-    trend_params: Dict[str, Any] = {"cy_year": academic_year}
-    if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
-        trend_where.append("LOWER(d.campus_name) = :campus")
-        trend_params["campus"] = campus.strip().lower()
-    if has_date_filter:
-        trend_where.append("d.created_month >= :from_m AND d.created_month <= :to_m")
-        trend_params["from_m"] = from_date.strip()[:7]
-        trend_params["to_m"] = to_date.strip()[:7]
-
-    trend_sql = f"""
-        SELECT 
-            COALESCE(NULLIF(TRIM(c.program_group), ''), 'OTHER') as program_group,
+            d.academic_year,
+            LOWER(TRIM(d.program_code)) as pcode,
+            LOWER(TRIM(COALESCE(d.raw_program_code, ''))) as raw_pcode,
+            LOWER(TRIM(COALESCE(d.program_name, ''))) as pname,
             d.created_month,
-            SUM(d.leads_cy) as leads
+            SUM({cy_lead_expr}) as cy_leads,
+            SUM({py_lead_expr}) as py_leads,
+            SUM({cy_cucet_expr}) as cy_cucet,
+            SUM({py_cucet_expr}) as py_cucet,
+            SUM({cy_adm_expr}) as cy_adm,
+            SUM({py_adm_expr}) as py_adm
         FROM analytics.dashboard_agg d
-        LEFT JOIN (
-            SELECT DISTINCT 
-                LOWER(TRIM(program_code)) as pcode, 
-                LOWER(TRIM(program_name)) as pname,
-                TRIM(program_group) as program_group 
-            FROM organization.course_master
-            WHERE program_group IS NOT NULL AND TRIM(program_group) != ''
-        ) c ON (
-            LOWER(TRIM(d.program_code)) = c.pcode 
-            OR LOWER(TRIM(COALESCE(d.raw_program_code, ''))) = c.pcode
-            OR LOWER(TRIM(d.program_name)) = c.pcode
-            OR LOWER(TRIM(d.program_name)) = c.pname
-        )
-        WHERE {" AND ".join(trend_where)}
-        GROUP BY COALESCE(NULLIF(TRIM(c.program_group), ''), 'OTHER'), d.created_month
-        ORDER BY 1, 2
+        WHERE {where_sql}
+        GROUP BY d.academic_year, LOWER(TRIM(d.program_code)), LOWER(TRIM(COALESCE(d.raw_program_code, ''))), LOWER(TRIM(COALESCE(d.program_name, ''))), d.created_month
     """
-    trend_rows = db.execute(text(trend_sql), trend_params).fetchall()
+    agg_rows = db.execute(text(agg_sql), params).fetchall()
 
-    # Build group -> [lead_count] trend points
+    ref_sql = f"""
+        SELECT 
+            LOWER(TRIM(r.program_code)) as pcode,
+            SUM({cy_ref_expr}) as cy_refunds,
+            SUM({py_ref_expr}) as py_refunds
+        FROM analytics.program_refunds_summary r
+        WHERE {ref_where_sql}
+        GROUP BY LOWER(TRIM(r.program_code))
+    """
+    ref_rows = db.execute(text(ref_sql), ref_params).fetchall()
+
+    groups: Dict[str, Dict[str, int]] = {}
     group_trends: Dict[str, Dict[str, int]] = {}
     distinct_months = set()
-    for tr in trend_rows:
-        grp = tr[0]
-        m_key = tr[1]
-        cnt = int(tr[2] or 0)
-        group_trends.setdefault(grp, {})[m_key] = cnt
-        distinct_months.add(m_key)
+
+    for r in agg_rows:
+        yr = r[0]
+        pcode = r[1] or ""
+        raw_pcode = r[2] or ""
+        pname = r[3] or ""
+        m = r[4]
+
+        grp = code_map.get(pcode) or code_map.get(raw_pcode) or name_map.get(pname) or "OTHER"
+
+        if grp not in groups:
+            groups[grp] = {
+                "py_leads": 0, "cy_leads": 0,
+                "py_cucet": 0, "cy_cucet": 0,
+                "py_adm": 0, "cy_adm": 0,
+                "py_refunds": 0, "cy_refunds": 0,
+            }
+            group_trends[grp] = {}
+
+        cy_l = int(r[5] or 0)
+        groups[grp]["cy_leads"] += cy_l
+        groups[grp]["py_leads"] += int(r[6] or 0)
+        groups[grp]["cy_cucet"] += int(r[7] or 0)
+        groups[grp]["py_cucet"] += int(r[8] or 0)
+        groups[grp]["cy_adm"] += int(r[9] or 0)
+        groups[grp]["py_adm"] += int(r[10] or 0)
+
+        if m and yr == academic_year:
+            distinct_months.add(m)
+            group_trends[grp][m] = group_trends[grp].get(m, 0) + cy_l
+
+    for r in ref_rows:
+        pcode = r[0] or ""
+        grp = code_map.get(pcode) or name_map.get(pcode) or "OTHER"
+        if grp not in groups:
+            groups[grp] = {
+                "py_leads": 0, "cy_leads": 0,
+                "py_cucet": 0, "cy_cucet": 0,
+                "py_adm": 0, "cy_adm": 0,
+                "py_refunds": 0, "cy_refunds": 0,
+            }
+            group_trends[grp] = {}
+        groups[grp]["cy_refunds"] += int(r[1] or 0)
+        groups[grp]["py_refunds"] += int(r[2] or 0)
 
     sorted_months = sorted(list(distinct_months))
 
-    # Total accumulators
     tot_py_leads = tot_cy_leads = tot_py_cucet = tot_cy_cucet = 0
     tot_py_adm = tot_cy_adm = tot_py_refunds = tot_cy_refunds = 0
     tot_monthly: Dict[str, int] = {m: 0 for m in sorted_months}
 
     processed_rows = []
-    for r in result_rows:
-        grp = str(r[0])
-        py_l = int(r[1] or 0)
-        cy_l = int(r[2] or 0)
-        py_c = int(r[3] or 0)
-        cy_c = int(r[4] or 0)
-        py_a = int(r[5] or 0)
-        cy_a = int(r[6] or 0)
-        py_r = int(r[7] or 0)
-        cy_r = int(r[8] or 0)
+    for grp, m in groups.items():
+        py_l = m["py_leads"]
+        cy_l = m["cy_leads"]
+        py_c = m["py_cucet"]
+        cy_c = m["cy_cucet"]
+        py_a = m["py_adm"]
+        cy_a = m["cy_adm"]
+        py_r = m["py_refunds"]
+        cy_r = m["cy_refunds"]
+
+        if cy_l == 0 and py_l == 0:
+            continue
 
         tot_py_leads += py_l
         tot_cy_leads += cy_l
@@ -348,10 +353,10 @@ def get_program_report_top_level(
 
         grp_trend_dict = group_trends.get(grp, {})
         row_trend = []
-        for m in sorted_months:
-            cnt = grp_trend_dict.get(m, 0)
+        for m_key in sorted_months:
+            cnt = grp_trend_dict.get(m_key, 0)
             row_trend.append(cnt)
-            tot_monthly[m] += cnt
+            tot_monthly[m_key] += cnt
 
         node_id = f"group:{grp}"
         item = _calculate_row_metrics(
@@ -402,7 +407,7 @@ def get_program_report_top_level(
         reverse=reverse,
     )
 
-    return {
+    resp = {
         "rows": processed_rows,
         "total": total_row,
         "count": len(processed_rows),
@@ -416,6 +421,10 @@ def get_program_report_top_level(
             "sort_order": "asc" if not reverse else "desc",
         },
     }
+
+    _PROGRAMS_TOP_CACHE[cache_key] = (now_ts, resp)
+    return resp
+
 
 
 def get_program_hierarchy_children(
@@ -536,8 +545,10 @@ def get_program_hierarchy_children(
 
         if prog_grp.upper() == "OTHER":
             group_filter = "(c.program_group IS NULL OR c.program_group = 'OTHER')"
+            union_sql = "UNION SELECT DISTINCT LOWER(d.program_code) as pcode, d.program_code as raw_code, d.program_name, NULL as program_name_short FROM analytics.dashboard_agg d WHERE LOWER(d.program_code) NOT IN (SELECT pcode FROM known_codes)"
         else:
             group_filter = "c.program_group = :p_group"
+            union_sql = ""
 
         query_sql = f"""
             WITH known_codes AS (
@@ -547,11 +558,12 @@ def get_program_hierarchy_children(
                 SELECT DISTINCT LOWER(c.program_code) as pcode, c.program_code as raw_code, c.program_name, c.program_name_short
                 FROM organization.course_master c
                 WHERE {group_filter}
-                {"UNION SELECT DISTINCT LOWER(d.program_code) as pcode, d.program_code as raw_code, d.program_name, NULL as program_name_short FROM analytics.dashboard_agg d WHERE LOWER(d.program_code) NOT IN (SELECT pcode FROM known_codes)" if prog_grp.upper() == "OTHER" else ""}
+                {union_sql}
             ),
             agg_data AS (
                 SELECT 
                     LOWER(d.program_code) as pcode,
+                    d.created_month,
                     SUM({cy_lead_expr}) as cy_leads,
                     SUM({py_lead_expr}) as py_leads,
                     SUM({cy_cucet_expr}) as cy_cucet,
@@ -561,7 +573,7 @@ def get_program_hierarchy_children(
                 FROM analytics.dashboard_agg d
                 JOIN target_branches b ON LOWER(d.program_code) = b.pcode
                 WHERE {where_sql}
-                GROUP BY LOWER(d.program_code)
+                GROUP BY LOWER(d.program_code), d.created_month
             ),
             ref_data AS (
                 SELECT 
@@ -576,6 +588,7 @@ def get_program_hierarchy_children(
             SELECT 
                 b.raw_code as program_code,
                 COALESCE(b.program_name_short, b.program_name, b.raw_code) as program_name,
+                a.created_month,
                 COALESCE(a.py_leads, 0) as py_leads,
                 COALESCE(a.cy_leads, 0) as cy_leads,
                 COALESCE(a.py_cucet, 0) as py_cucet,
@@ -585,76 +598,70 @@ def get_program_hierarchy_children(
                 COALESCE(r.py_refunds, 0) as py_refunds,
                 COALESCE(r.cy_refunds, 0) as cy_refunds
             FROM target_branches b
-            LEFT JOIN agg_data a ON b.pcode = a.pcode
+            JOIN agg_data a ON b.pcode = a.pcode
             LEFT JOIN ref_data r ON b.pcode = r.pcode
             WHERE COALESCE(a.cy_leads, 0) > 0 OR COALESCE(a.py_leads, 0) > 0
         """
         all_params = {**params, **ref_params}
         res = db.execute(text(query_sql), all_params).fetchall()
 
-        # Monthly trend for programs
-        trend_where = [
-            "d.academic_year = :cy_year",
-            "d.created_month IS NOT NULL",
-            "d.program_code IS NOT NULL",
-        ]
-        trend_params = {"cy_year": academic_year, "p_group": prog_grp}
-        if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
-            trend_where.append("LOWER(d.campus_name) = :campus")
-            trend_params["campus"] = campus.strip().lower()
-        if has_date_filter:
-            trend_where.append("d.created_month >= :from_m AND d.created_month <= :to_m")
-            trend_params["from_m"] = from_date.strip()[:7]
-            trend_params["to_m"] = to_date.strip()[:7]
-
-        branch_trend_sql = f"""
-            SELECT 
-                LOWER(d.program_code) as pcode,
-                d.created_month,
-                SUM(d.leads_cy) as leads
-            FROM analytics.dashboard_agg d
-            JOIN organization.course_master c ON LOWER(d.program_code) = LOWER(c.program_code)
-            WHERE {group_filter} AND {" AND ".join(trend_where)}
-            GROUP BY LOWER(d.program_code), d.created_month
-            ORDER BY 1, 2
-        """
-        tr_rows = db.execute(text(branch_trend_sql), trend_params).fetchall()
+        branch_metrics: Dict[str, Dict[str, Any]] = {}
         branch_trends: Dict[str, Dict[str, int]] = {}
         distinct_months = set()
-        for tr in tr_rows:
-            pcode = tr[0]
-            m_key = tr[1]
-            branch_trends.setdefault(pcode, {})[m_key] = int(tr[2] or 0)
-            distinct_months.add(m_key)
-        sorted_m = sorted(list(distinct_months))
 
         for r in res:
             raw_code = str(r[0])
             p_name = str(r[1])
-            py_l = int(r[2] or 0)
-            cy_l = int(r[3] or 0)
-            py_c = int(r[4] or 0)
-            cy_c = int(r[5] or 0)
-            py_a = int(r[6] or 0)
-            cy_a = int(r[7] or 0)
-            py_r = int(r[8] or 0)
-            cy_r = int(r[9] or 0)
+            m_key = r[2]
+            py_l = int(r[3] or 0)
+            cy_l = int(r[4] or 0)
+            py_c = int(r[5] or 0)
+            cy_c = int(r[6] or 0)
+            py_a = int(r[7] or 0)
+            cy_a = int(r[8] or 0)
+            py_r = int(r[9] or 0)
+            cy_r = int(r[10] or 0)
 
+            if raw_code not in branch_metrics:
+                branch_metrics[raw_code] = {
+                    "name": p_name,
+                    "py_leads": 0, "cy_leads": 0,
+                    "py_cucet": 0, "cy_cucet": 0,
+                    "py_adm": 0, "cy_adm": 0,
+                    "py_refunds": py_r, "cy_refunds": cy_r,
+                }
+                branch_trends[raw_code] = {}
+
+            bm = branch_metrics[raw_code]
+            bm["py_leads"] += py_l
+            bm["cy_leads"] += cy_l
+            bm["py_cucet"] += py_c
+            bm["cy_cucet"] += cy_c
+            bm["py_adm"] += py_a
+            bm["cy_adm"] += cy_a
+
+            if m_key:
+                distinct_months.add(m_key)
+                branch_trends[raw_code][m_key] = branch_trends[raw_code].get(m_key, 0) + cy_l
+
+        sorted_m = sorted(list(distinct_months))
+
+        for raw_code, bm in branch_metrics.items():
             node_id = f"prog:{prog_grp}:{raw_code}"
-            b_dict = branch_trends.get(raw_code.lower(), {})
+            b_dict = branch_trends.get(raw_code, {})
             row_trend = [b_dict.get(m, 0) for m in sorted_m]
 
             rows.append(
                 _calculate_row_metrics(
-                    name=p_name,
-                    py_leads=py_l,
-                    cy_leads=cy_l,
-                    py_cucet=py_c,
-                    cy_cucet=cy_c,
-                    py_adm=py_a,
-                    cy_adm=cy_a,
-                    py_refunds=py_r,
-                    cy_refunds=cy_r,
+                    name=bm["name"],
+                    py_leads=bm["py_leads"],
+                    cy_leads=bm["cy_leads"],
+                    py_cucet=bm["py_cucet"],
+                    cy_cucet=bm["cy_cucet"],
+                    py_adm=bm["py_adm"],
+                    cy_adm=bm["cy_adm"],
+                    py_refunds=bm["py_refunds"],
+                    cy_refunds=bm["cy_refunds"],
                     lead_trend=row_trend,
                     node_id=node_id,
                     level=level_int,
@@ -662,10 +669,10 @@ def get_program_hierarchy_children(
                     extra_props={
                         "program_group": prog_grp,
                         "program_code": raw_code,
-                        "program": raw_code,
                     },
                 )
             )
+
 
     # -------------------------------------------------------------
     # LEVEL 3: Lead Type (children of Level 2 program_code)
@@ -791,7 +798,6 @@ def get_program_hierarchy_children(
                     extra_props={
                         "program_group": program_group,
                         "program_code": eff_pcode,
-                        "program": eff_pcode,
                         "lead_type": cat_name,
                         "source_category": cat_name,
                     },
@@ -935,7 +941,6 @@ def get_program_hierarchy_children(
                     extra_props={
                         "program_group": program_group,
                         "program_code": eff_pcode,
-                        "program": eff_pcode,
                         "lead_type": eff_lead_type,
                         "source_category": eff_lead_type,
                         "main_source": src_name,
@@ -1089,7 +1094,6 @@ def get_program_hierarchy_children(
                     extra_props={
                         "program_group": program_group,
                         "program_code": eff_pcode,
-                        "program": eff_pcode,
                         "lead_type": eff_lead_type,
                         "source_category": eff_lead_type,
                         "main_source": eff_main_src,
