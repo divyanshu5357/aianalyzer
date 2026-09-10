@@ -85,13 +85,7 @@ def get_masters_status(db: Session = Depends(get_db)) -> dict[str, Any]:
             {"id": dim_id}
         ).mappings().first()
         if dim_row:
-            sheets = db.execute(
-                text("SELECT DISTINCT NULLIF(TRIM(raw_data->>'sheet_name'), '') FROM staging.records WHERE dataset_id = :id"),
-                {"id": dim_id}
-            ).scalars().all()
-            clean_sheets = [s for s in sheets if s]
-            if not clean_sheets:
-                clean_sheets = ["Program", "State", "Source", "EMP"]
+            clean_sheets = ["Program", "State", "Source", "EMP"]
             dim_info = {
                 "id": str(dim_row["id"]),
                 "dataset_name": dim_row["dataset_name"],
@@ -115,17 +109,7 @@ def get_masters_status(db: Session = Depends(get_db)) -> dict[str, Any]:
             {"id": tgt_id}
         ).mappings().first()
         if tgt_row:
-            sheets = db.execute(
-                text("SELECT DISTINCT NULLIF(TRIM(raw_data->>'sheet_name'), '') FROM staging.records WHERE dataset_id = :id"),
-                {"id": tgt_id}
-            ).scalars().all()
-            clean_sheets = [s for s in sheets if s]
-            if not clean_sheets:
-                try:
-                    t_sheets = db.execute(text("SELECT DISTINCT dimension_type FROM analytics.targets")).scalars().all()
-                    clean_sheets = [s for s in t_sheets if s] or ["Program", "Source", "State"]
-                except Exception:
-                    clean_sheets = ["Program", "Source", "State"]
+            clean_sheets = ["Program", "Source", "State"]
             tgt_info = {
                 "id": str(tgt_row["id"]),
                 "dataset_name": tgt_row["dataset_name"],

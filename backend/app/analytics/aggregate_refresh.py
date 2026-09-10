@@ -382,9 +382,14 @@ def backfill_gender_agg(db: Session, dataset_id: Optional[str] = None) -> dict:
     results = []
     for ds_id in target_ids:
         try:
-            res = refresh_gender_agg_scoped(db, dataset_id=ds_id)
-            total_inserted += res.get("inserted_rows", 0)
-            results.append(res)
+            existing = db.execute(
+                text("SELECT COUNT(*) FROM analytics.gender_monthly_agg WHERE dataset_id = CAST(:ds_id AS uuid)"),
+                {"ds_id": ds_id}
+            ).scalar() or 0
+            if existing == 0:
+                res = refresh_gender_agg_scoped(db, dataset_id=ds_id)
+                total_inserted += res.get("inserted_rows", 0)
+                results.append(res)
         except Exception as e:
             logger.warning("Backfill failed for dataset %s: %s", ds_id, e)
             db.rollback()
