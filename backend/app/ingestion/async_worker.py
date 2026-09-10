@@ -198,14 +198,17 @@ def run_async_ingestion_job(
             from app.ingestion.period_detector import detect_period
             det = detect_period(original_filename, db, dataset_id)
             if det and det.academic_year:
+                label_val = getattr(det, "label", None) or getattr(det, "academic_label", None) or str(det.academic_year)
                 db.execute(
                     text("""
                         UPDATE system.datasets
                         SET academic_year = COALESCE(academic_year, :y),
+                            academic_label = COALESCE(academic_label, :l, CAST(:y AS VARCHAR)),
+                            period_end_year = COALESCE(period_end_year, :y),
                             campus_name = COALESCE(campus_name, :c)
                         WHERE id = :ds_id
                     """),
-                    {"ds_id": str(dataset_id), "y": det.academic_year, "c": det.campus_name},
+                    {"ds_id": str(dataset_id), "y": det.academic_year, "l": label_val, "c": det.campus_name},
                 )
                 db.commit()
         except Exception as det_err:
@@ -278,23 +281,17 @@ def run_async_ingestion_job(
         # Activate dataset for its scope & enable analytics only if valid data was ingested
         final_row_count = normalized_rows if normalized_rows > 0 else staged_rows
         if final_row_count > 0:
-            try:
-                db.execute(
-                    text("""
-                        UPDATE system.datasets 
-                        SET status = 'completed',
-                            row_count = :row_count,
-                            analytics_status = 'AGGREGATING' 
-                        WHERE id = :ds_id
-                    """),
-                    {"ds_id": str(dataset_id), "row_count": final_row_count},
-                )
-                db.commit()
-                from app.database.repository import set_active_dataset, enable_dataset_analytics
-                enable_dataset_analytics(db, str(dataset_id), force=True)
-                set_active_dataset(db, str(dataset_id), allow_benchmark=True)
-            except Exception as act_err:
-                logger.warning("Failed to auto-activate dataset %s post-ingestion: %s", dataset_id, act_err)
+            db.execute(
+                text("""
+                    UPDATE system.datasets 
+                    SET status = 'completed',
+                        row_count = :row_count,
+                        analytics_status = 'AGGREGATING' 
+                    WHERE id = :ds_id
+                """),
+                {"ds_id": str(dataset_id), "row_count": final_row_count},
+            )
+            db.commit()
         else:
             logger.warning("Dataset %s has 0 rows post-ingestion; leaving inactive", dataset_id)
             db.execute(
@@ -315,10 +312,25 @@ def run_async_ingestion_job(
             refresh_dashboard_agg_scoped(db, dataset_id=str(dataset_id))
             refresh_gender_agg_scoped(db, dataset_id=str(dataset_id))
             db.execute(
-                text("UPDATE system.datasets SET analytics_status = 'ANALYTICS_READY' WHERE id = :ds_id"),
+                text("""
+                    UPDATE system.datasets 
+                    SET analytics_status = 'ANALYTICS_READY',
+                        academic_label = COALESCE(academic_label, CAST(academic_year AS VARCHAR)),
+                        period_end_year = COALESCE(period_end_year, academic_year)
+                    WHERE id = :ds_id
+                """),
                 {"ds_id": str(dataset_id)},
             )
             db.commit()
+
+            # Now that aggregates are safely built, activate and enable analytics
+            if final_row_count > 0:
+                try:
+                    from app.database.repository import set_active_dataset, enable_dataset_analytics
+                    enable_dataset_analytics(db, str(dataset_id), force=True)
+                    set_active_dataset(db, str(dataset_id), allow_benchmark=True)
+                except Exception as act_err:
+                    logger.warning("Failed to auto-activate dataset %s post-ingestion: %s", dataset_id, act_err)
         except Exception as ref_err:
             logger.error("Failed to refresh analytics aggregates post-ingestion for dataset %s: %s", dataset_id, ref_err)
             try:

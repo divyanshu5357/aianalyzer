@@ -2,11 +2,9 @@
 
 import React, { createContext, useContext, useState, useEffect, useCallback } from "react";
 import { getActiveDataset, getAllPeriods, getDashboardFilterOptions, ActiveDatasetInfo, PeriodSummary } from "../lib/api";
+import dashboardCache from "../lib/cache/dashboardCache";
 
-/**
- * Guard: only accept labels matching the academic period pattern YYYY-YY.
- * Rejects UUIDs, checksums, numeric-only, or empty strings.
- */
+
 function isValidPeriodLabel(label: string | null | undefined): boolean {
   if (!label) return false;
   return /^\d{4}(-\d{2})?$/.test(label.trim());
@@ -19,7 +17,7 @@ interface AppContextType {
   toggleTheme: () => void;
   activeDataset: ActiveDatasetInfo | null;
   isLoadingDataset: boolean;
-  fetchActiveDataset: () => Promise<void>;
+  fetchActiveDataset: (targetYear?: number, targetCampus?: string) => Promise<void>;
   // Campus Scope Filter
   selectedCampus: string;
   setSelectedCampus: (c: string) => void;
@@ -33,7 +31,7 @@ interface AppContextType {
   analyticalYears: number[];
   isLoadingPeriods: boolean;
   fetchPeriods: () => Promise<void>;
-  // Currently selected academic period label (e.g. "2025-26")
+  // Currently selected academic period label (e.g. "2025-26" or "2026")
   activePeriodLabel: string | null;
   setActivePeriodLabel: (label: string | null) => void;
   seededPrompt: string;
@@ -79,6 +77,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [appliedToDate, setAppliedToDate] = useState<string | null>(null);
   const [dateRangeLimits, setDateRangeLimits] = useState<{ min_date: string; max_date: string; default_from: string; default_to: string } | null>(null);
   const [dateRangeError, setDateRangeError] = useState<string | null>(null);
+  const [selectedCampus, setSelectedCampusState] = useState<string>("all");
+  const [availableCampuses, setAvailableCampuses] = useState<string[]>(["Mohali"]);
 
   // Initialize theme from localStorage
   useEffect(() => {
@@ -98,13 +98,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     localStorage.setItem("app-theme", newTheme);
   };
 
-  const fetchActiveDataset = useCallback(async () => {
+  const fetchActiveDataset = useCallback(async (targetYear?: number, targetCampus?: string) => {
     setIsLoadingDataset(true);
     try {
-      const res = await getActiveDataset();
+      const yr = targetYear !== undefined ? targetYear : year;
+      const cmp = targetCampus !== undefined ? targetCampus : selectedCampus;
+      const res = await getActiveDataset(yr, cmp);
       if (res.active && res.dataset) {
         setActiveDataset(res.dataset);
-        // Use the dataset's own academic_label as the source of truth
         if (isValidPeriodLabel(res.dataset.academic_label)) {
           setActivePeriodLabel(res.dataset.academic_label!);
         }
@@ -116,7 +117,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     } finally {
       setIsLoadingDataset(false);
     }
-  }, []);
+  }, [year, selectedCampus]);
 
   const fetchPeriods = useCallback(async () => {
     setIsLoadingPeriods(true);
@@ -158,9 +159,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setIsLoadingPeriods(false);
     }
   }, []);
-
-  const [selectedCampus, setSelectedCampus] = useState<string>("all");
-  const [availableCampuses, setAvailableCampuses] = useState<string[]>(["Mohali"]);
 
   const fetchFilterOptions = useCallback(async () => {
     try {
@@ -220,20 +218,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setDateRangeError(null);
   }, []);
 
+  const setSelectedCampus = (c: string) => {
+    setSelectedCampusState(c);
+    fetchActiveDataset(year, c);
+  };
+
   const setYear = (y: number) => {
     setYearState(y);
-    // When year changes, update activePeriodLabel to match
-    const matchingPeriod = periods.find((p) => p.period_end_year === y);
+    const matchingPeriod = periods.find((p) => p.period_end_year === y || p.period_start_year === y);
     if (matchingPeriod) {
       setActivePeriodLabel(matchingPeriod.academic_label);
     }
-    // Clear custom date range when year changes
     resetDateRange();
+    fetchActiveDataset(y, selectedCampus);
   };
 
   const triggerRefresh = () => {
+    dashboardCache.invalidate();
     setRefreshTrigger((prev) => prev + 1);
-    fetchActiveDataset();
+    fetchActiveDataset(year, selectedCampus);
     fetchPeriods();
   };
 

@@ -260,15 +260,39 @@ def get_active_dataset(db: Session):
     ).scalar_one_or_none()
 
 
-def get_active_dataset_info(db: Session):
+def get_active_dataset_info(
+    db: Session,
+    year: Optional[int] = None,
+    campus: Optional[str] = None,
+):
     """
     Retrieve full metadata for the primary enabled active RAW dataset.
+    If year and/or campus are provided, filters to that specific scope.
     Falls back to any enabled RAW dataset if none explicitly active.
     Only considers completed datasets with valid non-zero rows.
     """
+    conds = [
+        "(d.is_analytics_enabled = TRUE OR d.is_active = TRUE)",
+        "UPPER(COALESCE(d.workbook_type, 'RAW')) = 'RAW'",
+        "d.status NOT IN ('failed', 'initiated')",
+        "COALESCE(d.row_count, 0) > 0",
+    ]
+    params: dict[str, Any] = {}
+
+    if year:
+        conds.append("(d.academic_year = :yr OR d.academic_label = :yr_str)")
+        params["yr"] = int(year)
+        params["yr_str"] = str(year)
+
+    if campus and campus.strip().lower() not in ("all", "all campuses", ""):
+        conds.append("LOWER(COALESCE(d.campus_name, '')) = LOWER(:cmp)")
+        params["cmp"] = campus.strip()
+
+    where_clause = " AND ".join(conds)
+
     row = db.execute(
         text(
-            """
+            f"""
             SELECT d.id, d.dataset_name, d.original_filename, d.row_count,
                    d.column_count, d.status, d.created_at,
                    d.academic_label, d.upload_version, d.is_period_active,
@@ -276,14 +300,12 @@ def get_active_dataset_info(db: Session):
                    q.quality_score
             FROM system.datasets d
             LEFT JOIN system.data_quality_reports q ON q.dataset_id = d.id
-            WHERE (d.is_analytics_enabled = TRUE OR d.is_active = TRUE)
-              AND UPPER(COALESCE(d.workbook_type, 'RAW')) = 'RAW'
-              AND d.status NOT IN ('failed', 'initiated')
-              AND COALESCE(d.row_count, 0) > 0
+            WHERE {where_clause}
             ORDER BY d.is_active DESC, d.is_analytics_enabled DESC, d.created_at DESC
             LIMIT 1
             """
-        )
+        ),
+        params,
     ).mappings().first()
 
     if not row:
@@ -824,18 +846,20 @@ def list_all_periods(db: Session) -> list[dict]:
         text(
             """
             SELECT
-                academic_label,
+                COALESCE(academic_label, academic_year::text) AS academic_label,
                 period_start_year,
-                period_end_year,
+                COALESCE(period_end_year, academic_year) AS period_end_year,
                 MAX(upload_version) AS latest_version,
                 COUNT(*) AS total_versions,
-                MAX(CASE WHEN is_period_active THEN id::text END) AS active_dataset_id,
-                MAX(CASE WHEN is_period_active THEN original_filename END) AS active_filename,
-                MAX(CASE WHEN is_period_active THEN created_at::text END) AS active_created_at
+                MAX(CASE WHEN is_period_active OR is_active THEN id::text END) AS active_dataset_id,
+                MAX(CASE WHEN is_period_active OR is_active THEN original_filename END) AS active_filename,
+                MAX(CASE WHEN is_period_active OR is_active THEN created_at::text END) AS active_created_at
             FROM system.datasets
-            WHERE academic_label IS NOT NULL
-            GROUP BY academic_label, period_start_year, period_end_year
-            ORDER BY period_end_year DESC NULLS LAST
+            WHERE (is_analytics_enabled = TRUE OR is_active = TRUE)
+              AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
+              AND COALESCE(academic_label, academic_year::text) IS NOT NULL
+            GROUP BY COALESCE(academic_label, academic_year::text), period_start_year, COALESCE(period_end_year, academic_year)
+            ORDER BY COALESCE(period_end_year, academic_year) DESC NULLS LAST
             """
         )
     ).mappings().all()

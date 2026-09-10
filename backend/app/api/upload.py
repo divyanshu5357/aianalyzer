@@ -527,8 +527,12 @@ def _process_direct_upload_background(job_id: str, saved_files_info: list[dict])
 # ---------------------------------------------------------------------------
 
 @router.get("/active")
-def get_active_dataset_route(db: Session = Depends(get_db)):
-    active = get_active_dataset_info(db)
+def get_active_dataset_route(
+    year: Optional[int] = Query(None, alias="academic_year"),
+    campus: Optional[str] = Query(None),
+    db: Session = Depends(get_db),
+):
+    active = get_active_dataset_info(db, year=year, campus=campus)
     if not active:
         return {"active": False, "dataset": None}
     return {"active": True, "dataset": active}

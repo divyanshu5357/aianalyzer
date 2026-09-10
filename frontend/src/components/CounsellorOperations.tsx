@@ -30,6 +30,7 @@ import {
   CounsellorListItem,
   CounsellorDetailReport,
 } from "../lib/api";
+import dashboardCache from "../lib/cache/dashboardCache";
 
 export const CounsellorOperations: React.FC = () => {
   const { theme, activePeriodLabel, periods, availableCampuses, analyticalYears } = useApp();
@@ -53,6 +54,13 @@ export const CounsellorOperations: React.FC = () => {
   const [selectedCampus, setSelectedCampus] = useState<string>("all");
   const [searchQuery, setSearchQuery] = useState<string>("");
 
+  const initialListKey = dashboardCache.buildKey("counsellors:list", {
+    academic_year: selectedYear,
+    campus: selectedCampus,
+    search: searchQuery,
+  });
+  const cachedInitialList = dashboardCache.peek<any>(initialListKey);
+
   // Level 1 Data state
   const [listData, setListData] = useState<{
     counsellors: CounsellorListItem[];
@@ -63,8 +71,8 @@ export const CounsellorOperations: React.FC = () => {
       overall_conversion_rate: number;
       conversion_rate_display: string;
     };
-  } | null>(null);
-  const [isLoadingList, setIsLoadingList] = useState<boolean>(true);
+  } | null>(() => cachedInitialList);
+  const [isLoadingList, setIsLoadingList] = useState<boolean>(() => !cachedInitialList);
 
   // Level 2 Data state
   const [reportData, setReportData] = useState<CounsellorDetailReport | null>(null);
@@ -83,13 +91,29 @@ export const CounsellorOperations: React.FC = () => {
   // Level 1: Fetch Counsellors Summary List
   // ----------------------------------------------------
   const fetchCounsellorsList = useCallback(async () => {
-    setIsLoadingList(true);
+    const key = dashboardCache.buildKey("counsellors:list", {
+      academic_year: selectedYear,
+      campus: selectedCampus,
+      search: searchQuery,
+    });
+    const cached = dashboardCache.peek<any>(key);
+    if (cached) {
+      setListData(cached);
+      setIsLoadingList(false);
+    } else {
+      setIsLoadingList(true);
+    }
+
     try {
-      const res = await getCounsellorsList({
-        academic_year: selectedYear,
-        campus: selectedCampus,
-        search: searchQuery,
-      });
+      const res = await dashboardCache.fetchWithCache(
+        key,
+        () =>
+          getCounsellorsList({
+            academic_year: selectedYear,
+            campus: selectedCampus,
+            search: searchQuery,
+          })
+      );
       setListData(res);
     } catch (err) {
       console.error("Failed to fetch counsellors list:", err);
@@ -106,13 +130,28 @@ export const CounsellorOperations: React.FC = () => {
   // Level 2: Fetch Selected Counsellor Detail Report
   // ----------------------------------------------------
   const fetchDetailReport = useCallback(async (counsellor: CounsellorListItem) => {
-    setIsLoadingReport(true);
+    const targetId = counsellor.raw_counsellor || counsellor.owner_id || counsellor.counsellor;
+    const key = dashboardCache.buildKey(`counsellors:detail:${targetId}`, {
+      academic_year: selectedYear,
+      campus: selectedCampus,
+    });
+    const cached = dashboardCache.peek<CounsellorDetailReport>(key);
+    if (cached) {
+      setReportData(cached);
+      setIsLoadingReport(false);
+    } else {
+      setIsLoadingReport(true);
+    }
+
     try {
-      const targetId = counsellor.raw_counsellor || counsellor.owner_id || counsellor.counsellor;
-      const res = await getCounsellorReport(targetId, {
-        academic_year: selectedYear,
-        campus: selectedCampus,
-      });
+      const res = await dashboardCache.fetchWithCache(
+        key,
+        () =>
+          getCounsellorReport(targetId, {
+            academic_year: selectedYear,
+            campus: selectedCampus,
+          })
+      );
       setReportData(res);
     } catch (err) {
       console.error("Failed to fetch counsellor detail report:", err);

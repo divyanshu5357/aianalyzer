@@ -304,7 +304,7 @@ def refresh_gender_agg_scoped(
             )
             SELECT 
                 r.dataset_id,
-                COALESCE(d.academic_year, d.period_end_year, 2026) AS academic_year,
+                COALESCE(d.academic_year, d.period_end_year, EXTRACT(YEAR FROM CURRENT_DATE)::int) AS academic_year,
                 COALESCE(NULLIF(TRIM(r.raw_data->>'mx_Campus'), ''), d.campus_name, 'All') AS campus_name,
                 system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) AS admission_month,
                 COALESCE(NULLIF(INITCAP(TRIM(r.raw_data->>'mx_Gender_New')), ''), 'Unspecified') AS gender,

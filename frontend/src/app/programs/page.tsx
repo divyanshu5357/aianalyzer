@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import ProgramReportTable from '@/components/ProgramReportTable';
 import { getProgramReport } from '@/lib/api/programs';
 import { useApp } from '@/context/AppContext';
+import dashboardCache from '@/lib/cache/dashboardCache';
 import type { ProgramReportRow, ProgramReportResponse } from '@/lib/api/types';
 
 export default function ProgramsPage() {
@@ -22,29 +23,61 @@ export default function ProgramsPage() {
 
   const [sortBy, setSortBy] = useState('cy_leads');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [report, setReport] = useState<ProgramReportResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+
+  const initialKey = dashboardCache.buildKey("programs:report", {
+    academic_year: activeYear,
+    campus: selectedCampus,
+    from_date: appliedFromDate,
+    to_date: appliedToDate,
+    sort_by: sortBy,
+    sort_order: sortOrder,
+  });
+  const cachedInitialReport = dashboardCache.peek<ProgramReportResponse>(initialKey);
+
+  const [report, setReport] = useState<ProgramReportResponse | null>(() => cachedInitialReport);
+  const [loading, setLoading] = useState<boolean>(() => !cachedInitialReport);
   const [error, setError] = useState<string | null>(null);
 
   const fetchReport = useCallback(async (by: string, order: string) => {
-    setLoading(true);
+    const key = dashboardCache.buildKey("programs:report", {
+      academic_year: activeYear,
+      campus: selectedCampus,
+      from_date: appliedFromDate,
+      to_date: appliedToDate,
+      sort_by: by,
+      sort_order: order,
+    });
+
+    const cached = dashboardCache.peek<ProgramReportResponse>(key);
+    if (cached) {
+      setReport(cached);
+      setLoading(false);
+    } else {
+      setLoading(true);
+    }
     setError(null);
+
     try {
-      const data = await getProgramReport({
-        academic_year: activeYear,
-        campus: selectedCampus,
-        from_date: appliedFromDate || undefined,
-        to_date: appliedToDate || undefined,
-        sort_by: by,
-        sort_order: order,
-      });
+      const data = await dashboardCache.fetchWithCache(
+        key,
+        () =>
+          getProgramReport({
+            academic_year: activeYear,
+            campus: selectedCampus,
+            from_date: appliedFromDate || undefined,
+            to_date: appliedToDate || undefined,
+            sort_by: by,
+            sort_order: order,
+          }),
+        { forceRefresh: refreshTrigger > 0 }
+      );
       setReport(data);
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : 'Failed to load program report');
     } finally {
       setLoading(false);
     }
-  }, [activeYear, selectedCampus, appliedFromDate, appliedToDate]);
+  }, [activeYear, selectedCampus, appliedFromDate, appliedToDate, refreshTrigger]);
 
   useEffect(() => {
     fetchReport(sortBy, sortOrder);

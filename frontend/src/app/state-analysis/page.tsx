@@ -4,6 +4,7 @@ import React, { useCallback, useEffect, useState } from 'react';
 import StateReportTable from '@/components/StateReportTable';
 import { getStateReport } from '@/lib/api/states';
 import { useApp } from '@/context/AppContext';
+import dashboardCache from '@/lib/cache/dashboardCache';
 import type { StateReportRow, StateReportResponse } from '@/lib/api/types';
 
 export default function StateAnalysisPage() {
@@ -22,23 +23,55 @@ export default function StateAnalysisPage() {
 
   const [sortBy, setSortBy] = useState('cy_leads');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('desc');
-  const [report, setReport] = useState<StateReportResponse | null>(null);
-  const [loading, setLoading] = useState(false);
+
+  const initialKey = dashboardCache.buildKey("states:report", {
+    academic_year: activeYear,
+    campus: selectedCampus,
+    from_date: appliedFromDate,
+    to_date: appliedToDate,
+    sort_by: sortBy,
+    sort_order: sortOrder,
+  });
+  const cachedInitialReport = dashboardCache.peek<StateReportResponse>(initialKey);
+
+  const [report, setReport] = useState<StateReportResponse | null>(() => cachedInitialReport);
+  const [loading, setLoading] = useState<boolean>(() => !cachedInitialReport);
   const [error, setError] = useState<string | null>(null);
 
   const fetchReport = useCallback(
     async (by: string, order: string) => {
-      setLoading(true);
+      const key = dashboardCache.buildKey("states:report", {
+        academic_year: activeYear,
+        campus: selectedCampus,
+        from_date: appliedFromDate,
+        to_date: appliedToDate,
+        sort_by: by,
+        sort_order: order,
+      });
+
+      const cached = dashboardCache.peek<StateReportResponse>(key);
+      if (cached) {
+        setReport(cached);
+        setLoading(false);
+      } else {
+        setLoading(true);
+      }
       setError(null);
+
       try {
-        const data = await getStateReport({
-          academic_year: activeYear,
-          campus: selectedCampus,
-          from_date: appliedFromDate || undefined,
-          to_date: appliedToDate || undefined,
-          sort_by: by,
-          sort_order: order,
-        });
+        const data = await dashboardCache.fetchWithCache(
+          key,
+          () =>
+            getStateReport({
+              academic_year: activeYear,
+              campus: selectedCampus,
+              from_date: appliedFromDate || undefined,
+              to_date: appliedToDate || undefined,
+              sort_by: by,
+              sort_order: order,
+            }),
+          { forceRefresh: refreshTrigger > 0 }
+        );
         setReport(data);
       } catch (err: unknown) {
         setError(err instanceof Error ? err.message : 'Failed to load state report');
@@ -46,7 +79,7 @@ export default function StateAnalysisPage() {
         setLoading(false);
       }
     },
-    [activeYear, selectedCampus, appliedFromDate, appliedToDate]
+    [activeYear, selectedCampus, appliedFromDate, appliedToDate, refreshTrigger]
   );
 
   // Trigger fetch when scope or sort changes

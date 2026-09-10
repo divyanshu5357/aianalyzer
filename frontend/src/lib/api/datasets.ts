@@ -18,9 +18,16 @@ import type {
   MastersStatusResponse,
 } from "./types";
 
-export async function getActiveDataset(): Promise<{ active: boolean; dataset: ActiveDatasetInfo | null }> {
+export async function getActiveDataset(
+  academicYear?: number,
+  campus?: string
+): Promise<{ active: boolean; dataset: ActiveDatasetInfo | null }> {
   try {
-    const response = await fetch(`${API_BASE_URL}/api/data/active`);
+    const params = new URLSearchParams();
+    if (academicYear) params.set("academic_year", String(academicYear));
+    if (campus && campus.toLowerCase() !== "all") params.set("campus", campus);
+    const qs = params.toString() ? `?${params.toString()}` : "";
+    const response = await fetch(`${API_BASE_URL}/api/data/active${qs}`);
     if (!response.ok) {
       return { active: false, dataset: null };
     }

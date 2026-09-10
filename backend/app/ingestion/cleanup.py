@@ -2,13 +2,7 @@ import logging
 from typing import Any, Dict, List
 from sqlalchemy import text
 from sqlalchemy.orm import Session
-
 logger = logging.getLogger(__name__)
-
-
-# ---------------------------------------------------------------------------
-# Pattern used to identify test / benchmark / synthetic datasets
-# ---------------------------------------------------------------------------
 
 _TEST_DATASET_SQL_FILTER = """
     (

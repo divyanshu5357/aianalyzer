@@ -72,7 +72,10 @@ export function buildDashboardQuery(filters?: DashboardFilters): string {
   if (filters.state && filters.state !== "all") params.set("state", filters.state);
   if (filters.source && filters.source !== "all") params.set("source", filters.source);
   if (filters.program && filters.program !== "all") params.set("program", filters.program);
-  if (filters.years && filters.years.length > 0) params.set("years", filters.years.join(","));
+  if (filters.years && filters.years.length > 0) {
+    params.set("years", filters.years.join(","));
+    params.set("academic_year", String(filters.years[0]));
+  }
   if (filters.from_date && filters.from_date.trim()) params.set("from_date", filters.from_date.trim());
   if (filters.to_date && filters.to_date.trim()) params.set("to_date", filters.to_date.trim());
   const str = params.toString();

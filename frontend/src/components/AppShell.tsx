@@ -276,6 +276,42 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
           {/* Action Row */}
           <div className="flex items-center gap-2">
+            {/* Global Academic Year Selector */}
+            <div className="relative">
+              <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                isDark 
+                  ? "bg-[#131B2E] border-[#1E293B] text-slate-200 hover:border-blue-500/50" 
+                  : "bg-white border-slate-200 text-slate-700 hover:border-blue-400 shadow-xs"
+              }`}>
+                <Calendar className="w-3.5 h-3.5 text-blue-500 shrink-0" />
+                <select
+                  id="appshell-year-selector"
+                  value={year}
+                  onChange={(e) => {
+                    const val = parseInt(e.target.value, 10);
+                    if (!isNaN(val)) setYear(val);
+                  }}
+                  className="bg-transparent text-xs font-bold focus:outline-none cursor-pointer pr-4 appearance-none"
+                >
+                  {periods && periods.length > 0 ? (
+                    periods.map((p) => {
+                      const yr = p.period_end_year || p.period_start_year || 0;
+                      return (
+                        <option key={p.academic_label || yr} value={yr} className={isDark ? "bg-[#131B2E] text-white" : "bg-white text-slate-800"}>
+                          Session {p.academic_label || yr}
+                        </option>
+                      );
+                    })
+                  ) : (
+                    <option value={year} className={isDark ? "bg-[#131B2E] text-white" : "bg-white text-slate-800"}>
+                      Session {year}
+                    </option>
+                  )}
+                </select>
+                <ChevronRight className="w-3 h-3 rotate-90 text-slate-400 pointer-events-none -ml-3" />
+              </div>
+            </div>
+
             {/* Global Campus Selector */}
             <div className="relative">
               <div className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${

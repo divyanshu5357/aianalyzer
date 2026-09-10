@@ -131,6 +131,22 @@ def ensure_all_database_tables(db: Session) -> None:
             logger.debug("system.datasets workbook_type normalization notice: %s", e)
             db.rollback()
 
+        # Ensure academic_label is backfilled from academic_year where missing
+        try:
+            db.execute(
+                text(
+                    """
+                    UPDATE system.datasets
+                    SET academic_label = CAST(academic_year AS VARCHAR)
+                    WHERE academic_label IS NULL AND academic_year IS NOT NULL;
+                    """
+                )
+            )
+            db.commit()
+        except Exception as e:
+            logger.debug("system.datasets academic_label backfill notice: %s", e)
+            db.rollback()
+
         # 4. system.data_quality_reports
         db.execute(
             text(
@@ -420,6 +436,7 @@ def ensure_all_database_tables(db: Session) -> None:
 
         try:
             db.execute(text("CREATE INDEX IF NOT EXISTS idx_staging_records_dataset_id ON staging.records(dataset_id);"))
+            db.execute(text("CREATE INDEX IF NOT EXISTS idx_staging_dataset_owner ON staging.records (dataset_id, (raw_data->>'OwnerIdName'));"))
             db.commit()
         except Exception as e:
             logger.debug("staging.records index notice: %s", e)

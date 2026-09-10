@@ -50,16 +50,33 @@ def _validate_date_range(from_date: Optional[str], to_date: Optional[str]) -> tu
     return from_date.strip(), to_date.strip()
 
 
+def _parse_years_param(
+    years: Optional[str] = None,
+    academic_year: Optional[int] = None,
+    academic_session: Optional[str] = None,
+) -> Optional[List[int]]:
+    year_list = []
+    if years:
+        year_list.extend([int(y.strip()) for y in years.split(",") if y.strip().isdigit()])
+    if academic_year and academic_year not in year_list:
+        year_list.append(int(academic_year))
+    if academic_session and str(academic_session).strip().isdigit():
+        ay = int(str(academic_session).strip())
+        if ay not in year_list:
+            year_list.append(ay)
+    return year_list if year_list else None
+
+
 @router.get("/scope")
 def get_resolved_scope(
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     """Returns resolved dataset scope metadata and included enabled datasets."""
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
     return resolve_dataset_scope(db, campus=campus, years=year_list)
 
 
@@ -67,14 +84,11 @@ def get_resolved_scope(
 def get_filter_options(
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
     academic_session: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
-    elif academic_session and academic_session.isdigit():
-        year_list = [int(academic_session)]
+    year_list = _parse_years_param(years, academic_year, academic_session)
     return get_dashboard_filter_options(db, campus=campus, years=year_list)
 
 
@@ -82,6 +96,7 @@ def get_filter_options(
 def get_overview(
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
     academic_session: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
@@ -91,11 +106,7 @@ def get_overview(
     db: Session = Depends(get_db),
 ):
     valid_from, valid_to = _validate_date_range(from_date, to_date)
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
-    elif academic_session and academic_session.isdigit():
-        year_list = [int(academic_session)]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     return get_dashboard_overview(
         db=db,
@@ -113,6 +124,7 @@ def get_overview(
 def get_dashboard_insights(
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
     academic_session: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
@@ -122,11 +134,7 @@ def get_dashboard_insights(
     db: Session = Depends(get_db),
 ):
     valid_from, valid_to = _validate_date_range(from_date, to_date)
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
-    elif academic_session and academic_session.isdigit():
-        year_list = [int(academic_session)]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     return get_insights(
         db=db,
@@ -153,6 +161,8 @@ def _normalize_metric(metric: str) -> str:
 def get_dashboard_top_performers(
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     metric: str = Query("admission", pattern="^(leads?|admissions?|conversion_rate|cucet)$"),
     limit: int = Query(5, ge=1, le=20),
     from_date: Optional[str] = Query(None),
@@ -160,9 +170,7 @@ def get_dashboard_top_performers(
     db: Session = Depends(get_db),
 ):
     valid_from, valid_to = _validate_date_range(from_date, to_date)
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     metric_clean = _normalize_metric(metric)
 
@@ -175,13 +183,6 @@ def get_dashboard_top_performers(
         from_date=valid_from,
         to_date=valid_to,
     )
-
-
-def _parse_years_param(
-    years: Optional[str] = None,
-    academic_year: Optional[int] = None,
-    academic_session: Optional[str] = None,
-) -> Optional[List[int]]:
     year_list = []
     if years:
         year_list.extend([int(y.strip()) for y in years.split(",") if y.strip().isdigit()])
@@ -257,11 +258,11 @@ def explore_performance(
     limit: int = Query(10, ge=1, le=100),
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     data = get_exploration_data(
         db=db,
@@ -281,11 +282,11 @@ def get_hierarchy_clusters_endpoint(
     dimension: str = Query("source"),
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     return get_hierarchy_clusters(
         db=db,
@@ -301,11 +302,11 @@ def get_hierarchy_drilldown_endpoint(
     cluster_name: str = Query(...),
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     return get_hierarchy_drilldown(
         db=db,
@@ -326,11 +327,11 @@ def compare_entities(
     metric: str = Query("admission", pattern="^(leads|admission|conversion_rate)$"),
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     entities_list = None
     if entities:
@@ -357,13 +358,13 @@ def get_dim_values(
     dimension: str,
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     db: Session = Depends(get_db),
 ):
     from sqlalchemy import text
     from app.analytics.dashboard import _resolve_dimension_col
-    year_list = None
-    if years and isinstance(years, str):
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     scope_data = resolve_dataset_scope(db, campus=campus, years=year_list)
     dataset_ids = scope_data["dataset_ids"]
@@ -430,6 +431,7 @@ def get_dim_values(
 def get_dashboard_monthly_trend(
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
     metric: Optional[str] = Query("admissions"),
     academic_session: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
@@ -440,11 +442,7 @@ def get_dashboard_monthly_trend(
     db: Session = Depends(get_db),
 ):
     valid_from, valid_to = _validate_date_range(from_date, to_date)
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
-    elif academic_session and academic_session.isdigit():
-        year_list = [int(academic_session)]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     return get_monthly_trend(
         db=db,
@@ -464,6 +462,7 @@ def get_dashboard_performance_rankings(
     dimension: str = Query("program_name"),
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
     academic_session: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
@@ -473,11 +472,7 @@ def get_dashboard_performance_rankings(
     db: Session = Depends(get_db),
 ):
     valid_from, valid_to = _validate_date_range(from_date, to_date)
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
-    elif academic_session and academic_session.isdigit():
-        year_list = [int(academic_session)]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     return get_performance_rankings(
         db=db,
@@ -530,6 +525,8 @@ def get_data_control_history(db: Session = Depends(get_db)):
 def get_unified_metrics_contract(
     campus: Optional[str] = Query(None),
     years: Optional[str] = Query(None),
+    academic_year: Optional[int] = Query(None),
+    academic_session: Optional[str] = Query(None),
     state: Optional[str] = Query(None),
     source: Optional[str] = Query(None),
     program: Optional[str] = Query(None),
@@ -539,9 +536,7 @@ def get_unified_metrics_contract(
 ):
     """Unified analytics contract returning CY, PY, Target, Variance, and Growth metrics."""
     valid_from, valid_to = _validate_date_range(from_date, to_date)
-    year_list = None
-    if years:
-        year_list = [int(y.strip()) for y in years.split(",") if y.strip().isdigit()]
+    year_list = _parse_years_param(years, academic_year, academic_session)
 
     overview = get_dashboard_overview(
         db=db,
