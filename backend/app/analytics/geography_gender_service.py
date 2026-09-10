@@ -605,20 +605,16 @@ def get_international_admissions(
         params["from_m"] = from_date.strip()[:7]
         params["to_m"] = to_date.strip()[:7]
 
-    where_clauses.append(f"""(
-        LOWER(TRIM(COALESCE(d.state, ''))) IN ({foreign_keys_sql}, 'international')
-        OR LOWER(TRIM(COALESCE(d.city, ''))) IN ({foreign_keys_sql})
-    )""")
+    where_clauses.append(f"LOWER(TRIM(COALESCE(d.state, ''))) IN ({foreign_keys_sql}, 'international')")
 
     sql = f"""
         SELECT 
             LOWER(TRIM(COALESCE(d.state, ''))) AS raw_state,
-            LOWER(TRIM(COALESCE(d.city, ''))) AS raw_city,
             SUM(d.leads_cy) AS leads,
             SUM(d.admission_cy) AS admissions
         FROM analytics.dashboard_agg d
         WHERE {" AND ".join(where_clauses)}
-        GROUP BY LOWER(TRIM(COALESCE(d.state, ''))), LOWER(TRIM(COALESCE(d.city, '')))
+        GROUP BY LOWER(TRIM(COALESCE(d.state, '')))
     """
     rows = db.execute(text(sql), params).fetchall()
 
@@ -628,15 +624,11 @@ def get_international_admissions(
 
     for r in rows:
         raw_st = str(r[0] or "")
-        raw_ct = str(r[1] or "")
-        leads_cnt = int(r[2] or 0)
-        adm_cnt = int(r[3] or 0)
+        leads_cnt = int(r[1] or 0)
+        adm_cnt = int(r[2] or 0)
 
         matched_country = None
-        # Check city first, then state
-        if raw_ct in COUNTRY_MAPPING:
-            matched_country = COUNTRY_MAPPING[raw_ct]
-        elif raw_st in COUNTRY_MAPPING:
+        if raw_st in COUNTRY_MAPPING:
             matched_country = COUNTRY_MAPPING[raw_st]
         elif raw_st == "international":
             matched_country = {"code": "OTH", "name": "Other International"}
