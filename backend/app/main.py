@@ -50,6 +50,11 @@ def on_startup():
             ensure_all_database_tables(db)
             ensure_ai_audit_tables(db)
             seed_initial_golden_cases(db)
+            try:
+                from app.analytics.dashboard import get_dashboard_filter_options
+                get_dashboard_filter_options(db)
+            except Exception as w_err:
+                logger.debug("Startup filter options warmup notice: %s", w_err)
     except Exception as e:
         print(f"Startup database initialization warning: {e}")
 

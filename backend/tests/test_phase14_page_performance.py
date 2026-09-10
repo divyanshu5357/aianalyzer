@@ -217,3 +217,52 @@ def test_08_database_aggregate_table_prioritization():
     assert len(agg_queries) > 0
     assert len(staging_queries) == 0
     clear_counsellors_cache()
+
+
+def test_09_scope_resolver_caching():
+    """Test 9: resolve_analytics_scope caches metadata avoiding repetitive dataset queries."""
+    from app.analytics.scope_resolver import resolve_analytics_scope, clear_scope_cache, _SCOPE_CACHE
+    clear_scope_cache()
+    assert len(_SCOPE_CACHE) == 0
+
+    mock_db = MagicMock()
+    mock_db.execute.return_value.fetchall.return_value = [(2026,), (2025,)]
+    mock_db.execute.return_value.mappings.return_value.all.return_value = [
+        {"id": "11111111-1111-1111-1111-111111111111", "original_filename": "f.csv", "campus_name": "Mohali",
+         "academic_year": 2026, "row_count": 100, "is_analytics_enabled": True, "dataset_name": "Test"}
+    ]
+
+    res1 = resolve_analytics_scope(mock_db, campus="Mohali", years=[2026])
+    assert len(_SCOPE_CACHE) == 1
+    call_count = mock_db.execute.call_count
+
+    res2 = resolve_analytics_scope(mock_db, campus="Mohali", years=[2026])
+    assert mock_db.execute.call_count == call_count
+    assert res1["cy_year"] == res2["cy_year"]
+    clear_scope_cache()
+
+
+def test_10_dashboard_api_caching():
+    """Test 10: _DASH_API_CACHE stores endpoint results and allows sub-millisecond reuse."""
+    from app.api.dashboard import _get_dash_cache, _set_dash_cache, clear_dash_api_cache, _DASH_API_CACHE
+    clear_dash_api_cache()
+
+    k = "overview:test:key"
+    assert _get_dash_cache(k) is None
+
+    _set_dash_cache(k, {"status": "ok", "leads": 982913})
+    assert _get_dash_cache(k) == {"status": "ok", "leads": 982913}
+    assert len(_DASH_API_CACHE) == 1
+
+    clear_dash_api_cache()
+    assert _get_dash_cache(k) is None
+
+
+def test_11_dimension_seed_null_handling():
+    """Test 11: dimension_seed_data.py defines null, true, false avoiding NameError."""
+    from app.database.seeds import dimension_seed_data
+    assert dimension_seed_data.null is None
+    assert dimension_seed_data.true is True
+    assert dimension_seed_data.false is False
+    assert len(dimension_seed_data.COURSES) > 0
+

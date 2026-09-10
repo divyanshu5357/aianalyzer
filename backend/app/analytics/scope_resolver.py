@@ -5,11 +5,19 @@ Returns dataset UUIDs and scope metadata for multi-dataset metric aggregation.
 """
 
 import logging
+import time
 from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+_SCOPE_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_SCOPE_CACHE_TTL = 60.0  # 60 seconds
+
+
+def clear_scope_cache():
+    _SCOPE_CACHE.clear()
 
 
 def resolve_analytics_scope(
@@ -21,6 +29,16 @@ def resolve_analytics_scope(
     """
     Unified analytics scope resolver aligning with multi-campus dataset filtering.
     """
+    cache_key = None
+    if not dataset_ids:
+        y_rep = tuple(sorted(years)) if isinstance(years, (list, tuple)) else years
+        cache_key = f"{campus or 'all'}:{y_rep}"
+        now = time.time()
+        if cache_key in _SCOPE_CACHE:
+            ts, val = _SCOPE_CACHE[cache_key]
+            if now - ts < _SCOPE_CACHE_TTL:
+                return val
+
     # 1. Parse years parameter
     parsed_years: list[int] = []
     if years:
@@ -145,7 +163,7 @@ def resolve_analytics_scope(
             "analytics_status": r.get("analytics_status") or "ANALYTICS_READY",
         })
 
-    return {
+    res = {
         "scope": {
             "campus": campus_filter,
             "years": parsed_years,
@@ -158,6 +176,9 @@ def resolve_analytics_scope(
         "py_dataset_ids": py_dataset_ids,
         "total_rows": total_rows,
     }
+    if cache_key:
+        _SCOPE_CACHE[cache_key] = (time.time(), res)
+    return res
 
 
 def resolve_dataset_scope(

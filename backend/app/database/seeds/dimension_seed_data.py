@@ -3,6 +3,10 @@ Auto-generated bundled dimension seed data for course_master and source_master.
 Enables instant self-healing and seeding across all environments.
 """
 
+null = None
+true = True
+false = False
+
 COURSES = [
   {
     "program_code": "CS234",

@@ -417,7 +417,8 @@ def seed_organization_master_data(db: Session, force: bool = False) -> Dict[str,
                 try:
                     from app.database.seeds.dimension_seed_data import COURSES
                     courses_to_insert = COURSES
-                except ImportError:
+                except Exception as imp_err:
+                    logger.warning("Could not load bundled COURSES seed: %s", imp_err)
                     courses_to_insert = []
 
             for c in courses_to_insert:
@@ -500,7 +501,8 @@ def seed_organization_master_data(db: Session, force: bool = False) -> Dict[str,
                 try:
                     from app.database.seeds.dimension_seed_data import SOURCES
                     sources_to_insert = SOURCES
-                except ImportError:
+                except Exception as imp_err:
+                    logger.warning("Could not load bundled SOURCES seed: %s", imp_err)
                     sources_to_insert = []
 
             for s in sources_to_insert:

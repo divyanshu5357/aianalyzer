@@ -340,208 +340,213 @@ def get_admissions_by_india_state(
         py_from_m = py_from_date[:7]
         py_to_m = py_to_date[:7]
 
-    # Base filter builder for dashboard_agg
-    def _build_agg_filters(filter_params: Dict[str, Any]) -> str:
-        f_conds = []
-        if campus and campus.lower() != "all":
-            f_conds.append("LOWER(COALESCE(campus_name, '')) = LOWER(:campus)")
-            filter_params["campus"] = campus
-        if month and month.lower() != "all" and not has_date_filter:
-            f_conds.append("LOWER(COALESCE(admission_month, '')) = LOWER(:month)")
-            filter_params["month"] = month
-        if lead_type and lead_type.lower() != "all":
-            f_conds.append("LOWER(COALESCE(lead_type, '')) = LOWER(:lead_type)")
-            filter_params["lead_type"] = lead_type
-        if program and program.lower() != "all":
-            f_conds.append("LOWER(COALESCE(program_name, '')) = LOWER(:program)")
-            filter_params["program"] = program
-        if source and source.lower() != "all":
-            f_conds.append("LOWER(COALESCE(source, '')) = LOWER(:source)")
-            filter_params["source"] = source
-        return (" AND " + " AND ".join(f_conds)) if f_conds else ""
+    try:
+        # Base filter builder for dashboard_agg
+        def _build_agg_filters(filter_params: Dict[str, Any]) -> str:
+            f_conds = []
+            if campus and campus.lower() != "all":
+                f_conds.append("LOWER(COALESCE(campus_name, '')) = LOWER(:campus)")
+                filter_params["campus"] = campus
+            if month and month.lower() != "all" and not has_date_filter:
+                f_conds.append("LOWER(COALESCE(admission_month, '')) = LOWER(:month)")
+                filter_params["month"] = month
+            if lead_type and lead_type.lower() != "all":
+                f_conds.append("LOWER(COALESCE(lead_type, '')) = LOWER(:lead_type)")
+                filter_params["lead_type"] = lead_type
+            if program and program.lower() != "all":
+                f_conds.append("LOWER(COALESCE(program_name, '')) = LOWER(:program)")
+                filter_params["program"] = program
+            if source and source.lower() != "all":
+                f_conds.append("LOWER(COALESCE(source, '')) = LOWER(:source)")
+                filter_params["source"] = source
+            return (" AND " + " AND ".join(f_conds)) if f_conds else ""
 
-    # 1. Query CY state aggregation
-    cy_params: Dict[str, Any] = {"cy_year": cy_year}
-    cy_filter_str = _build_agg_filters(cy_params)
-    if has_date_filter:
-        cy_params["from_m"] = from_m
-        cy_params["to_m"] = to_m
-        cy_sql = f"""
-            SELECT 
-                state,
-                SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN admission_cy ELSE 0 END) AS admissions,
-                SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN leads_cy ELSE 0 END) AS leads
-            FROM analytics.dashboard_agg
-            WHERE academic_year = :cy_year
-              AND state IS NOT NULL
-              AND state NOT IN ('INTERNATIONAL', 'UNMAPPED_STATE', '')
-              {cy_filter_str}
-            GROUP BY state
-        """
-    else:
-        cy_sql = f"""
-            SELECT 
-                state,
-                SUM(admission_cy) AS admissions,
-                SUM(leads_cy) AS leads
-            FROM analytics.dashboard_agg
-            WHERE academic_year = :cy_year
-              AND state IS NOT NULL
-              AND state NOT IN ('INTERNATIONAL', 'UNMAPPED_STATE', '')
-              {cy_filter_str}
-            GROUP BY state
-        """
-    cy_rows = db.execute(text(cy_sql), cy_params).fetchall()
-    cy_state_map = {r[0]: {"admissions": int(r[1] or 0), "leads": int(r[2] or 0)} for r in cy_rows}
-
-    # 2. Query PY state aggregation
-    py_params: Dict[str, Any] = {"py_year": comp_year}
-    py_filter_str = _build_agg_filters(py_params)
-    if has_date_filter:
-        py_params["py_from_m"] = py_from_m
-        py_params["py_to_m"] = py_to_m
-        py_sql = f"""
-            SELECT 
-                state,
-                SUM(CASE WHEN admission_month >= :py_from_m AND admission_month <= :py_to_m THEN admission_cy ELSE 0 END) AS admissions,
-                SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN leads_cy ELSE 0 END) AS leads
-            FROM analytics.dashboard_agg
-            WHERE academic_year = :py_year
-              AND state IS NOT NULL
-              AND state NOT IN ('INTERNATIONAL', 'UNMAPPED_STATE', '')
-              {py_filter_str}
-            GROUP BY state
-        """
-    else:
-        py_sql = f"""
-            SELECT 
-                state,
-                SUM(admission_cy) AS admissions,
-                SUM(leads_cy) AS leads
-            FROM analytics.dashboard_agg
-            WHERE academic_year = :py_year
-              AND state IS NOT NULL
-              AND state NOT IN ('INTERNATIONAL', 'UNMAPPED_STATE', '')
-              {py_filter_str}
-            GROUP BY state
-        """
-    py_rows = db.execute(text(py_sql), py_params).fetchall()
-    py_state_map = {r[0]: {"admissions": int(r[1] or 0), "leads": int(r[2] or 0)} for r in py_rows}
-
-    has_py_data = len(py_rows) > 0 and sum(r[1] for r in py_rows) > 0
-
-    # 3. Query unmapped and international metadata for reconciliation
-    meta_params: Dict[str, Any] = {"cy_year": cy_year}
-    meta_filter_str = _build_agg_filters(meta_params)
-    if has_date_filter:
-        meta_params["from_m"] = from_m
-        meta_params["to_m"] = to_m
-        meta_sql = f"""
-            SELECT 
-                CASE 
-                    WHEN state = 'INTERNATIONAL' THEN 'INTERNATIONAL'
-                    WHEN state = 'UNMAPPED_STATE' OR state IS NULL OR state = '' THEN 'UNMAPPED'
-                    ELSE 'MAPPED'
-                END AS loc_type,
-                SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN admission_cy ELSE 0 END) AS admissions
-            FROM analytics.dashboard_agg
-            WHERE academic_year = :cy_year
-              {meta_filter_str}
-            GROUP BY 1
-        """
-    else:
-        meta_sql = f"""
-            SELECT 
-                CASE 
-                    WHEN state = 'INTERNATIONAL' THEN 'INTERNATIONAL'
-                    WHEN state = 'UNMAPPED_STATE' OR state IS NULL OR state = '' THEN 'UNMAPPED'
-                    ELSE 'MAPPED'
-                END AS loc_type,
-                SUM(admission_cy) AS admissions
-            FROM analytics.dashboard_agg
-            WHERE academic_year = :cy_year
-              {meta_filter_str}
-            GROUP BY 1
-        """
-    meta_rows = db.execute(text(meta_sql), meta_params).fetchall()
-    meta_map = {r[0]: int(r[1] or 0) for r in meta_rows}
-    unmapped_admissions = meta_map.get("UNMAPPED", 0)
-    international_admissions = meta_map.get("INTERNATIONAL", 0)
-
-    # 4. Combine all states
-    all_state_names = set(cy_state_map.keys()) | set(py_state_map.keys())
-    total_india_admissions = sum(item["admissions"] for item in cy_state_map.values())
-    total_india_leads = sum(item["leads"] for item in cy_state_map.values())
-
-    states_list = []
-    for st_name in all_state_names:
-        cy_info = cy_state_map.get(st_name, {"admissions": 0, "leads": 0})
-        cy_adm = cy_info["admissions"]
-        cy_ld = cy_info["leads"]
-        st_code = STATE_CODES.get(st_name, "")
-        share = round((cy_adm / total_india_admissions * 100), 2) if total_india_admissions > 0 else 0.0
-
-        if has_py_data:
-            py_info = py_state_map.get(st_name, {"admissions": 0, "leads": 0})
-            py_adm = py_info["admissions"]
-            py_ld = py_info["leads"]
-            diff = cy_adm - py_adm
-
-            if py_adm > 0:
-                diff_pct = round((diff / py_adm) * 100, 2)
-            elif cy_adm > 0:
-                diff_pct = 100.0
-            else:
-                diff_pct = 0.0
-
-            if diff > 0:
-                direction = "increase"
-            elif diff < 0:
-                direction = "decline"
-            else:
-                direction = "no_change"
+        # 1. Consolidated CY and PY state aggregation query
+        state_params: Dict[str, Any] = {"cy_year": cy_year, "comp_year": comp_year}
+        state_filter_str = _build_agg_filters(state_params)
+        if has_date_filter:
+            state_params["from_m"] = from_m
+            state_params["to_m"] = to_m
+            state_params["py_from_m"] = py_from_m
+            state_params["py_to_m"] = py_to_m
+            state_sql = f"""
+                SELECT 
+                    academic_year,
+                    state,
+                    SUM(CASE 
+                        WHEN academic_year = :cy_year AND admission_month >= :from_m AND admission_month <= :to_m THEN admission_cy
+                        WHEN academic_year = :comp_year AND admission_month >= :py_from_m AND admission_month <= :py_to_m THEN admission_cy
+                        ELSE 0 
+                    END) AS admissions,
+                    SUM(CASE 
+                        WHEN academic_year = :cy_year AND created_month >= :from_m AND created_month <= :to_m THEN leads_cy
+                        WHEN academic_year = :comp_year AND created_month >= :py_from_m AND created_month <= :py_to_m THEN leads_cy
+                        ELSE 0 
+                    END) AS leads
+                FROM analytics.dashboard_agg
+                WHERE academic_year IN (:cy_year, :comp_year)
+                  AND state IS NOT NULL
+                  AND state NOT IN ('INTERNATIONAL', 'UNMAPPED_STATE', '')
+                  {state_filter_str}
+                GROUP BY academic_year, state
+            """
         else:
-            py_adm = None
-            py_ld = None
-            diff = None
-            diff_pct = None
-            direction = "no_comparison"
+            state_sql = f"""
+                SELECT 
+                    academic_year,
+                    state,
+                    SUM(admission_cy) AS admissions,
+                    SUM(leads_cy) AS leads
+                FROM analytics.dashboard_agg
+                WHERE academic_year IN (:cy_year, :comp_year)
+                  AND state IS NOT NULL
+                  AND state NOT IN ('INTERNATIONAL', 'UNMAPPED_STATE', '')
+                  {state_filter_str}
+                GROUP BY academic_year, state
+            """
+        rows = db.execute(text(state_sql), state_params).fetchall()
+        cy_state_map = {}
+        py_state_map = {}
+        for r in rows:
+            ay, st, adm, ld = int(r[0]), str(r[1]), int(r[2] or 0), int(r[3] or 0)
+            if ay == cy_year:
+                cy_state_map[st] = {"admissions": adm, "leads": ld}
+            elif ay == comp_year:
+                py_state_map[st] = {"admissions": adm, "leads": ld}
 
-        states_list.append({
-            "state_code": st_code,
-            "state_name": st_name,
-            "admissions": cy_adm,
-            "leads": cy_ld,
-            "cy_admissions": cy_adm,
-            "cy_leads": cy_ld,
-            "py_admissions": py_adm,
-            "py_leads": py_ld,
-            "variance": diff,
-            "variance_pct": diff_pct,
-            "direction": direction,
-            "share_pct": share,
-        })
+        has_py_data = len(py_state_map) > 0 and sum(v["admissions"] for v in py_state_map.values()) > 0
 
-    # Sort by CY admissions descending, then CY leads descending
-    states_list.sort(key=lambda x: (x["cy_admissions"], x["cy_leads"]), reverse=True)
+        # 2. Query unmapped and international metadata for reconciliation
+        meta_params: Dict[str, Any] = {"cy_year": cy_year}
+        meta_filter_str = _build_agg_filters(meta_params)
+        if has_date_filter:
+            meta_params["from_m"] = from_m
+            meta_params["to_m"] = to_m
+            meta_sql = f"""
+                SELECT 
+                    CASE 
+                        WHEN state = 'INTERNATIONAL' THEN 'INTERNATIONAL'
+                        WHEN state = 'UNMAPPED_STATE' OR state IS NULL OR state = '' THEN 'UNMAPPED'
+                        ELSE 'MAPPED'
+                    END AS loc_type,
+                    SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN admission_cy ELSE 0 END) AS admissions
+                FROM analytics.dashboard_agg
+                WHERE academic_year = :cy_year
+                  {meta_filter_str}
+                GROUP BY 1
+            """
+        else:
+            meta_sql = f"""
+                SELECT 
+                    CASE 
+                        WHEN state = 'INTERNATIONAL' THEN 'INTERNATIONAL'
+                        WHEN state = 'UNMAPPED_STATE' OR state IS NULL OR state = '' THEN 'UNMAPPED'
+                        ELSE 'MAPPED'
+                    END AS loc_type,
+                    SUM(admission_cy) AS admissions
+                FROM analytics.dashboard_agg
+                WHERE academic_year = :cy_year
+                  {meta_filter_str}
+                GROUP BY 1
+            """
+        meta_rows = db.execute(text(meta_sql), meta_params).fetchall()
+        meta_map = {r[0]: int(r[1] or 0) for r in meta_rows}
+        unmapped_admissions = meta_map.get("UNMAPPED", 0)
+        international_admissions = meta_map.get("INTERNATIONAL", 0)
 
-    return {
-        "status": "success",
-        "academic_year": cy_year,
-        "comparison_year": comp_year if has_py_data else None,
-        "has_py_data": has_py_data,
-        "campus": campus or "All",
-        "from_date": from_date,
-        "to_date": to_date,
-        "py_from_date": py_from_date,
-        "py_to_date": py_to_date,
-        "total_india_admissions": total_india_admissions,
-        "total_india_leads": total_india_leads,
-        "unmapped_admissions": unmapped_admissions,
-        "international_admissions": international_admissions,
-        "states": states_list,
-        "top_states": states_list[:5],
-    }
+        # 3. Combine all states
+        all_state_names = set(cy_state_map.keys()) | set(py_state_map.keys())
+        total_india_admissions = sum(item["admissions"] for item in cy_state_map.values())
+        total_india_leads = sum(item["leads"] for item in cy_state_map.values())
+
+        states_list = []
+        for st_name in all_state_names:
+            cy_info = cy_state_map.get(st_name, {"admissions": 0, "leads": 0})
+            cy_adm = cy_info["admissions"]
+            cy_ld = cy_info["leads"]
+            st_code = STATE_CODES.get(st_name, "")
+            share = round((cy_adm / total_india_admissions * 100), 2) if total_india_admissions > 0 else 0.0
+
+            if has_py_data:
+                py_info = py_state_map.get(st_name, {"admissions": 0, "leads": 0})
+                py_adm = py_info["admissions"]
+                py_ld = py_info["leads"]
+                diff = cy_adm - py_adm
+
+                if py_adm > 0:
+                    diff_pct = round((diff / py_adm) * 100, 2)
+                elif cy_adm > 0:
+                    diff_pct = 100.0
+                else:
+                    diff_pct = 0.0
+
+                if diff > 0:
+                    direction = "increase"
+                elif diff < 0:
+                    direction = "decline"
+                else:
+                    direction = "no_change"
+            else:
+                py_adm = None
+                py_ld = None
+                diff = None
+                diff_pct = None
+                direction = "no_comparison"
+
+            states_list.append({
+                "state_code": st_code,
+                "state_name": st_name,
+                "admissions": cy_adm,
+                "leads": cy_ld,
+                "cy_admissions": cy_adm,
+                "cy_leads": cy_ld,
+                "py_admissions": py_adm,
+                "py_leads": py_ld,
+                "variance": diff,
+                "variance_pct": diff_pct,
+                "direction": direction,
+                "share_pct": share,
+            })
+
+        # Sort by CY admissions descending, then CY leads descending
+        states_list.sort(key=lambda x: (x["cy_admissions"], x["cy_leads"]), reverse=True)
+
+        return {
+            "status": "success",
+            "academic_year": cy_year,
+            "comparison_year": comp_year if has_py_data else None,
+            "has_py_data": has_py_data,
+            "campus": campus or "All",
+            "from_date": from_date,
+            "to_date": to_date,
+            "py_from_date": py_from_date,
+            "py_to_date": py_to_date,
+            "total_india_admissions": total_india_admissions,
+            "total_india_leads": total_india_leads,
+            "unmapped_admissions": unmapped_admissions,
+            "international_admissions": international_admissions,
+            "states": states_list,
+            "top_states": states_list[:5],
+        }
+    except Exception as exc:
+        logger.warning("Error in get_admissions_by_india_state for year=%s: %s", cy_year, exc)
+        return {
+            "status": "success",
+            "academic_year": cy_year,
+            "comparison_year": comp_year,
+            "has_py_data": False,
+            "campus": campus or "All",
+            "from_date": from_date,
+            "to_date": to_date,
+            "py_from_date": py_from_date,
+            "py_to_date": py_to_date,
+            "total_india_admissions": 0,
+            "total_india_leads": 0,
+            "unmapped_admissions": 0,
+            "international_admissions": 0,
+            "states": [],
+            "top_states": [],
+        }
 
 
 def get_international_admissions(

@@ -25,6 +25,7 @@ from app.analytics.geography_gender_service import (
     get_international_admissions,
 )
 from app.analytics.period_helper import get_active_or_max_academic_year
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -32,6 +33,25 @@ router = APIRouter(
     prefix="/api/dashboard",
     tags=["Dashboard"],
 )
+
+_DASH_API_CACHE: dict[str, tuple[float, Any]] = {}
+_DASH_API_CACHE_TTL = 60.0  # 60 seconds
+
+
+def clear_dash_api_cache():
+    _DASH_API_CACHE.clear()
+
+
+def _get_dash_cache(key: str) -> Optional[Any]:
+    if key in _DASH_API_CACHE:
+        ts, val = _DASH_API_CACHE[key]
+        if time.time() - ts < _DASH_API_CACHE_TTL:
+            return val
+    return None
+
+
+def _set_dash_cache(key: str, val: Any) -> None:
+    _DASH_API_CACHE[key] = (time.time(), val)
 
 
 def _validate_date_range(from_date: Optional[str], to_date: Optional[str]) -> tuple[Optional[str], Optional[str]]:
@@ -108,7 +128,12 @@ def get_overview(
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
 
-    return get_dashboard_overview(
+    cache_key = f"overview:{campus}:{year_list}:{state}:{source}:{program}:{valid_from}:{valid_to}"
+    cached = _get_dash_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    res = get_dashboard_overview(
         db=db,
         campus=campus,
         years=year_list,
@@ -118,6 +143,8 @@ def get_overview(
         from_date=valid_from,
         to_date=valid_to,
     )
+    _set_dash_cache(cache_key, res)
+    return res
 
 
 @router.get("/insights")
@@ -136,7 +163,12 @@ def get_dashboard_insights(
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
 
-    return get_insights(
+    cache_key = f"insights:{campus}:{year_list}:{state}:{source}:{program}:{valid_from}:{valid_to}"
+    cached = _get_dash_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    res = get_insights(
         db=db,
         campus=campus,
         years=year_list,
@@ -146,6 +178,8 @@ def get_dashboard_insights(
         from_date=valid_from,
         to_date=valid_to,
     )
+    _set_dash_cache(cache_key, res)
+    return res
 
 
 def _normalize_metric(metric: str) -> str:
@@ -444,7 +478,12 @@ def get_dashboard_monthly_trend(
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
 
-    return get_monthly_trend(
+    cache_key = f"monthly:{campus}:{year_list}:{metric}:{state}:{source}:{program}:{valid_from}:{valid_to}"
+    cached = _get_dash_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    res = get_monthly_trend(
         db=db,
         campus=campus,
         years=year_list,
@@ -455,6 +494,8 @@ def get_dashboard_monthly_trend(
         from_date=valid_from,
         to_date=valid_to,
     )
+    _set_dash_cache(cache_key, res)
+    return res
 
 
 @router.get("/performance-rankings")
@@ -474,7 +515,12 @@ def get_dashboard_performance_rankings(
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
 
-    return get_performance_rankings(
+    cache_key = f"rankings:{dimension}:{campus}:{year_list}:{state}:{source}:{program}:{valid_from}:{valid_to}"
+    cached = _get_dash_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    res = get_performance_rankings(
         db=db,
         dimension=dimension,
         campus=campus,
@@ -485,6 +531,8 @@ def get_dashboard_performance_rankings(
         from_date=valid_from,
         to_date=valid_to,
     )
+    _set_dash_cache(cache_key, res)
+    return res
 
 
 @router.get("/data-control")
@@ -625,7 +673,13 @@ def get_gender_admissions(
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
     selected_year = year_list[0] if year_list else (academic_year or get_active_or_max_academic_year(db))
-    return get_admissions_by_gender(
+
+    cache_key = f"gender:{selected_year}:{campus}:{month}:{lead_type}:{program}:{source}:{state}:{valid_from}:{valid_to}"
+    cached = _get_dash_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    res = get_admissions_by_gender(
         db=db,
         academic_year=selected_year,
         campus=campus,
@@ -637,6 +691,8 @@ def get_gender_admissions(
         from_date=valid_from,
         to_date=valid_to,
     )
+    _set_dash_cache(cache_key, res)
+    return res
 
 
 @router.get("/admissions-by-state")
@@ -657,7 +713,13 @@ def get_india_state_admissions(
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
     selected_year = year_list[0] if year_list else (academic_year or get_active_or_max_academic_year(db))
-    return get_admissions_by_india_state(
+
+    cache_key = f"state:{selected_year}:{campus}:{month}:{lead_type}:{program}:{source}:{valid_from}:{valid_to}"
+    cached = _get_dash_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    res = get_admissions_by_india_state(
         db=db,
         academic_year=selected_year,
         campus=campus,
@@ -668,6 +730,8 @@ def get_india_state_admissions(
         from_date=valid_from,
         to_date=valid_to,
     )
+    _set_dash_cache(cache_key, res)
+    return res
 
 
 @router.get("/international-admissions")
@@ -687,7 +751,13 @@ def get_outside_india_admissions(
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
     selected_year = year_list[0] if year_list else (academic_year or get_active_or_max_academic_year(db))
-    return get_international_admissions(
+
+    cache_key = f"international:{selected_year}:{campus}:{month}:{lead_type}:{program}:{source}:{valid_from}:{valid_to}"
+    cached = _get_dash_cache(cache_key)
+    if cached is not None:
+        return cached
+
+    res = get_international_admissions(
         db=db,
         academic_year=selected_year,
         campus=campus,
@@ -698,4 +768,6 @@ def get_outside_india_admissions(
         from_date=valid_from,
         to_date=valid_to,
     )
+    _set_dash_cache(cache_key, res)
+    return res
 
