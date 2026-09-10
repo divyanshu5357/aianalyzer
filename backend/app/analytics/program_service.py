@@ -1130,3 +1130,331 @@ def get_program_hierarchy_children(
         },
     }
 
+
+def get_program_insights(
+    db: Session,
+    program_group: str,
+    academic_year: Optional[int] = None,
+    campus: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Dedicated Program Diagnostic & AI Insights Engine.
+    Analyzes YoY Admissions Trajectory (Growth vs Drop) and isolates Root Cause Drivers:
+      - Which Lead Types are Working Good (Growth Drivers) vs Bad (Declining / Drag)
+      - Which Main Sources are Driving Admissions vs Dropping
+      - Actionable Diagnostic Takeaways & Recommendations
+    """
+    if not academic_year:
+        from app.analytics.period_helper import get_active_or_max_academic_year
+        academic_year = get_active_or_max_academic_year(db)
+
+    py_year = academic_year - 1
+    has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
+
+    try:
+        db.execute(text("SET LOCAL jit = off;"))
+    except Exception:
+        pass
+
+    # Find matching course codes for program_group
+    courses = db.execute(
+        text("SELECT LOWER(TRIM(program_code)), program_group FROM organization.course_master WHERE program_group IS NOT NULL")
+    ).fetchall()
+    matching_pcodes = {r[0] for r in courses if r[1] and r[1].strip().upper() == program_group.strip().upper()}
+    if not matching_pcodes:
+        matching_pcodes = {program_group.strip().lower()}
+
+    where_clauses = ["d.academic_year IN (:py_year, :cy_year)"]
+    params: Dict[str, Any] = {"cy_year": academic_year, "py_year": py_year}
+
+    if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
+        where_clauses.append("LOWER(d.campus_name) = :campus")
+        params["campus"] = campus.strip().lower()
+
+    if has_date_filter:
+        from_m = from_date.strip()[:7]
+        to_m = to_date.strip()[:7]
+        py_from_m = get_py_date(from_date.strip())[:7]
+        py_to_m = get_py_date(to_date.strip())[:7]
+        params["from_m"] = from_m
+        params["to_m"] = to_m
+        params["py_from_m"] = py_from_m
+        params["py_to_m"] = py_to_m
+
+        cy_lead_expr = "CASE WHEN d.academic_year = :cy_year AND d.created_month >= :from_m AND d.created_month <= :to_m THEN d.leads_cy ELSE 0 END"
+        py_lead_expr = "CASE WHEN d.academic_year = :py_year AND d.created_month >= :py_from_m AND d.created_month <= :py_to_m THEN GREATEST(d.leads_cy, d.leads_py) ELSE 0 END"
+        cy_cucet_expr = "CASE WHEN d.academic_year = :cy_year AND d.created_month >= :from_m AND d.created_month <= :to_m THEN d.cucet_cy ELSE 0 END"
+        py_cucet_expr = "CASE WHEN d.academic_year = :py_year AND d.created_month >= :py_from_m AND d.created_month <= :py_to_m THEN GREATEST(d.cucet_cy, d.cucet_py) ELSE 0 END"
+        cy_adm_expr = "CASE WHEN d.academic_year = :cy_year AND d.admission_month >= :from_m AND d.admission_month <= :to_m THEN d.admission_cy ELSE 0 END"
+        py_adm_expr = "CASE WHEN d.academic_year = :py_year AND d.admission_month >= :py_from_m AND d.admission_month <= :py_to_m THEN GREATEST(d.admission_cy, d.admission_py) ELSE 0 END"
+    else:
+        cy_lead_expr = "CASE WHEN d.academic_year = :cy_year THEN d.leads_cy ELSE 0 END"
+        py_lead_expr = "CASE WHEN d.academic_year = :py_year THEN GREATEST(d.leads_cy, d.leads_py) ELSE 0 END"
+        cy_cucet_expr = "CASE WHEN d.academic_year = :cy_year THEN d.cucet_cy ELSE 0 END"
+        py_cucet_expr = "CASE WHEN d.academic_year = :py_year THEN GREATEST(d.cucet_cy, d.cucet_py) ELSE 0 END"
+        cy_adm_expr = "CASE WHEN d.academic_year = :cy_year THEN d.admission_cy ELSE 0 END"
+        py_adm_expr = "CASE WHEN d.academic_year = :py_year THEN GREATEST(d.admission_cy, d.admission_py) ELSE 0 END"
+
+    where_sql = " AND ".join(where_clauses)
+
+    lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
+    main_src_expr = "COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'Direct')"
+
+    sql = f"""
+        SELECT 
+            LOWER(TRIM(d.program_code)) as pcode,
+            {lead_type_expr} as lead_type,
+            {main_src_expr} as main_source,
+            SUM({cy_lead_expr}) as cy_leads,
+            SUM({py_lead_expr}) as py_leads,
+            SUM({cy_cucet_expr}) as cy_cucet,
+            SUM({py_cucet_expr}) as py_cucet,
+            SUM({cy_adm_expr}) as cy_adm,
+            SUM({py_adm_expr}) as py_adm
+        FROM analytics.dashboard_agg d
+        LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+        WHERE {where_sql}
+        GROUP BY 1, 2, 3
+    """
+    rows = db.execute(text(sql), params).fetchall()
+
+    # Filter to this program group
+    prog_rows = [r for r in rows if (r[0] in matching_pcodes or program_group.strip().upper() == "ALL")]
+
+    tot_cy_leads = sum(int(r[3] or 0) for r in prog_rows)
+    tot_py_leads = sum(int(r[4] or 0) for r in prog_rows)
+    tot_cy_cucet = sum(int(r[5] or 0) for r in prog_rows)
+    tot_py_cucet = sum(int(r[6] or 0) for r in prog_rows)
+    tot_cy_adm = sum(int(r[7] or 0) for r in prog_rows)
+    tot_py_adm = sum(int(r[8] or 0) for r in prog_rows)
+
+    var_adm = tot_cy_adm - tot_py_adm
+    var_adm_pct = round((var_adm / tot_py_adm * 100), 1) if tot_py_adm > 0 else (0.0 if tot_cy_adm == 0 else 100.0)
+    var_leads = tot_cy_leads - tot_py_leads
+    var_leads_pct = round((var_leads / tot_py_leads * 100), 1) if tot_py_leads > 0 else (0.0 if tot_cy_leads == 0 else 100.0)
+    var_cucet = tot_cy_cucet - tot_py_cucet
+    var_cucet_pct = round((var_cucet / tot_py_cucet * 100), 1) if tot_py_cucet > 0 else (0.0 if tot_cy_cucet == 0 else 100.0)
+
+    conv_cy = round((tot_cy_adm / tot_cy_leads * 100), 2) if tot_cy_leads > 0 else 0.0
+    conv_py = round((tot_py_adm / tot_py_leads * 100), 2) if tot_py_leads > 0 else 0.0
+
+    if var_adm > 0:
+        trajectory = "GROWING"
+        trajectory_status = "up"
+        trajectory_badge = f"+{var_adm:,} Admissions (+{var_adm_pct}%)"
+    elif var_adm < 0:
+        trajectory = "DROPPING"
+        trajectory_status = "down"
+        trajectory_badge = f"{var_adm:,} Admissions ({var_adm_pct}%)"
+    else:
+        trajectory = "STABLE"
+        trajectory_status = "stable"
+        trajectory_badge = "Admissions Flat (0.0%)"
+
+    # -------------------------------------------------------------
+    # 1. Lead Types Performance Breakdown (Good vs Bad)
+    # -------------------------------------------------------------
+    lt_map: Dict[str, Dict[str, Any]] = {}
+    for r in prog_rows:
+        lt = str(r[1] or "OTHERS")
+        if lt not in lt_map:
+            lt_map[lt] = {"cy_leads": 0, "py_leads": 0, "cy_cucet": 0, "py_cucet": 0, "cy_adm": 0, "py_adm": 0}
+        lt_map[lt]["cy_leads"] += int(r[3] or 0)
+        lt_map[lt]["py_leads"] += int(r[4] or 0)
+        lt_map[lt]["cy_cucet"] += int(r[5] or 0)
+        lt_map[lt]["py_cucet"] += int(r[6] or 0)
+        lt_map[lt]["cy_adm"] += int(r[7] or 0)
+        lt_map[lt]["py_adm"] += int(r[8] or 0)
+
+    lead_type_insights = []
+    for lt, m in lt_map.items():
+        lt_cy_l = m["cy_leads"]
+        lt_py_l = m["py_leads"]
+        lt_cy_a = m["cy_adm"]
+        lt_py_a = m["py_adm"]
+        lt_var_a = lt_cy_a - lt_py_a
+        lt_var_a_pct = round((lt_var_a / lt_py_a * 100), 1) if lt_py_a > 0 else (0.0 if lt_cy_a == 0 else 100.0)
+        lt_var_l = lt_cy_l - lt_py_l
+        lt_var_l_pct = round((lt_var_l / lt_py_l * 100), 1) if lt_py_l > 0 else (0.0 if lt_cy_l == 0 else 100.0)
+        lt_conv = round((lt_cy_a / lt_cy_l * 100), 2) if lt_cy_l > 0 else 0.0
+
+        # Working good vs bad logic
+        is_good = (lt_var_a > 0) or (lt_var_l > 0 and lt_var_a >= 0) or (lt_conv >= conv_cy and lt_cy_a > 0)
+        if is_good:
+            status = "good"
+            status_label = "Working Good (Growth Driver)"
+            reason = f"High contribution: {lt_cy_a:,} admissions generated ({lt_var_a:+d} YoY, {lt_var_a_pct:+.1f}%) with {lt_conv:.2f}% conversion rate."
+        else:
+            status = "bad"
+            status_label = "Underperforming / Drag"
+            reason = f"Admissions changed by {lt_var_a:+d} ({lt_var_a_pct:+.1f}%) with {lt_var_l:+d} leads change ({lt_var_l_pct:+.1f}%)."
+
+        lead_type_insights.append({
+            "lead_type": lt,
+            "status": status,
+            "status_label": status_label,
+            "cy_leads": lt_cy_l,
+            "py_leads": lt_py_l,
+            "var_leads": lt_var_l,
+            "var_leads_pct": lt_var_l_pct,
+            "cy_adm": lt_cy_a,
+            "py_adm": lt_py_a,
+            "var_adm": lt_var_a,
+            "var_adm_pct": lt_var_a_pct,
+            "conversion_rate": lt_conv,
+            "reason": reason,
+        })
+
+    lead_type_insights.sort(key=lambda x: (x["status"] != "good", -x["cy_adm"], -x["var_adm"]))
+
+    # -------------------------------------------------------------
+    # 2. Main Sources Performance Breakdown (Good vs Bad Contributors)
+    # -------------------------------------------------------------
+    src_map: Dict[str, Dict[str, Any]] = {}
+    for r in prog_rows:
+        src = str(r[2] or "Direct")
+        lt = str(r[1] or "OTHERS")
+        key = f"{src}___{lt}"
+        if key not in src_map:
+            src_map[key] = {"source_name": src, "lead_type": lt, "cy_leads": 0, "py_leads": 0, "cy_adm": 0, "py_adm": 0}
+        src_map[key]["cy_leads"] += int(r[3] or 0)
+        src_map[key]["py_leads"] += int(r[4] or 0)
+        src_map[key]["cy_adm"] += int(r[7] or 0)
+        src_map[key]["py_adm"] += int(r[8] or 0)
+
+    source_insights = []
+    for key, m in src_map.items():
+        s_cy_l = m["cy_leads"]
+        s_py_l = m["py_leads"]
+        s_cy_a = m["cy_adm"]
+        s_py_a = m["py_adm"]
+        s_var_a = s_cy_a - s_py_a
+        s_var_a_pct = round((s_var_a / s_py_a * 100), 1) if s_py_a > 0 else (0.0 if s_cy_a == 0 else 100.0)
+        s_var_l = s_cy_l - s_py_l
+        s_var_l_pct = round((s_var_l / s_py_l * 100), 1) if s_py_l > 0 else (0.0 if s_cy_l == 0 else 100.0)
+        s_conv = round((s_cy_a / s_cy_l * 100), 2) if s_cy_l > 0 else 0.0
+
+        is_good = (s_var_a > 0) or (s_cy_a >= 10 and s_var_a >= 0)
+        status = "good" if is_good else ("bad" if s_var_a < 0 or s_var_l < 0 else "neutral")
+
+        source_insights.append({
+            "source_name": m["source_name"],
+            "lead_type": m["lead_type"],
+            "status": status,
+            "cy_leads": s_cy_l,
+            "py_leads": s_py_l,
+            "var_leads": s_var_l,
+            "var_leads_pct": s_var_l_pct,
+            "cy_adm": s_cy_a,
+            "py_adm": s_py_a,
+            "var_adm": s_var_a,
+            "var_adm_pct": s_var_a_pct,
+            "conversion_rate": s_conv,
+        })
+
+    # Top good sources (growth drivers)
+    good_sources = [s for s in source_insights if s["status"] == "good"]
+    good_sources.sort(key=lambda x: (-x["var_adm"], -x["cy_adm"]))
+
+    # Top bad sources (drops / drag)
+    bad_sources = [s for s in source_insights if s["status"] == "bad" or s["var_adm"] < 0 or s["var_leads"] < 0]
+    bad_sources.sort(key=lambda x: (x["var_adm"], x["var_leads"]))
+
+    # -------------------------------------------------------------
+    # 3. AI Takeaways & Diagnostics Synthesis
+    # -------------------------------------------------------------
+    takeaways = []
+    
+    # Overall summary point
+    if trajectory == "GROWING":
+        takeaways.append({
+            "type": "positive",
+            "title": "Positive Growth Trajectory",
+            "description": f"{program_group} admissions surged by +{var_adm:,} (+{var_adm_pct:.1f}% YoY) to {tot_cy_adm:,} total enrolled students.",
+        })
+    elif trajectory == "DROPPING":
+        takeaways.append({
+            "type": "negative",
+            "title": "Admission Contraction Alert",
+            "description": f"{program_group} admissions contracted by {var_adm:,} ({var_adm_pct:.1f}% YoY) from {tot_py_adm:,} down to {tot_cy_adm:,}.",
+        })
+    else:
+        takeaways.append({
+            "type": "neutral",
+            "title": "Stable Intake Performance",
+            "description": f"{program_group} maintained steady volume with {tot_cy_adm:,} admissions ({var_adm:+d} YoY).",
+        })
+
+    # Lead Type Driver point
+    top_good_lt = next((lt for lt in lead_type_insights if lt["status"] == "good" and lt["cy_adm"] > 0), None)
+    top_bad_lt = next((lt for lt in lead_type_insights if lt["status"] == "bad" and (lt["var_adm"] < 0 or lt["var_leads"] < 0)), None)
+
+    if top_good_lt:
+        takeaways.append({
+            "type": "positive",
+            "title": f"Key Growth Engine: {top_good_lt['lead_type']}",
+            "description": f"Propelled by {top_good_lt['lead_type']} leads generating {top_good_lt['cy_adm']:,} admissions ({top_good_lt['var_adm']:+d} YoY) at {top_good_lt['conversion_rate']:.2f}% conversion efficiency.",
+        })
+
+    if top_bad_lt:
+        takeaways.append({
+            "type": "negative",
+            "title": f"Underperforming Channel: {top_bad_lt['lead_type']}",
+            "description": f"{top_bad_lt['lead_type']} channel experienced a decline of {top_bad_lt['var_adm']:+d} admissions ({top_bad_lt['var_leads']:+d} leads). Recommend reviewing campaign targeting and counselor outreach.",
+        })
+
+    # Source Driver point
+    if good_sources:
+        top_s = good_sources[0]
+        takeaways.append({
+            "type": "positive",
+            "title": f"Top Source Performer: {top_s['source_name']}",
+            "description": f"{top_s['source_name']} delivered {top_s['cy_adm']:,} admissions ({top_s['var_adm']:+d} YoY, conversion {top_s['conversion_rate']:.1f}%).",
+        })
+
+    if bad_sources and bad_sources[0]["var_adm"] < 0:
+        bad_s = bad_sources[0]
+        takeaways.append({
+            "type": "warning",
+            "title": f"Source Drop Alert: {bad_s['source_name']}",
+            "description": f"{bad_s['source_name']} dropped by {bad_s['var_adm']} admissions ({bad_s['var_leads']:+d} leads). Investigate funnel leakage or vendor lead quality.",
+        })
+
+    # Actionable Recommendation
+    takeaways.append({
+        "type": "action",
+        "title": "Actionable Optimization Strategy",
+        "description": f"Allocate additional counsellor capacity to high-converting {top_good_lt['lead_type'] if top_good_lt else 'Direct'} leads and conduct rapid follow-up on CUCET registered prospects ({tot_cy_cucet:,} candidates).",
+    })
+
+    return {
+        "program_group": program_group,
+        "academic_year": academic_year,
+        "campus": campus or "All Campuses",
+        "trajectory": trajectory,
+        "trajectory_status": trajectory_status,
+        "trajectory_badge": trajectory_badge,
+        "metrics": {
+            "cy_admissions": tot_cy_adm,
+            "py_admissions": tot_py_adm,
+            "var_admissions": var_adm,
+            "var_admissions_pct": var_adm_pct,
+            "cy_leads": tot_cy_leads,
+            "py_leads": tot_py_leads,
+            "var_leads": var_leads,
+            "var_leads_pct": var_leads_pct,
+            "cy_cucet": tot_cy_cucet,
+            "py_cucet": tot_py_cucet,
+            "var_cucet": var_cucet,
+            "var_cucet_pct": var_cucet_pct,
+            "conversion_rate_cy": conv_cy,
+            "conversion_rate_py": conv_py,
+        },
+        "lead_types": lead_type_insights,
+        "top_growth_sources": good_sources[:6],
+        "top_drag_sources": bad_sources[:6],
+        "takeaways": takeaways,
+    }
+

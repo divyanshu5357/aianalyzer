@@ -913,6 +913,82 @@ export interface ProgramHierarchyParams {
   sort_order?: string;
 }
 
+export interface LeadTypeInsight {
+  lead_type: string;
+  status: 'good' | 'bad' | 'neutral';
+  status_label: string;
+  cy_leads: number;
+  py_leads: number;
+  var_leads: number;
+  var_leads_pct: number;
+  cy_adm: number;
+  py_adm: number;
+  var_adm: number;
+  var_adm_pct: number;
+  conversion_rate: number;
+  reason: string;
+}
+
+export interface SourceInsight {
+  source_name: string;
+  lead_type: string;
+  status: 'good' | 'bad' | 'neutral';
+  cy_leads: number;
+  py_leads: number;
+  var_leads: number;
+  var_leads_pct: number;
+  cy_adm: number;
+  py_adm: number;
+  var_adm: number;
+  var_adm_pct: number;
+  conversion_rate: number;
+}
+
+export interface InsightTakeaway {
+  type: 'positive' | 'negative' | 'warning' | 'neutral' | 'action';
+  title: string;
+  description: string;
+}
+
+export interface ProgramInsightMetrics {
+  cy_admissions: number;
+  py_admissions: number;
+  var_admissions: number;
+  var_admissions_pct: number;
+  cy_leads: number;
+  py_leads: number;
+  var_leads: number;
+  var_leads_pct: number;
+  cy_cucet: number;
+  py_cucet: number;
+  var_cucet: number;
+  var_cucet_pct: number;
+  conversion_rate_cy: number;
+  conversion_rate_py: number;
+}
+
+export interface ProgramInsightData {
+  program_group: string;
+  academic_year: number;
+  campus: string;
+  trajectory: 'GROWING' | 'DROPPING' | 'STABLE';
+  trajectory_status: 'up' | 'down' | 'stable';
+  trajectory_badge: string;
+  metrics: ProgramInsightMetrics;
+  lead_types: LeadTypeInsight[];
+  top_growth_sources: SourceInsight[];
+  top_drag_sources: SourceInsight[];
+  takeaways: InsightTakeaway[];
+}
+
+export interface ProgramInsightParams {
+  program_group: string;
+  academic_year?: number;
+  campus?: string;
+  from_date?: string;
+  to_date?: string;
+}
+
 // ─── Phase 13: State-Wise Analysis ──────────────────────────────────────────
 
 export interface StateReportRow {

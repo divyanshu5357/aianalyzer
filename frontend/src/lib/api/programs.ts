@@ -1,14 +1,11 @@
-/**
- * Programs API module — Phase 12 Lazy Hierarchical Program Report
- * NEVER loads full CRM dataset. Every response is a server-side PostgreSQL aggregation.
- */
-
 import { apiRequest } from './client';
 import type {
   ProgramReportParams,
   ProgramReportResponse,
   ProgramHierarchyParams,
   ProgramHierarchyResponse,
+  ProgramInsightParams,
+  ProgramInsightData,
 } from './types';
 
 export async function getProgramReport(
@@ -53,6 +50,24 @@ export async function getProgramHierarchyChildren(
 
   const res = await apiRequest<{ success: boolean; data: ProgramHierarchyResponse }>(
     `/api/programs/report/children?${query.toString()}`,
+    options
+  );
+  return res.data;
+}
+
+export async function getProgramInsights(
+  params: ProgramInsightParams,
+  options?: RequestInit
+): Promise<ProgramInsightData> {
+  const query = new URLSearchParams();
+  query.set('program_group', params.program_group);
+  if (params.academic_year) query.set('academic_year', String(params.academic_year));
+  if (params.campus && params.campus.toLowerCase() !== 'all campuses') query.set('campus', params.campus);
+  if (params.from_date) query.set('from_date', params.from_date);
+  if (params.to_date) query.set('to_date', params.to_date);
+
+  const res = await apiRequest<{ success: boolean; data: ProgramInsightData }>(
+    `/api/programs/insights?${query.toString()}`,
     options
   );
   return res.data;

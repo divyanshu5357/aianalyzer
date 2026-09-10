@@ -171,8 +171,10 @@ export default function ProgramsPage() {
             <span className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{label}</span>
           </div>
         ))}
-        <div className={`ml-auto text-[10px] hidden md:block ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
-          ▸ expand · ▾ collapse · click column ↑↓ to sort
+        <div className={`ml-auto text-[10px] hidden md:flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+          <span>▸ expand · ▾ collapse</span>
+          <span className="text-indigo-400 font-medium">· ✨ click for AI Insights</span>
+          <span>· click column ↑↓ to sort</span>
         </div>
       </div>
 

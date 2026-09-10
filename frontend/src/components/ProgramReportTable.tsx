@@ -3,6 +3,7 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getProgramHierarchyChildren } from '@/lib/api/programs';
 import dashboardCache from '@/lib/cache/dashboardCache';
+import ProgramInsightModal from '@/components/ProgramInsightModal';
 import type {
   ProgramReportRow,
   ProgramHierarchyParams,
@@ -136,6 +137,9 @@ export default function ProgramReportTable({
     topRows.forEach((r) => m.set(r.id, { row: r, state: 'collapsed', children: [] }));
     return m;
   });
+
+  // Selected program for deep AI diagnostic modal
+  const [selectedInsightProgram, setSelectedInsightProgram] = useState<string | null>(null);
 
   // Re-init nodes when top rows or scope changes (filter invalidation)
   useEffect(() => {
@@ -392,12 +396,30 @@ export default function ProgramReportTable({
               <span className="w-5 h-5 flex-shrink-0" />
             )}
             <span
-              className="text-xs font-medium truncate"
+              className="text-xs font-medium truncate flex-1"
               style={{ color: getLevelTextColor(row.level) }}
               title={row.program}
             >
               {row.program}
             </span>
+            {/* Small Insight Trigger Icon */}
+            {(row.level === 1 || row.level === 2) && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setSelectedInsightProgram(row.program_group || row.program);
+                }}
+                className={`flex-shrink-0 ml-1.5 w-5 h-5 rounded flex items-center justify-center transition-all ${
+                  isDark
+                    ? 'text-indigo-400/80 hover:text-indigo-200 hover:bg-indigo-500/25'
+                    : 'text-indigo-600/80 hover:text-indigo-800 hover:bg-indigo-100/80'
+                }`}
+                title={`Click to view AI Insights & Root Cause Drivers for ${row.program}`}
+              >
+                <span className="text-[11px] select-none">✨</span>
+              </button>
+            )}
           </div>
         </td>
 
@@ -615,6 +637,21 @@ export default function ProgramReportTable({
           {totalRow && renderTotalRow(totalRow)}
         </tbody>
       </table>
+
+      {/* Program AI Insight Diagnostic Modal */}
+      {selectedInsightProgram && (
+        <ProgramInsightModal
+          programName={selectedInsightProgram}
+          scopeParams={{
+            academic_year: filters.academic_year,
+            campus: filters.campus,
+            from_date: filters.from_date,
+            to_date: filters.to_date,
+          }}
+          isDark={isDark}
+          onClose={() => setSelectedInsightProgram(null)}
+        />
+      )}
     </div>
   );
 }

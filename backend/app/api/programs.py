@@ -9,6 +9,7 @@ from app.database.connection import get_db
 from app.analytics.program_service import (
     get_program_report_top_level,
     get_program_hierarchy_children,
+    get_program_insights,
 )
 
 router = APIRouter(prefix="/api/programs", tags=["Program Performance Report"])
@@ -138,4 +139,38 @@ def get_program_children(
             status_code=500,
             detail=f"Failed to load program children for level '{level}': {str(exc)}",
         )
+
+
+@router.get("/insights")
+def get_program_insights_endpoint(
+    program_group: str = Query(..., description="Program group name (e.g. CSE, MBA, B.Sc.)"),
+    academic_year: Optional[int] = Query(None, description="Academic year (CY)"),
+    campus: Optional[str] = Query(None, description="Campus filter"),
+    from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    db: Session = Depends(get_db),
+):
+    """
+    Returns deep diagnostic AI insights for a specific program group:
+    - Overall Admissions & Leads YoY Trajectory (Growth vs Drop)
+    - Lead Types Breakdown (Working Good vs Underperforming / Drag)
+    - Top Sources Performance (Contributing Drivers vs Declining)
+    - Actionable AI Takeaways & Recommendations
+    """
+    try:
+        data = get_program_insights(
+            db=db,
+            program_group=program_group,
+            academic_year=academic_year,
+            campus=campus,
+            from_date=from_date,
+            to_date=to_date,
+        )
+        return {"success": True, "data": data}
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to generate program insights for '{program_group}': {str(exc)}",
+        )
+
 
