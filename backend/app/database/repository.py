@@ -362,7 +362,33 @@ def resolve_target_dataset(db: Session) -> str | None:
             LIMIT 1
         """)
     ).scalar_one_or_none()
-    return str(target_id) if target_id else None
+    if target_id:
+        return str(target_id)
+
+    # Fallback: auto-resolve and enable the latest successfully ingested TARGET master
+    latest_target = db.execute(
+        text("""
+            SELECT d.id
+            FROM system.datasets d
+            WHERE UPPER(COALESCE(d.workbook_type, '')) = 'TARGET'
+              AND d.status NOT IN ('failed', 'ABORTED', 'initiated')
+              AND COALESCE(d.row_count, 0) > 0
+            ORDER BY d.created_at DESC
+            LIMIT 1
+        """)
+    ).scalar_one_or_none()
+    if latest_target:
+        try:
+            db.execute(
+                text("UPDATE system.datasets SET is_active = TRUE, is_analytics_enabled = TRUE WHERE id = :id"),
+                {"id": str(latest_target)},
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+        return str(latest_target)
+
+    return None
 
 
 def resolve_dimension_dataset(db: Session) -> str | None:
@@ -380,7 +406,33 @@ def resolve_dimension_dataset(db: Session) -> str | None:
             LIMIT 1
         """)
     ).scalar_one_or_none()
-    return str(dim_id) if dim_id else None
+    if dim_id:
+        return str(dim_id)
+
+    # Fallback: auto-resolve and enable the latest successfully ingested DIMENSION master
+    latest_dim = db.execute(
+        text("""
+            SELECT id
+            FROM system.datasets
+            WHERE UPPER(COALESCE(workbook_type, '')) = 'DIMENSION'
+              AND status NOT IN ('failed', 'ABORTED', 'initiated')
+              AND COALESCE(row_count, 0) > 0
+            ORDER BY created_at DESC
+            LIMIT 1
+        """)
+    ).scalar_one_or_none()
+    if latest_dim:
+        try:
+            db.execute(
+                text("UPDATE system.datasets SET is_active = TRUE, is_analytics_enabled = TRUE WHERE id = :id"),
+                {"id": str(latest_dim)},
+            )
+            db.commit()
+        except Exception:
+            db.rollback()
+        return str(latest_dim)
+
+    return None
 
 
 def enable_dataset_analytics(db: Session, dataset_id, force: bool = False) -> dict:
