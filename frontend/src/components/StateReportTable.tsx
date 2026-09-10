@@ -379,7 +379,7 @@ export default function StateReportTable({
                 className={`sticky left-0 z-30 min-w-[240px] ${thBase} ${isDark ? 'bg-[#0d0f1a]' : 'bg-white'}`}
               >
                 <div className="flex items-center gap-1">
-                  <span>STATE</span>
+                  <span>STATE GROUP</span>
                   {renderSortIndicator('state')}
                 </div>
               </th>
@@ -591,7 +591,7 @@ export default function StateReportTable({
                 }`}>
                   <div className="flex items-center gap-2">
                     <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 shrink-0 shadow-xs shadow-indigo-500/50" />
-                    <span>TOTAL ({topRows.length} STATES)</span>
+                    <span>TOTAL ({topRows.length} STATE GROUPS)</span>
                   </div>
                 </td>
                 <td className="px-3 py-3 text-right font-mono text-xs opacity-75">

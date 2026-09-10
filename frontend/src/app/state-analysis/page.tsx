@@ -160,7 +160,7 @@ export default function StateAnalysisPage() {
               </h1>
             </div>
             <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              3-level drill-down: State → Source Category → Sub-Source. All metrics server-side.
+              3-level drill-down: State Group → Source Category → Sub-Source. All metrics server-side.
             </p>
           </div>
 
@@ -168,7 +168,7 @@ export default function StateAnalysisPage() {
           {report && (
             <div className="flex gap-2 flex-wrap">
               {[
-                { label: 'States', value: String(report.count), color: isDark ? 'text-indigo-300' : 'text-indigo-600' },
+                { label: 'State Groups', value: String(report.count), color: isDark ? 'text-indigo-300' : 'text-indigo-600' },
                 { label: 'CY Leads', value: report.total.cy_leads.toLocaleString(), color: isDark ? 'text-white' : 'text-slate-900' },
                 { label: 'CY Adm', value: report.total.cy_adm.toLocaleString(), color: isDark ? 'text-emerald-300' : 'text-emerald-600' },
                 { label: 'Net Adm', value: report.total.net_admissions.toLocaleString(), color: isDark ? 'text-sky-300' : 'text-sky-600' },
@@ -197,7 +197,7 @@ export default function StateAnalysisPage() {
         isDark ? 'border-white/5' : 'border-slate-100'
       }`}>
         {[
-          { color: isDark ? 'bg-slate-300' : 'bg-slate-500', label: 'L1 State' },
+          { color: isDark ? 'bg-slate-300' : 'bg-slate-500', label: 'L1 State Group' },
           { color: 'bg-emerald-500', label: 'L2 Source Category' },
           { color: 'bg-amber-400', label: 'L3 Sub-Source' },
         ].map(({ color, label }) => (
