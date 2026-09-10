@@ -61,8 +61,9 @@ import {
   API_BASE_URL,
 } from "../lib/api";
 import dashboardCache from "../lib/cache/dashboardCache";
-import { NavTab } from "./Sidebar";
 import IndiaStateMap from "./maps/IndiaStateMap";
+
+export type NavTab = "dashboard" | "upload" | "analytics" | "sources" | "chat";
 
 interface ExecutiveDashboardProps {
   activeDataset: ActiveDatasetInfo | null;

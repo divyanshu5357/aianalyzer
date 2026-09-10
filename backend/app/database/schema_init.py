@@ -1004,8 +1004,15 @@ def ensure_all_database_tables(db: Session) -> None:
             )
         )
 
+        # 19. Ensure aggregates are self-healed and populated for all active datasets
+        try:
+            from app.analytics.aggregate_refresh import ensure_aggregates_populated
+            ensure_aggregates_populated(db)
+        except Exception as agg_err:
+            logger.warning("Startup aggregate self-healing notice: %s", agg_err)
+
         db.commit()
-        logger.info("Successfully verified all PostgreSQL schemas, tables, columns, and constraints.")
+        logger.info("Successfully verified all PostgreSQL schemas, tables, columns, constraints, and aggregates.")
     except Exception as exc:
         logger.error("Error ensuring database tables on startup: %s", exc)
         db.rollback()

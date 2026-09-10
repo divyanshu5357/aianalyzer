@@ -471,7 +471,7 @@ def get_state_hierarchy_children(
         params["campus"] = campus.strip().lower()
 
     if state and state.strip():
-        where_clauses.append("LOWER(TRIM(d.state)) = :state_filter")
+        where_clauses.append("lower(d.state) = :state_filter")
         params["state_filter"] = state.strip().lower()
 
     if has_date_filter:
@@ -558,7 +558,7 @@ def get_state_hierarchy_children(
         trend_where = [
             "d.academic_year = :cy_year",
             "d.created_month IS NOT NULL",
-            "LOWER(TRIM(d.state)) = :state_filter",
+            "lower(d.state) = :state_filter",
         ]
         trend_params = {"cy_year": academic_year, "state_filter": st_name.lower()}
         if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
@@ -655,7 +655,7 @@ def get_state_hierarchy_children(
         trend_where = [
             "d.academic_year = :cy_year",
             "d.created_month IS NOT NULL",
-            "LOWER(TRIM(d.state)) = :state_filter",
+            "lower(d.state) = :state_filter",
             "COALESCE(NULLIF(TRIM(d.lead_type), ''), 'OTHERS') = :src_cat",
         ]
         trend_params = {

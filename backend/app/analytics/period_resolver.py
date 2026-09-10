@@ -162,23 +162,46 @@ def parse_year_input(val: Any) -> int | None:
 def list_all_analytical_years(db: Session) -> list[int]:
     """
     Return all distinct analytical years available across uploaded datasets.
-    E.g. [2023, 2024, 2025, 2026]
+    E.g. [2024, 2025, 2026, 2027]
     """
+    years_set: set[int] = set()
     try:
-        rows = db.execute(
-            text(
-                "SELECT DISTINCT period_start_year, period_end_year "
-                "FROM system.datasets "
-                "WHERE period_start_year IS NOT NULL AND period_end_year IS NOT NULL"
-            )
-        ).mappings().all()
+        # Primary: academic_year on system.datasets for RAW datasets
+        ds_years = db.execute(
+            text("""
+                SELECT DISTINCT academic_year
+                FROM system.datasets
+                WHERE UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
+                  AND academic_year IS NOT NULL
+                  AND (is_analytics_enabled = TRUE OR is_active = TRUE)
+            """)
+        ).scalars().all()
+        for y in ds_years:
+            if y:
+                years_set.add(int(y))
 
-        years_set: set[int] = set()
+        # Secondary: period start/end years
+        rows = db.execute(
+            text("""
+                SELECT DISTINCT period_start_year, period_end_year
+                FROM system.datasets
+                WHERE (is_analytics_enabled = TRUE OR is_active = TRUE)
+                  AND (period_start_year IS NOT NULL OR period_end_year IS NOT NULL)
+            """)
+        ).mappings().all()
         for r in rows:
-            if r["period_start_year"]:
+            if r.get("period_start_year"):
                 years_set.add(int(r["period_start_year"]))
-            if r["period_end_year"]:
+            if r.get("period_end_year"):
                 years_set.add(int(r["period_end_year"]))
+
+        # Tertiary: dashboard_agg
+        agg_years = db.execute(
+            text("SELECT DISTINCT academic_year FROM analytics.dashboard_agg WHERE academic_year IS NOT NULL")
+        ).scalars().all()
+        for y in agg_years:
+            if y:
+                years_set.add(int(y))
 
         if years_set:
             return sorted(years_set)

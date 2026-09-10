@@ -36,27 +36,52 @@ def resolve_analytics_scope(
                 except (ValueError, TypeError):
                     pass
 
-    # Resolve available years dynamically from system.datasets if no valid years provided
-    if not parsed_years:
-        try:
-            year_rows = db.execute(text(
-                "SELECT DISTINCT academic_year FROM system.datasets "
-                "WHERE is_analytics_enabled = TRUE AND academic_year IS NOT NULL "
-                "ORDER BY academic_year DESC"
-            )).fetchall()
-            parsed_years = [int(r[0]) for r in year_rows if r[0] is not None]
-            if not parsed_years:
-                year_rows = db.execute(text(
-                    "SELECT DISTINCT academic_year FROM analytics.dashboard_agg "
-                    "WHERE academic_year IS NOT NULL "
-                    "ORDER BY academic_year DESC"
-                )).fetchall()
-                parsed_years = [int(r[0]) for r in year_rows if r[0] is not None]
-        except Exception as e:
-            logger.warning("Failed to resolve dynamic years: %s", e)
-            parsed_years = []
+    # Resolve all available RAW academic years dynamically
+    all_avail_years: list[int] = []
+    try:
+        y_rows = db.execute(text("""
+            SELECT DISTINCT academic_year FROM system.datasets
+            WHERE is_analytics_enabled = TRUE 
+              AND academic_year IS NOT NULL 
+              AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
+              AND COALESCE(row_count, 0) > 0
+            ORDER BY academic_year DESC
+        """)).fetchall()
+        all_avail_years = [int(r[0]) for r in y_rows if r[0] is not None]
+    except Exception as e:
+        logger.warning("Failed to query distinct available academic years: %s", e)
 
-    parsed_years = sorted(list(set(parsed_years)))
+    if not all_avail_years:
+        try:
+            y_rows = db.execute(text("""
+                SELECT DISTINCT academic_year FROM analytics.dashboard_agg
+                WHERE academic_year IS NOT NULL
+                ORDER BY academic_year DESC
+            """)).fetchall()
+            all_avail_years = [int(r[0]) for r in y_rows if r[0] is not None]
+        except Exception:
+            pass
+
+    # Determine CY (Current Year) and PY (Previous Year) dynamically
+    from app.analytics.period_helper import get_active_or_max_academic_year
+    if parsed_years:
+        cy_year = max(parsed_years)
+        if len(parsed_years) > 1:
+            py_year = sorted(parsed_years)[-2]
+        else:
+            # Single year requested (e.g. 2027 or 2026 selected by user)
+            # Find the true previous available year < cy_year
+            candidates = [y for y in all_avail_years if y < cy_year]
+            py_year = max(candidates) if candidates else cy_year - 1
+    else:
+        if all_avail_years:
+            cy_year = max(all_avail_years)
+            py_year = all_avail_years[1] if len(all_avail_years) > 1 else cy_year - 1
+        else:
+            cy_year = get_active_or_max_academic_year(db)
+            py_year = cy_year - 1
+
+    effective_years = sorted(list(set([cy_year] + ([py_year] if py_year else []))))
 
     # 2. Normalize campus
     campus_filter = "all"
@@ -64,22 +89,22 @@ def resolve_analytics_scope(
         campus_filter = str(campus).strip()
 
     # 3. Query system.datasets for enabled datasets
+    # Include both CY and PY RAW datasets as well as active DIMENSION and TARGET masters
     where_clauses = ["is_analytics_enabled = TRUE"]
     params: dict[str, Any] = {}
 
     if campus_filter != "all":
-        where_clauses.append("LOWER(campus_name) = LOWER(:campus)")
+        where_clauses.append("(LOWER(campus_name) = LOWER(:campus) OR campus_name IS NULL OR UPPER(COALESCE(workbook_type, 'RAW')) != 'RAW')")
         params["campus"] = campus_filter
 
-    if parsed_years:
-        years_in_str = ",".join(str(int(y)) for y in parsed_years)
-        where_clauses.append(f"academic_year IN ({years_in_str})")
+    years_in_str = ",".join(str(int(y)) for y in effective_years)
+    where_clauses.append(f"(academic_year IN ({years_in_str}) OR academic_year IS NULL OR UPPER(COALESCE(workbook_type, 'RAW')) != 'RAW')")
 
     sql = text(f"""
-        SELECT id, dataset_name, original_filename, academic_year, campus_name, row_count, is_active, is_analytics_enabled, analytics_status
+        SELECT id, dataset_name, original_filename, academic_year, campus_name, row_count, is_active, is_analytics_enabled, analytics_status, workbook_type
         FROM system.datasets
         WHERE {" AND ".join(where_clauses)}
-        ORDER BY academic_year DESC, campus_name ASC
+        ORDER BY academic_year DESC NULLS LAST, campus_name ASC
     """)
 
     rows = db.execute(sql, params).mappings().all()
@@ -89,24 +114,6 @@ def resolve_analytics_scope(
     cy_dataset_ids = []
     py_dataset_ids = []
     total_rows = 0
-
-    # Determine CY (highest year) and PY (previous year)
-    if parsed_years:
-        cy_year = max(parsed_years)
-        if len(parsed_years) > 1:
-            py_year = sorted(parsed_years)[-2]
-        else:
-            py_year = cy_year - 1
-    else:
-        row_years = [int(r["academic_year"]) for r in rows if r["academic_year"] is not None]
-        if row_years:
-            cy_year = max(row_years)
-            sorted_unique = sorted(set(row_years))
-            py_year = sorted_unique[-2] if len(sorted_unique) > 1 else cy_year - 1
-        else:
-            from app.analytics.period_helper import get_active_or_max_academic_year
-            cy_year = get_active_or_max_academic_year(db)
-            py_year = cy_year - 1
 
     # Construct the base set of allowed datasets from query
     for r in rows:

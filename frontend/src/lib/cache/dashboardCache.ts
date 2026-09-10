@@ -119,6 +119,27 @@ class MemoryCache {
   }
 
   /**
+   * Target-specific invalidation by year and/or campus without wiping unrelated cache.
+   */
+  public invalidateTargeted(criteria: { year?: number | string; campus?: string }): void {
+    const { year, campus } = criteria;
+    if (!year && !campus) {
+      this.invalidate();
+      return;
+    }
+    const yearStr = year ? String(year) : null;
+    const campusStr = campus && campus.toLowerCase() !== "all" ? campus.toLowerCase() : null;
+
+    for (const key of Array.from(this.store.keys())) {
+      const matchYear = !yearStr || key.includes(yearStr);
+      const matchCampus = !campusStr || key.toLowerCase().includes(campusStr);
+      if (matchYear && matchCampus) {
+        this.store.delete(key);
+      }
+    }
+  }
+
+  /**
    * Remove a specific key.
    */
   public delete(key: string): void {

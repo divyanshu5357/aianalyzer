@@ -540,13 +540,14 @@ def enable_dataset_analytics(db: Session, dataset_id, force: bool = False) -> di
         {"id": str(dataset_id)},
     )
     db.commit()
-    # Refresh dashboard_agg for this dataset scope only
+    # Refresh dashboard_agg and gender_monthly_agg for this dataset scope only
     try:
-        from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped
+        from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped, refresh_gender_agg_scoped
         refresh_dashboard_agg_scoped(db, dataset_id=str(dataset_id))
+        refresh_gender_agg_scoped(db, dataset_id=str(dataset_id))
     except Exception as _e:
         import logging
-        logging.getLogger(__name__).warning("dashboard_agg scoped refresh after enable failed: %s", _e)
+        logging.getLogger(__name__).warning("scoped aggregate refresh after enable failed: %s", _e)
     return {"success": True, "dataset_id": str(dataset_id), "is_analytics_enabled": True}
 
 

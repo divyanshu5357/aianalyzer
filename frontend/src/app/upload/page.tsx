@@ -7,13 +7,27 @@ import { UploadWizard } from "../../components/UploadWizard";
 import { DatasetManager } from "../../components/DatasetManager";
 
 export default function UploadPage() {
-  const { activeDataset, fetchActiveDataset, fetchPeriods, theme } = useApp();
+  const { activeDataset, fetchActiveDataset, fetchPeriods, theme, year, notifyDatasetChange } = useApp();
   const isDark = theme === "dark";
   const [wizardType, setWizardType] = React.useState<"raw_data" | "dimension" | "target">("raw_data");
 
-  const handleDataChange = () => {
-    fetchActiveDataset();
-    fetchPeriods();
+  const handleDataChange = (uploadResult?: any) => {
+    // Dynamically extract affected year and campus from upload result if available.
+    // Falls back to currently selected year. Unrelated years' cache is preserved.
+    const affectedYear =
+      uploadResult?.academic_year ||
+      uploadResult?.result_data?.academic_year ||
+      uploadResult?.year ||
+      year;
+    const affectedCampus =
+      uploadResult?.campus_name ||
+      uploadResult?.result_data?.campus_name ||
+      uploadResult?.campus;
+
+    notifyDatasetChange(
+      affectedYear ? Number(affectedYear) : undefined,
+      affectedCampus ? String(affectedCampus) : undefined
+    );
   };
 
   const handleSelectUploadType = (type: "raw_data" | "dimension" | "target") => {

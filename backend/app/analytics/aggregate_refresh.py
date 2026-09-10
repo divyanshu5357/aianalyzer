@@ -85,7 +85,7 @@ def _build_insert_sql(dataset_filter: str = "") -> str:
             FROM analytics.uploaded_metrics um
             INNER JOIN system.datasets sd
                 ON sd.id = um.dataset_id
-                AND sd.is_analytics_enabled = TRUE
+                {"" if dataset_filter else "AND sd.is_analytics_enabled = TRUE"}
             LEFT JOIN organization.course_master cm
                 ON um.program_code = cm.program_code
             WHERE 1=1 {dataset_filter}
@@ -227,6 +227,10 @@ def delete_dashboard_agg_for_dataset(db: Session, dataset_id: str) -> int:
         {"ds_id": ds_id_str},
     )
     deleted = result.rowcount
+    db.execute(
+        text("DELETE FROM analytics.gender_monthly_agg WHERE dataset_id = CAST(:ds_id AS uuid)"),
+        {"ds_id": ds_id_str},
+    )
     db.commit()
     logger.info("[AGG DELETE] Removed %d dashboard_agg rows for dataset %s", deleted, ds_id_str)
     return deleted
@@ -290,7 +294,7 @@ def refresh_gender_agg_scoped(
     ).mappings().first()
 
     inserted_rows = 0
-    if ds_row and ds_row.get("is_analytics_enabled"):
+    if ds_row:
         insert_sql = text("""
             INSERT INTO analytics.gender_monthly_agg (
                 dataset_id,
@@ -393,4 +397,97 @@ def backfill_gender_agg(db: Session, dataset_id: Optional[str] = None) -> dict:
         "duration_ms": duration_ms,
         "details": results,
     }
+
+
+def backfill_dashboard_agg(db: Session, dataset_id: Optional[str] = None, target_year: Optional[int] = None) -> dict:
+    """Safely backfills analytics.dashboard_agg for existing datasets if missing or incomplete."""
+    t0 = time.perf_counter()
+    if dataset_id:
+        target_ids = [str(dataset_id)]
+    else:
+        query = """
+            SELECT id FROM system.datasets 
+            WHERE is_analytics_enabled = TRUE 
+              AND UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW'
+              AND status NOT IN ('failed', 'initiated')
+              AND COALESCE(row_count, 0) > 0
+        """
+        params: dict = {}
+        if target_year:
+            query += " AND academic_year = :yr"
+            params["yr"] = target_year
+        query += " ORDER BY academic_year DESC, created_at DESC"
+        rows = db.execute(text(query), params).scalars().all()
+        target_ids = [str(r) for r in rows]
+
+    total_inserted = 0
+    results = []
+    for ds_id in target_ids:
+        try:
+            # Check if this dataset already has aggregate rows
+            existing = db.execute(
+                text("SELECT COUNT(*) FROM analytics.dashboard_agg WHERE dataset_id = :ds_id"),
+                {"ds_id": ds_id}
+            ).scalar() or 0
+            if existing == 0:
+                res = refresh_dashboard_agg_scoped(db, dataset_id=ds_id)
+                total_inserted += res.get("inserted_rows", 0)
+                results.append(res)
+        except Exception as e:
+            logger.warning("Dashboard aggregate backfill failed for dataset %s: %s", ds_id, e)
+            db.rollback()
+
+    duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+    logger.info("[BACKFILL DASHBOARD AGG] Processed %d datasets, %d rows in %.2f ms", len(target_ids), total_inserted, duration_ms)
+    return {
+        "datasets_checked": len(target_ids),
+        "total_inserted": total_inserted,
+        "duration_ms": duration_ms,
+        "details": results,
+    }
+
+
+def ensure_aggregates_populated(db: Session) -> dict:
+    """Startup and runtime self-healing routine for all analytics aggregates.
+    1. Syncs missing academic_year and campus_name in analytics.uploaded_metrics from system.datasets.
+    2. Ensures dashboard_agg is populated for all enabled RAW datasets.
+    3. Ensures gender_monthly_agg is populated for all enabled RAW datasets.
+    """
+    t0 = time.perf_counter()
+    try:
+        # Step 1: Sync missing metadata in uploaded_metrics
+        db.execute(text("""
+            UPDATE analytics.uploaded_metrics um
+            SET academic_year = sd.academic_year
+            FROM system.datasets sd
+            WHERE um.dataset_id = sd.id
+              AND um.academic_year IS NULL
+              AND sd.academic_year IS NOT NULL;
+        """))
+        db.execute(text("""
+            UPDATE analytics.uploaded_metrics um
+            SET campus_name = sd.campus_name
+            FROM system.datasets sd
+            WHERE um.dataset_id = sd.id
+              AND (um.campus_name IS NULL OR um.campus_name = '')
+              AND sd.campus_name IS NOT NULL;
+        """))
+        db.commit()
+    except Exception as e:
+        logger.warning("Syncing uploaded_metrics metadata notice: %s", e)
+        db.rollback()
+
+    # Step 2: Backfill dashboard_agg where missing
+    dash_res = backfill_dashboard_agg(db)
+
+    # Step 3: Backfill gender_monthly_agg where missing
+    gender_res = backfill_gender_agg(db)
+
+    duration_ms = round((time.perf_counter() - t0) * 1000, 2)
+    return {
+        "dashboard_agg": dash_res,
+        "gender_agg": gender_res,
+        "total_duration_ms": duration_ms,
+    }
+
 

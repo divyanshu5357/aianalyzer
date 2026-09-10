@@ -42,6 +42,10 @@ interface AppContextType {
   setSeededPeriodB: (period: string | null) => void;
   refreshTrigger: number;
   triggerRefresh: () => void;
+  /** Invalidate cached dashboard data for a specific year only. Unrelated years' cache remains. */
+  invalidateCacheForYear: (year: number, campus?: string) => void;
+  /** Notify the app that a dataset changed (upload, delete, toggle). Targeted cache invalidation. */
+  notifyDatasetChange: (affectedYear?: number, affectedCampus?: string) => void;
   // Global Date Range Filter
   fromDate: string;
   setFromDate: (d: string) => void;
@@ -139,18 +143,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
       setAnalyticalYears(years);
 
+      const maxAvailableYear = years.length > 0 ? Math.max(...years) : undefined;
+
       // Auto-select the most recent period with an active dataset
       const activePeriod = sorted.find((p) => p.active_dataset_id);
       if (activePeriod && isValidPeriodLabel(activePeriod.academic_label)) {
         setActivePeriodLabel(activePeriod.academic_label);
         if (activePeriod.period_end_year) {
           setYearState(activePeriod.period_end_year);
+        } else if (maxAvailableYear) {
+          setYearState(maxAvailableYear);
         }
       } else if (sorted.length > 0 && isValidPeriodLabel(sorted[0].academic_label)) {
         setActivePeriodLabel(sorted[0].academic_label);
         if (sorted[0].period_end_year) {
           setYearState(sorted[0].period_end_year);
+        } else if (maxAvailableYear) {
+          setYearState(maxAvailableYear);
         }
+      } else if (maxAvailableYear) {
+        setYearState(maxAvailableYear);
       }
     } catch {
       setPeriods([]);
@@ -240,6 +252,31 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     fetchPeriods();
   };
 
+  /**
+   * Targeted cache invalidation: only flush cache entries containing the given year/campus.
+   * Other years' cached data is preserved for instant navigation.
+   */
+  const invalidateCacheForYear = (targetYear: number, campus?: string) => {
+    dashboardCache.invalidateTargeted({ year: targetYear, campus });
+  };
+
+  /**
+   * Called after dataset upload/delete/toggle. Performs targeted invalidation
+   * for the affected year/campus (if known) and refreshes period metadata.
+   * Falls back to global invalidation if no specific year is provided.
+   */
+  const notifyDatasetChange = (affectedYear?: number, affectedCampus?: string) => {
+    if (affectedYear) {
+      dashboardCache.invalidateTargeted({ year: affectedYear, campus: affectedCampus });
+    } else {
+      // Unknown affected year — invalidate all to be safe
+      dashboardCache.invalidate();
+    }
+    setRefreshTrigger((prev) => prev + 1);
+    fetchActiveDataset(affectedYear ?? year, affectedCampus ?? selectedCampus);
+    fetchPeriods();
+  };
+
   // Sync class name on <html> element for Tailwind mode compatibility
   useEffect(() => {
     const root = window.document.documentElement;
@@ -278,6 +315,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setSeededPeriodB,
         refreshTrigger,
         triggerRefresh,
+        invalidateCacheForYear,
+        notifyDatasetChange,
         fromDate,
         setFromDate,
         toDate,

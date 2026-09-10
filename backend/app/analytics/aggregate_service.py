@@ -158,6 +158,45 @@ def get_agg_overview(
         cy_cucet = int(agg_row["cucet"] or 0)
         cy_admission = int(agg_row["admission"] or 0)
 
+        # Self-healing: If valid RAW dataset exists for cy_year but aggregates returned 0,
+        # perform a lightweight dataset-scoped backfill (NOT full year scan).
+        # Only targets specific analytics-ready datasets missing their aggregate rows.
+        if cy_leads == 0 and cy_admission == 0 and cy_ds_check:
+            agg_cnt = db.execute(
+                text("SELECT COUNT(*) FROM analytics.dashboard_agg WHERE academic_year = :cy_yr"),
+                {"cy_yr": cy_year}
+            ).scalar() or 0
+            if agg_cnt == 0:
+                # Find the specific dataset(s) that are analytics-ready but have no agg rows
+                missing_ds = db.execute(
+                    text("""
+                        SELECT sd.id FROM system.datasets sd
+                        WHERE sd.is_analytics_enabled = TRUE
+                          AND sd.academic_year = :cy_yr
+                          AND UPPER(COALESCE(sd.workbook_type, 'RAW')) = 'RAW'
+                          AND COALESCE(sd.row_count, 0) > 0
+                          AND NOT EXISTS (
+                              SELECT 1 FROM analytics.dashboard_agg da
+                              WHERE da.dataset_id = sd.id
+                          )
+                        LIMIT 1
+                    """),
+                    {"cy_yr": cy_year},
+                ).scalars().all()
+                if missing_ds:
+                    from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped
+                    for ds_id in missing_ds:
+                        try:
+                            refresh_dashboard_agg_scoped(db, dataset_id=str(ds_id))
+                        except Exception as heal_err:
+                            logger.warning("Self-heal agg failed for dataset %s: %s", ds_id, heal_err)
+                            db.rollback()
+                    healed_rows = _run_agg_query(db, agg_sql, params, fallback_sql, params)
+                    if healed_rows:
+                        cy_leads = int(healed_rows[0]["leads"] or 0)
+                        cy_cucet = int(healed_rows[0]["cucet"] or 0)
+                        cy_admission = int(healed_rows[0]["admission"] or 0)
+
     # PY metrics: verify if valid enabled RAW dataset exists for py_year
     py_leads = py_cucet = py_admission = None
     has_py_dataset = False
@@ -225,6 +264,42 @@ def get_agg_overview(
             py_leads = int(agg_row_py["leads"] or 0)
             py_cucet = int(agg_row_py["cucet"] or 0)
             py_admission = int(agg_row_py["admission"] or 0)
+
+            # Self-healing for PY (dataset-scoped, non-blocking)
+            if py_leads == 0 and py_admission == 0 and py_ds_check:
+                agg_cnt_py = db.execute(
+                    text("SELECT COUNT(*) FROM analytics.dashboard_agg WHERE academic_year = :py_yr"),
+                    {"py_yr": py_year}
+                ).scalar() or 0
+                if agg_cnt_py == 0:
+                    missing_py_ds = db.execute(
+                        text("""
+                            SELECT sd.id FROM system.datasets sd
+                            WHERE sd.is_analytics_enabled = TRUE
+                              AND sd.academic_year = :py_yr
+                              AND UPPER(COALESCE(sd.workbook_type, 'RAW')) = 'RAW'
+                              AND COALESCE(sd.row_count, 0) > 0
+                              AND NOT EXISTS (
+                                  SELECT 1 FROM analytics.dashboard_agg da
+                                  WHERE da.dataset_id = sd.id
+                              )
+                            LIMIT 1
+                        """),
+                        {"py_yr": py_year},
+                    ).scalars().all()
+                    if missing_py_ds:
+                        from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped
+                        for ds_id in missing_py_ds:
+                            try:
+                                refresh_dashboard_agg_scoped(db, dataset_id=str(ds_id))
+                            except Exception as heal_err:
+                                logger.warning("Self-heal PY agg failed for dataset %s: %s", ds_id, heal_err)
+                                db.rollback()
+                        healed_py = _run_agg_query(db, agg_sql_py, py_params, fallback_sql_py, py_params)
+                        if healed_py:
+                            py_leads = int(healed_py[0]["leads"] or 0)
+                            py_cucet = int(healed_py[0]["cucet"] or 0)
+                            py_admission = int(healed_py[0]["admission"] or 0)
 
     has_cucet = (cy_cucet is not None and cy_cucet > 0) or (py_cucet is not None and py_cucet > 0)
     cy_conv = _percentage(cy_admission, cy_leads) if (cy_admission is not None and cy_leads is not None) else None
@@ -439,6 +514,50 @@ def get_agg_monthly_trend(
             for r in cucet_rows:
                 if r.get("month_key"):
                     cy_cucet_map[str(r["month_key"])] = int(r["cnt"] or 0)
+
+        # Self-healing: if CY maps are all empty/zero but RAW dataset exists, backfill and retry
+        cy_has_any = any(cy_adm_map.values()) or any(cy_lead_map.values()) or any(cy_cucet_map.values())
+        if not cy_has_any:
+            has_raw = db.execute(
+                text("SELECT 1 FROM system.datasets WHERE UPPER(COALESCE(workbook_type, 'RAW')) = 'RAW' AND is_analytics_enabled = TRUE AND academic_year = :cy_yr LIMIT 1"),
+                {"cy_yr": cy_year},
+            ).scalar()
+            if has_raw:
+                missing_ds = db.execute(
+                    text("""
+                        SELECT sd.id FROM system.datasets sd
+                        WHERE sd.is_analytics_enabled = TRUE
+                          AND sd.academic_year = :cy_yr
+                          AND UPPER(COALESCE(sd.workbook_type, 'RAW')) = 'RAW'
+                          AND COALESCE(sd.row_count, 0) > 0
+                          AND NOT EXISTS (
+                              SELECT 1 FROM analytics.dashboard_agg da
+                              WHERE da.dataset_id = sd.id
+                          )
+                        LIMIT 1
+                    """),
+                    {"cy_yr": cy_year},
+                ).scalars().all()
+                if missing_ds:
+                    from app.analytics.aggregate_refresh import refresh_dashboard_agg_scoped
+                    for ds_id in missing_ds:
+                        try:
+                            refresh_dashboard_agg_scoped(db, dataset_id=str(ds_id))
+                        except Exception as heal_err:
+                            logger.warning("Self-heal trend agg failed for dataset %s: %s", ds_id, heal_err)
+                            db.rollback()
+                if need_adm:
+                    for r in _run_agg_query(db, adm_sql, params, fallback_adm_sql, params):
+                        if r.get("month_key"):
+                            cy_adm_map[str(r["month_key"])] = int(r["cnt"] or 0)
+                if need_lead:
+                    for r in _run_agg_query(db, lead_sql, params, fallback_lead_sql, params):
+                        if r.get("month_key"):
+                            cy_lead_map[str(r["month_key"])] = int(r["cnt"] or 0)
+                if need_cucet:
+                    for r in _run_agg_query(db, cucet_sql, params, fallback_cucet_sql, params):
+                        if r.get("month_key"):
+                            cy_cucet_map[str(r["month_key"])] = int(r["cnt"] or 0)
 
         # Check if PY dataset genuinely exists
         has_py_dataset = False
