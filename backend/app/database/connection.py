@@ -17,17 +17,19 @@ if "dpg-" in db_url and ".render.com" not in db_url and not os.getenv("RENDER"):
 connect_args = {}
 if "postgres" in db_url:
     connect_args["options"] = "-c jit=off"
-    if "render.com" in db_url:
-        connect_args["sslmode"] = "require"
-        connect_args["connect_timeout"] = 10
+    connect_args["connect_timeout"] = 10
+    connect_args["keepalives"] = 1
+    connect_args["keepalives_idle"] = 30
+    connect_args["keepalives_interval"] = 10
+    connect_args["keepalives_count"] = 5
 
-# Robust connection pooling: 25 warm connections, 25 overflow burst connections, 30m recycle
+# Robust connection pooling: 20 warm connections, 20 overflow burst connections, 5m recycle, pre-ping & TCP keepalive
 engine = create_engine(
     db_url,
     pool_pre_ping=True,
-    pool_recycle=1800,
-    pool_size=25,
-    max_overflow=25,
+    pool_recycle=300,
+    pool_size=20,
+    max_overflow=20,
     pool_timeout=15,
     connect_args=connect_args,
 )
