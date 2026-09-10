@@ -590,274 +590,81 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
 
       {/* Step Content Container */}
       <div className="p-8">
-        {/* MASTER PREREQUISITES & SYSTEM READINESS DISPLAY */}
-        {(currentStep === 1 || currentStep === 2) && (
-          <div className="mb-8 p-5 bg-slate-50/70 dark:bg-slate-850/50 rounded-3xl border border-slate-200/90 dark:border-slate-800 shadow-xs">
-            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pb-4 border-b border-slate-200/80 dark:border-slate-800">
-              <div>
-                <div className="flex items-center gap-2">
-                  <h4 className="text-sm font-extrabold text-slate-900 dark:text-white flex items-center gap-2">
-                    <ShieldCheck className="w-4 h-4 text-indigo-500" />
-                    Master Data Verification & Prerequisites
-                  </h4>
-                  {isLoadingMasters ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 animate-pulse">
-                      <Loader2 className="w-3 h-3 animate-spin" /> Verifying...
-                    </span>
-                  ) : mastersStatus?.can_upload_raw ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                      <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
-                      All Masters Active — RAW Ingestion Unlocked
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                      <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
-                      Prerequisites Incomplete — RAW Ingestion Locked
-                    </span>
-                  )}
-                </div>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-                  Dimension Master and Target Master provide schema mapping, normalization references (Program, State, Source, EMP), and target benchmarks.
-                </p>
-              </div>
-
-              <button
-                type="button"
-                onClick={() => fetchMasters()}
-                disabled={isLoadingMasters}
-                className="inline-flex items-center gap-1 px-3 py-1.5 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs shrink-0 cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMasters ? "animate-spin text-indigo-500" : ""}`} />
-                <span>Refresh Status</span>
-              </button>
-            </div>
-
-            {/* Master Status Cards */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
-              {/* Card 1: Dimension Master */}
-              <div
-                className={`p-4 rounded-2xl border transition-all ${
-                  mastersStatus?.has_dimension_master
-                    ? "bg-white dark:bg-slate-800/90 border-purple-200 dark:border-purple-800/60 shadow-xs"
-                    : "bg-amber-50/40 dark:bg-amber-950/20 border-2 border-dashed border-amber-300 dark:border-amber-700/60"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300">
-                      <Layers className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">Dimension Master</h5>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Programs, States, Sources, EMP</span>
-                    </div>
-                  </div>
-                  {mastersStatus?.has_dimension_master ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                      <Check className="w-3 h-3 text-emerald-600" /> Active
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                      <AlertTriangle className="w-3 h-3 text-amber-600" /> Missing
-                    </span>
-                  )}
-                </div>
-
-                {mastersStatus?.has_dimension_master && mastersStatus.dimension_master ? (
-                  <div className="space-y-2.5 mt-3 text-xs">
-                    <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileSpreadsheet className="w-4 h-4 text-purple-500 shrink-0" />
-                        <span className="font-bold text-slate-900 dark:text-white truncate" title={mastersStatus.dimension_master.original_filename || mastersStatus.dimension_master.dataset_name}>
-                          {mastersStatus.dimension_master.original_filename || mastersStatus.dimension_master.dataset_name}
-                        </span>
-                      </div>
-                      <span className="px-2 py-0.5 text-[11px] font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 rounded-lg shrink-0">
-                        {(mastersStatus.dimension_master.row_count ?? 0).toLocaleString()} rows
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1.5 font-medium">
-                        <span>Detected Sheets ({mastersStatus.dimension_master.sheet_count || mastersStatus.dimension_master.sheets?.length || 0})</span>
-                        <span className="text-[10px] text-purple-600 dark:text-purple-400 font-semibold">Multi-Sheet Master</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {mastersStatus.dimension_master.sheets && mastersStatus.dimension_master.sheets.length > 0 ? (
-                          mastersStatus.dimension_master.sheets.map((sheet) => (
-                            <span
-                              key={sheet}
-                              className="px-2 py-0.5 text-[10px] font-bold rounded-lg bg-purple-50 dark:bg-purple-950/60 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-800"
-                            >
-                              {sheet}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[10px] text-slate-400 italic">No sheet breakdown recorded</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleTypeSelect("dimension");
-                          setCurrentStep(2);
-                        }}
-                        className="text-[11px] font-bold text-purple-600 dark:text-purple-400 hover:text-purple-700 dark:hover:text-purple-300 flex items-center gap-1 transition-all cursor-pointer"
-                      >
-                        Replace Dimension Master <ArrowRight className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                      No active Dimension Master. Required for mapping raw records to Programs, States, Sources, and Counsellors.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleTypeSelect("dimension");
-                        setCurrentStep(2);
-                      }}
-                      className="w-full py-2 px-3 rounded-xl bg-purple-600 hover:bg-purple-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5" /> Upload Dimension Master
-                    </button>
-                  </div>
-                )}
-              </div>
-
-              {/* Card 2: Target Master */}
-              <div
-                className={`p-4 rounded-2xl border transition-all ${
-                  mastersStatus?.has_target_master
-                    ? "bg-white dark:bg-slate-800/90 border-amber-200 dark:border-amber-800/60 shadow-xs"
-                    : "bg-amber-50/40 dark:bg-amber-950/20 border-2 border-dashed border-amber-300 dark:border-amber-700/60"
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2 mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="p-2 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 dark:text-amber-300">
-                      <Target className="w-4 h-4" />
-                    </div>
-                    <div>
-                      <h5 className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">Target Master</h5>
-                      <span className="text-[10px] text-slate-500 dark:text-slate-400">Admissions, Leads, CUCET Goals</span>
-                    </div>
-                  </div>
-                  {mastersStatus?.has_target_master ? (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
-                      <Check className="w-3 h-3 text-emerald-600" /> Active
-                    </span>
-                  ) : (
-                    <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
-                      <AlertTriangle className="w-3 h-3 text-amber-600" /> Missing
-                    </span>
-                  )}
-                </div>
-
-                {mastersStatus?.has_target_master && mastersStatus.target_master ? (
-                  <div className="space-y-2.5 mt-3 text-xs">
-                    <div className="flex items-center justify-between gap-2 bg-slate-50 dark:bg-slate-900/60 p-2.5 rounded-xl border border-slate-200/60 dark:border-slate-800">
-                      <div className="flex items-center gap-2 min-w-0">
-                        <FileSpreadsheet className="w-4 h-4 text-amber-500 shrink-0" />
-                        <span className="font-bold text-slate-900 dark:text-white truncate" title={mastersStatus.target_master.original_filename || mastersStatus.target_master.dataset_name}>
-                          {mastersStatus.target_master.original_filename || mastersStatus.target_master.dataset_name}
-                        </span>
-                      </div>
-                      <span className="px-2 py-0.5 text-[11px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded-lg shrink-0">
-                        {(mastersStatus.target_master.row_count ?? 0).toLocaleString()} rows
-                      </span>
-                    </div>
-
-                    <div>
-                      <div className="flex items-center justify-between text-[11px] text-slate-500 dark:text-slate-400 mb-1.5 font-medium">
-                        <span>Detected Sheets ({mastersStatus.target_master.sheet_count || mastersStatus.target_master.sheets?.length || 0})</span>
-                        <span className="text-[10px] text-amber-600 dark:text-amber-400 font-semibold">Multi-Sheet Master</span>
-                      </div>
-                      <div className="flex flex-wrap gap-1.5">
-                        {mastersStatus.target_master.sheets && mastersStatus.target_master.sheets.length > 0 ? (
-                          mastersStatus.target_master.sheets.map((sheet) => (
-                            <span
-                              key={sheet}
-                              className="px-2 py-0.5 text-[10px] font-bold rounded-lg bg-amber-50 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800"
-                            >
-                              {sheet}
-                            </span>
-                          ))
-                        ) : (
-                          <span className="text-[10px] text-slate-400 italic">No sheet breakdown recorded</span>
-                        )}
-                      </div>
-                    </div>
-
-                    <div className="pt-2 flex justify-end">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          handleTypeSelect("target");
-                          setCurrentStep(2);
-                        }}
-                        className="text-[11px] font-bold text-amber-600 dark:text-amber-400 hover:text-amber-700 dark:hover:text-amber-300 flex items-center gap-1 transition-all cursor-pointer"
-                      >
-                        Replace Target Master <ArrowRight className="w-3 h-3" />
-                      </button>
-                    </div>
-                  </div>
-                ) : (
-                  <div className="mt-3 space-y-3">
-                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-                      No active Target Master. Required for comparing admissions, leads, and CUCET against performance goals.
-                    </p>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        handleTypeSelect("target");
-                        setCurrentStep(2);
-                      }}
-                      className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center justify-center gap-1.5 transition-all shadow-xs cursor-pointer"
-                    >
-                      <Upload className="w-3.5 h-3.5" /> Upload Target Master
-                    </button>
-                  </div>
-                )}
-              </div>
-            </div>
-
-            {/* Prerequisite Notice / Alert */}
-            {prerequisiteNotice && (
-              <div className="mt-4 p-3.5 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-2xl text-xs flex items-center justify-between shadow-xs">
-                <div className="flex items-center gap-2.5">
-                  <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
-                  <span className="font-semibold">{prerequisiteNotice}</span>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setPrerequisiteNotice(null)}
-                  className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 cursor-pointer p-1"
-                >
-                  <X className="w-4 h-4" />
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         {/* STEP 1: SELECT WORKBOOK TYPE */}
         {currentStep === 1 && (
           <div className="space-y-6">
-            <div className="text-center max-w-xl mx-auto mb-8">
-              <h3 className="text-lg font-bold">Step 1: Choose Workbook Purpose</h3>
+            {/* MASTER PREREQUISITES & SYSTEM READINESS BAR */}
+            <div className="p-4 bg-slate-50/80 dark:bg-slate-850/60 rounded-2xl border border-slate-200/90 dark:border-slate-800 shadow-2xs">
+              <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3">
+                <div className="flex items-center gap-3">
+                  <div className="p-2 rounded-xl bg-indigo-100 dark:bg-indigo-900/40 text-indigo-600 dark:text-indigo-400">
+                    <ShieldCheck className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-xs font-black text-slate-900 dark:text-white uppercase tracking-wider">
+                        System Readiness
+                      </span>
+                      {isLoadingMasters ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-semibold bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300 animate-pulse">
+                          <Loader2 className="w-3 h-3 animate-spin" /> Verifying...
+                        </span>
+                      ) : mastersStatus?.can_upload_raw ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                          <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                          All Masters Active — RAW Ingestion Unlocked
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[11px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                          <Lock className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                          Prerequisites Incomplete — RAW Ingestion Locked
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                      Dimension Master and Target Master provide schema mapping, normalization references (Program, State, Source, EMP), and target benchmarks.
+                    </p>
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => fetchMasters()}
+                  disabled={isLoadingMasters}
+                  className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-xl text-[11px] font-bold text-slate-700 dark:text-slate-300 bg-white dark:bg-slate-800 hover:bg-slate-100 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-700 transition-all shadow-2xs shrink-0 cursor-pointer disabled:opacity-50"
+                >
+                  <RefreshCw className={`w-3.5 h-3.5 ${isLoadingMasters ? "animate-spin text-indigo-500" : ""}`} />
+                  <span>Refresh Status</span>
+                </button>
+              </div>
+
+              {/* Prerequisite Notice / Alert */}
+              {prerequisiteNotice && (
+                <div className="mt-3 p-3 bg-amber-50 dark:bg-amber-950/50 border border-amber-300 dark:border-amber-800 text-amber-800 dark:text-amber-200 rounded-xl text-xs flex items-center justify-between shadow-2xs">
+                  <div className="flex items-center gap-2">
+                    <Lock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="font-semibold">{prerequisiteNotice}</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setPrerequisiteNotice(null)}
+                    className="text-amber-600 hover:text-amber-800 dark:text-amber-400 dark:hover:text-amber-200 cursor-pointer p-1"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                </div>
+              )}
+            </div>
+
+            <div className="text-center max-w-xl mx-auto mb-4">
+              <h3 className="text-lg font-bold text-slate-900 dark:text-white">Step 1: Choose Workbook Purpose</h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
                 Select the explicit role of the file you are uploading. Multi-sheet Excel files will be discovered automatically.
               </p>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
-              {/* Raw Data Card */}
+              {/* 1. RAW CRM Data Card */}
               <div
                 onClick={() => {
                   if (mastersStatus && !mastersStatus.can_upload_raw) {
@@ -868,124 +675,242 @@ export const UploadWizard: React.FC<UploadWizardProps> = ({ onComplete, isDark =
                   }
                   handleTypeSelect("raw_data");
                 }}
-                className={`p-6 rounded-2xl border-2 transition-all flex flex-col justify-between ${
+                className={`p-5 rounded-2xl border-2 transition-all flex flex-col justify-between ${
                   mastersStatus && !mastersStatus.can_upload_raw
-                    ? "opacity-75 border-slate-300 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 cursor-not-allowed"
+                    ? "opacity-75 border-slate-200 dark:border-slate-800 bg-slate-50/60 dark:bg-slate-900/40 cursor-not-allowed"
                     : selectedType === "raw_data"
-                    ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20 cursor-pointer hover:shadow-lg"
-                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 cursor-pointer hover:shadow-lg"
+                    ? "border-blue-600 bg-blue-50/40 dark:bg-blue-950/20 shadow-lg ring-2 ring-blue-500/20 cursor-pointer"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 cursor-pointer hover:border-blue-300 hover:shadow-md"
                 }`}
               >
                 <div>
-                  <div className="flex items-center justify-between mb-4">
-                    <div className={`w-12 h-12 rounded-xl flex items-center justify-center ${
+                  <div className="flex items-center justify-between mb-3">
+                    <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${
                       mastersStatus && !mastersStatus.can_upload_raw
                         ? "bg-slate-200 dark:bg-slate-800 text-slate-500"
                         : "bg-blue-100 dark:bg-blue-900/40 text-blue-600"
                     }`}>
-                      <Database className="w-6 h-6" />
+                      <Database className="w-5 h-5" />
                     </div>
-                    {mastersStatus && !mastersStatus.can_upload_raw ? (
-                      <span className="px-2.5 py-1 text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded-full flex items-center gap-1">
-                        <Lock className="w-3 h-3" /> Locked
-                      </span>
-                    ) : (
+                    <div className="flex items-center gap-1.5">
                       <span className="px-2 py-0.5 text-[10px] font-semibold bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300 rounded-full">
                         Coexistence
                       </span>
-                    )}
+                      {mastersStatus && !mastersStatus.can_upload_raw ? (
+                        <span className="px-2 py-0.5 text-[10px] font-bold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800 rounded-full flex items-center gap-0.5">
+                          <Lock className="w-2.5 h-2.5" /> Locked
+                        </span>
+                      ) : (
+                        <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 rounded-full flex items-center gap-0.5">
+                          <Check className="w-2.5 h-2.5" /> Ready
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold text-base">RAW CRM Data</h4>
-                  </div>
-                  <p className="text-xs font-semibold text-indigo-600 dark:text-indigo-400 mb-1.5">
-                    RAW CRM — Multiple datasets allowed by Academic Year + Campus
+
+                  <h4 className="font-bold text-base text-slate-900 dark:text-white">RAW CRM Data</h4>
+                  <p className="text-xs font-semibold text-blue-600 dark:text-blue-400 mb-2">
+                    Multiple datasets by Academic Year + Campus
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
+                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-3">
                     CRM Lead dumps, monthly or cumulative enquiries. Distinct datasets coexist across academic years and campuses. Replacement occurs only when both year and campus match.
                   </p>
+
                   {mastersStatus && !mastersStatus.can_upload_raw && (
-                    <div className="mt-3 p-2 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-[11px] text-amber-800 dark:text-amber-200 font-semibold flex items-center gap-1.5">
+                    <div className="p-2.5 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 rounded-xl text-[11px] text-amber-800 dark:text-amber-200 font-semibold flex items-center gap-1.5">
                       <Lock className="w-3.5 h-3.5 shrink-0 text-amber-600" />
-                      <span>Requires Dimension & Target Masters</span>
+                      <span>Requires Dimension & Target Masters active</span>
                     </div>
                   )}
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-200/40 dark:border-slate-800 flex items-center justify-between text-xs font-semibold">
+
+                <div className="mt-4 pt-3.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold">
                   {mastersStatus && !mastersStatus.can_upload_raw ? (
                     <span className="text-amber-600 dark:text-amber-400 flex items-center gap-1">
-                      <Lock className="w-3.5 h-3.5" /> Locked (Upload Masters)
+                      <Lock className="w-3.5 h-3.5" /> Locked
                     </span>
                   ) : (
                     <>
-                      <span className="text-indigo-600">Select RAW CRM</span>
-                      <ArrowRight className="w-4 h-4 text-indigo-600" />
+                      <span className={selectedType === "raw_data" ? "text-blue-600 dark:text-blue-400" : "text-slate-600 dark:text-slate-300"}>
+                        {selectedType === "raw_data" ? "Selected for Upload" : "Select RAW CRM"}
+                      </span>
+                      <ArrowRight className="w-4 h-4 text-blue-600" />
                     </>
                   )}
                 </div>
               </div>
 
-              {/* Dimension Workbook Card */}
+              {/* 2. Dimension Master Card */}
               <div
                 onClick={() => handleTypeSelect("dimension")}
-                className={`cursor-pointer p-6 rounded-2xl border-2 transition-all hover:shadow-lg flex flex-col justify-between ${
+                className={`p-5 rounded-2xl border-2 transition-all flex flex-col justify-between cursor-pointer ${
                   selectedType === "dimension"
-                    ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20"
-                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40"
+                    ? "border-purple-600 bg-purple-50/40 dark:bg-purple-950/20 shadow-lg ring-2 ring-purple-500/20"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 hover:border-purple-300 hover:shadow-md"
                 }`}
               >
                 <div>
-                  <div className="w-12 h-12 rounded-xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 flex items-center justify-center mb-4">
-                    <Layers className="w-6 h-6" />
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-11 h-11 rounded-xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 flex items-center justify-center">
+                      <Layers className="w-5 h-5" />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 rounded-full">
+                        Single Master
+                      </span>
+                      {mastersStatus?.has_dimension_master ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                          <Check className="w-3 h-3 text-emerald-600" /> Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" /> Missing
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold text-base">Dimension Master</h4>
-                    <span className="px-2 py-0.5 text-[10px] font-semibold bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 rounded-full">
-                      Single Master
-                    </span>
-                  </div>
-                  <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-1.5">
-                    Dimension Master — One active reference file (multi-sheet supported)
+
+                  <h4 className="font-bold text-base text-slate-900 dark:text-white">Dimension Master</h4>
+                  <p className="text-xs font-semibold text-purple-600 dark:text-purple-400 mb-2">
+                    Programs, States, Sources, EMP
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Strictly ONE active reference master file across the platform (Program, State, Source, EMP, Campus). A newly validated upload supersedes the previous master upon approval.
-                  </p>
+
+                  {mastersStatus?.has_dimension_master && mastersStatus.dimension_master ? (
+                    <div className="space-y-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-purple-500 shrink-0" />
+                          <span className="font-bold text-[11px] text-slate-900 dark:text-white truncate" title={mastersStatus.dimension_master.original_filename || mastersStatus.dimension_master.dataset_name}>
+                            {mastersStatus.dimension_master.original_filename || mastersStatus.dimension_master.dataset_name}
+                          </span>
+                        </div>
+                        <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold text-purple-700 dark:text-purple-300 bg-purple-100 dark:bg-purple-900/40 rounded-md shrink-0">
+                          {(mastersStatus.dimension_master.row_count ?? 0).toLocaleString()} rows
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1 font-medium">
+                          <span>Detected Sheets ({mastersStatus.dimension_master.sheet_count || mastersStatus.dimension_master.sheets?.length || 0})</span>
+                          <span className="text-purple-600 dark:text-purple-400 font-semibold">Multi-Sheet Master</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {mastersStatus.dimension_master.sheets && mastersStatus.dimension_master.sheets.length > 0 ? (
+                            mastersStatus.dimension_master.sheets.map((sheet) => (
+                              <span
+                                key={sheet}
+                                className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-purple-100/70 dark:bg-purple-950/80 text-purple-700 dark:text-purple-300 border border-purple-200/80 dark:border-purple-800"
+                              >
+                                {sheet}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">No sheet breakdown recorded</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-3">
+                      No active Dimension Master. Required for mapping raw records to Programs, States, Sources, and Counsellors.
+                    </p>
+                  )}
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-200/40 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-indigo-600">
-                  <span>Select Master Lookup</span>
-                  <ArrowRight className="w-4 h-4" />
+
+                <div className="mt-4 pt-3.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold">
+                  <span className={selectedType === "dimension" ? "text-purple-600 dark:text-purple-400" : "text-slate-600 dark:text-slate-300"}>
+                    {selectedType === "dimension"
+                      ? (mastersStatus?.has_dimension_master ? "Selected: Replace Dimension Master" : "Selected: Upload Dimension Master")
+                      : (mastersStatus?.has_dimension_master ? "Replace Dimension Master" : "Upload Dimension Master")}
+                  </span>
+                  <ArrowRight className="w-4 h-4 text-purple-600" />
                 </div>
               </div>
 
-              {/* Target Workbook Card */}
+              {/* 3. Target Master Card */}
               <div
                 onClick={() => handleTypeSelect("target")}
-                className={`cursor-pointer p-6 rounded-2xl border-2 transition-all hover:shadow-lg flex flex-col justify-between ${
+                className={`p-5 rounded-2xl border-2 transition-all flex flex-col justify-between cursor-pointer ${
                   selectedType === "target"
-                    ? "border-indigo-600 bg-indigo-50/40 dark:bg-indigo-950/20"
-                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40"
+                    ? "border-amber-600 bg-amber-50/40 dark:bg-amber-950/20 shadow-lg ring-2 ring-amber-500/20"
+                    : "border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-800/40 hover:border-amber-300 hover:shadow-md"
                 }`}
               >
                 <div>
-                  <div className="w-12 h-12 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 flex items-center justify-center mb-4">
-                    <Target className="w-6 h-6" />
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="w-11 h-11 rounded-xl bg-amber-100 dark:bg-amber-900/40 text-amber-600 flex items-center justify-center">
+                      <Target className="w-5 h-5" />
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 rounded-full">
+                        Single Master
+                      </span>
+                      {mastersStatus?.has_target_master ? (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                          <Check className="w-3 h-3 text-emerald-600" /> Active
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-extrabold bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-800">
+                          <AlertTriangle className="w-3 h-3 text-amber-600" /> Missing
+                        </span>
+                      )}
+                    </div>
                   </div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <h4 className="font-bold text-base">Target Master</h4>
-                    <span className="px-2 py-0.5 text-[10px] font-semibold bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 rounded-full">
-                      Single Master
-                    </span>
-                  </div>
-                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-1.5">
-                    Target Master — One active master file (multi-sheet supported: Admission, Lead, CUCET targets)
+
+                  <h4 className="font-bold text-base text-slate-900 dark:text-white">Target Master</h4>
+                  <p className="text-xs font-semibold text-amber-600 dark:text-amber-400 mb-2">
+                    Admissions, Leads, CUCET Goals
                   </p>
-                  <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">
-                    Strictly ONE active Target master file. Targets are matched at the row level by Date, Month, Campus, and Target For. A newly validated upload supersedes the previous master upon approval.
-                  </p>
+
+                  {mastersStatus?.has_target_master && mastersStatus.target_master ? (
+                    <div className="space-y-2 bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/70 dark:border-slate-800">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <FileSpreadsheet className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                          <span className="font-bold text-[11px] text-slate-900 dark:text-white truncate" title={mastersStatus.target_master.original_filename || mastersStatus.target_master.dataset_name}>
+                            {mastersStatus.target_master.original_filename || mastersStatus.target_master.dataset_name}
+                          </span>
+                        </div>
+                        <span className="px-1.5 py-0.5 text-[10px] font-mono font-bold text-amber-700 dark:text-amber-300 bg-amber-100 dark:bg-amber-900/40 rounded-md shrink-0">
+                          {(mastersStatus.target_master.row_count ?? 0).toLocaleString()} rows
+                        </span>
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between text-[10px] text-slate-500 dark:text-slate-400 mb-1 font-medium">
+                          <span>Detected Sheets ({mastersStatus.target_master.sheet_count || mastersStatus.target_master.sheets?.length || 0})</span>
+                          <span className="text-amber-600 dark:text-amber-400 font-semibold">Multi-Sheet Master</span>
+                        </div>
+                        <div className="flex flex-wrap gap-1">
+                          {mastersStatus.target_master.sheets && mastersStatus.target_master.sheets.length > 0 ? (
+                            mastersStatus.target_master.sheets.map((sheet) => (
+                              <span
+                                key={sheet}
+                                className="px-1.5 py-0.5 text-[9px] font-bold rounded bg-amber-100/70 dark:bg-amber-950/80 text-amber-700 dark:text-amber-300 border border-amber-200/80 dark:border-amber-800"
+                              >
+                                {sheet}
+                              </span>
+                            ))
+                          ) : (
+                            <span className="text-[10px] text-slate-400 italic">No sheet breakdown recorded</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed mb-3">
+                      No active Target Master. Required for comparing admissions, leads, and CUCET against performance goals.
+                    </p>
+                  )}
                 </div>
-                <div className="mt-4 pt-4 border-t border-slate-200/40 dark:border-slate-800 flex items-center justify-between text-xs font-semibold text-indigo-600">
-                  <span>Select Target Master</span>
-                  <ArrowRight className="w-4 h-4" />
+
+                <div className="mt-4 pt-3.5 border-t border-slate-200/60 dark:border-slate-800 flex items-center justify-between text-xs font-bold">
+                  <span className={selectedType === "target" ? "text-amber-600 dark:text-amber-400" : "text-slate-600 dark:text-slate-300"}>
+                    {selectedType === "target"
+                      ? (mastersStatus?.has_target_master ? "Selected: Replace Target Master" : "Selected: Upload Target Master")
+                      : (mastersStatus?.has_target_master ? "Replace Target Master" : "Upload Target Master")}
+                  </span>
+                  <ArrowRight className="w-4 h-4 text-amber-600" />
                 </div>
               </div>
             </div>
