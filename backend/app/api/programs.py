@@ -143,7 +143,8 @@ def get_program_children(
 
 @router.get("/insights")
 def get_program_insights_endpoint(
-    program_group: str = Query(..., description="Program group name (e.g. CSE, MBA, B.Sc.)"),
+    program_group: Optional[str] = Query(None, description="Program group name (e.g. CSE, MBA, B.Sc.)"),
+    program: Optional[str] = Query(None, description="Alias for program_group"),
     academic_year: Optional[int] = Query(None, description="Academic year (CY)"),
     campus: Optional[str] = Query(None, description="Campus filter"),
     from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
@@ -157,10 +158,16 @@ def get_program_insights_endpoint(
     - Top Sources Performance (Contributing Drivers vs Declining)
     - Actionable AI Takeaways & Recommendations
     """
+    target_group = (program_group or program or "").strip()
+    if not target_group:
+        raise HTTPException(
+            status_code=400,
+            detail="Parameter 'program_group' or 'program' is required.",
+        )
     try:
         data = get_program_insights(
             db=db,
-            program_group=program_group,
+            program_group=target_group,
             academic_year=academic_year,
             campus=campus,
             from_date=from_date,
@@ -170,7 +177,7 @@ def get_program_insights_endpoint(
     except Exception as exc:
         raise HTTPException(
             status_code=500,
-            detail=f"Failed to generate program insights for '{program_group}': {str(exc)}",
+            detail=f"Failed to generate program insights for '{target_group}': {str(exc)}",
         )
 
 

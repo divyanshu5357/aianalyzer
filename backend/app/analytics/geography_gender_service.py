@@ -589,42 +589,48 @@ def get_international_admissions(
     foreign_keys_sql = ", ".join(f"'{k}'" for k in foreign_terms)
 
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
-    date_filter_clause = ""
-    params: Dict[str, Any] = {"ds_id": dataset_id}
+    where_clauses = ["d.academic_year = :year"]
+    params: Dict[str, Any] = {"year": year}
+
+    if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
+        where_clauses.append("LOWER(d.campus_name) = :campus")
+        params["campus"] = campus.strip().lower()
+
+    if month and month.strip():
+        where_clauses.append("d.admission_month = :month")
+        params["month"] = month.strip()
+
     if has_date_filter:
-        date_filter_clause = " AND system.parse_date(NULLIF(TRIM(r.raw_data->>'CreatedOn'), '')) >= CAST(:from_date AS date) AND system.parse_date(NULLIF(TRIM(r.raw_data->>'CreatedOn'), '')) <= CAST(:to_date AS date)"
-        params["from_date"] = from_date.strip()
-        params["to_date"] = to_date.strip()
+        where_clauses.append("d.created_month >= :from_m AND d.created_month <= :to_m")
+        params["from_m"] = from_date.strip()[:7]
+        params["to_m"] = to_date.strip()[:7]
+
+    where_clauses.append(f"""(
+        LOWER(TRIM(COALESCE(d.state, ''))) IN ({foreign_keys_sql}, 'international')
+        OR LOWER(TRIM(COALESCE(d.city, ''))) IN ({foreign_keys_sql})
+    )""")
 
     sql = f"""
         SELECT 
-            LOWER(TRIM(COALESCE(r.raw_data->>'mx_State_New', r.raw_data->>'mx_State', ''))) AS raw_state,
-            LOWER(TRIM(COALESCE(r.raw_data->>'mx_City_New', r.raw_data->>'mx_City', ''))) AS raw_city,
-            r.raw_data->>'ProspectID' AS prospect_id,
-            CASE 
-                WHEN NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '') IS NOT NULL 
-                 AND LOWER(TRIM(r.raw_data->>'mx_AdmissionDate')) != 'null' 
-                THEN 1 ELSE 0 
-            END AS is_admitted
-        FROM staging.records r
-        WHERE r.dataset_id = :ds_id
-          AND (
-            LOWER(TRIM(COALESCE(r.raw_data->>'mx_State_New', r.raw_data->>'mx_State', ''))) IN ({foreign_keys_sql}, 'international')
-            OR LOWER(TRIM(COALESCE(r.raw_data->>'mx_City_New', r.raw_data->>'mx_City', ''))) IN ({foreign_keys_sql})
-          )
-          {date_filter_clause}
+            LOWER(TRIM(COALESCE(d.state, ''))) AS raw_state,
+            LOWER(TRIM(COALESCE(d.city, ''))) AS raw_city,
+            SUM(d.leads_cy) AS leads,
+            SUM(d.admission_cy) AS admissions
+        FROM analytics.dashboard_agg d
+        WHERE {" AND ".join(where_clauses)}
+        GROUP BY LOWER(TRIM(COALESCE(d.state, ''))), LOWER(TRIM(COALESCE(d.city, '')))
     """
     rows = db.execute(text(sql), params).fetchall()
 
     country_stats: Dict[str, Dict[str, Any]] = {}
-    admitted_prospects = set()
-    lead_prospects = set()
+    total_intl_admissions = 0
+    total_intl_leads = 0
 
     for r in rows:
         raw_st = str(r[0] or "")
         raw_ct = str(r[1] or "")
-        pid = str(r[2])
-        is_adm = int(r[3]) == 1
+        leads_cnt = int(r[2] or 0)
+        adm_cnt = int(r[3] or 0)
 
         matched_country = None
         # Check city first, then state
@@ -645,23 +651,19 @@ def get_international_admissions(
             country_stats[c_code] = {
                 "country_code": c_code,
                 "country_name": c_name,
-                "admitted_pids": set(),
-                "lead_pids": set(),
+                "admissions": 0,
+                "leads": 0,
             }
 
-        country_stats[c_code]["lead_pids"].add(pid)
-        lead_prospects.add(pid)
-        if is_adm:
-            country_stats[c_code]["admitted_pids"].add(pid)
-            admitted_prospects.add(pid)
-
-    total_intl_admissions = len(admitted_prospects)
-    total_intl_leads = len(lead_prospects)
+        country_stats[c_code]["leads"] += leads_cnt
+        country_stats[c_code]["admissions"] += adm_cnt
+        total_intl_leads += leads_cnt
+        total_intl_admissions += adm_cnt
 
     countries_list = []
     for c_code, data in country_stats.items():
-        adm_cnt = len(data["admitted_pids"])
-        lead_cnt = len(data["lead_pids"])
+        adm_cnt = data["admissions"]
+        lead_cnt = data["leads"]
         share = round((adm_cnt / total_intl_admissions * 100), 2) if total_intl_admissions > 0 else (
             round((lead_cnt / total_intl_leads * 100), 2) if total_intl_leads > 0 else 0.0
         )

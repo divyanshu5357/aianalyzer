@@ -17,12 +17,14 @@ from app.analytics.aggregate_service import get_py_date
 
 logger = logging.getLogger(__name__)
 
-# Server-side cache for top-level report (2 minute TTL)
+# Server-side cache for top-level report and insights (5 minute TTL)
 _PROGRAMS_TOP_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
-_PROGRAMS_CACHE_TTL = 120.0
+_PROGRAMS_INSIGHTS_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_PROGRAMS_CACHE_TTL = 300.0
 
 def clear_programs_cache():
     _PROGRAMS_TOP_CACHE.clear()
+    _PROGRAMS_INSIGHTS_CACHE.clear()
 
 # Trusted sorting columns to prevent SQL injection
 VALID_SORT_FIELDS = {
@@ -1150,6 +1152,14 @@ def get_program_insights(
         from app.analytics.period_helper import get_active_or_max_academic_year
         academic_year = get_active_or_max_academic_year(db)
 
+    # Server-side cache check
+    cache_key = f"{program_group}:{academic_year}:{campus}:{from_date}:{to_date}"
+    now_ts = time.time()
+    if cache_key in _PROGRAMS_INSIGHTS_CACHE:
+        c_time, c_data = _PROGRAMS_INSIGHTS_CACHE[cache_key]
+        if (now_ts - c_time) < _PROGRAMS_CACHE_TTL:
+            return c_data
+
     py_year = academic_year - 1
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
 
@@ -1457,4 +1467,6 @@ def get_program_insights(
         "top_drag_sources": bad_sources[:6],
         "takeaways": takeaways,
     }
+    _PROGRAMS_INSIGHTS_CACHE[cache_key] = (now_ts, resp)
+    return resp
 
