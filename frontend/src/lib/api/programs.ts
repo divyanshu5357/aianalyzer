@@ -12,7 +12,8 @@ import type {
 } from './types';
 
 export async function getProgramReport(
-  params: ProgramReportParams = {}
+  params: ProgramReportParams = {},
+  options?: RequestInit
 ): Promise<ProgramReportResponse> {
   const query = new URLSearchParams();
   if (params.academic_year) query.set('academic_year', String(params.academic_year));
@@ -23,13 +24,15 @@ export async function getProgramReport(
   if (params.sort_order) query.set('sort_order', params.sort_order);
 
   const res = await apiRequest<{ success: boolean; data: ProgramReportResponse }>(
-    `/api/programs/report?${query.toString()}`
+    `/api/programs/report?${query.toString()}`,
+    options
   );
   return res.data;
 }
 
 export async function getProgramHierarchyChildren(
-  params: ProgramHierarchyParams
+  params: ProgramHierarchyParams,
+  options?: RequestInit
 ): Promise<ProgramHierarchyResponse> {
   const query = new URLSearchParams();
   query.set('level', params.level);
@@ -49,7 +52,8 @@ export async function getProgramHierarchyChildren(
   if (params.sort_order) query.set('sort_order', params.sort_order);
 
   const res = await apiRequest<{ success: boolean; data: ProgramHierarchyResponse }>(
-    `/api/programs/report/children?${query.toString()}`
+    `/api/programs/report/children?${query.toString()}`,
+    options
   );
   return res.data;
 }

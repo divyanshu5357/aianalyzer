@@ -7,6 +7,7 @@ follow-up exception tracking, and multi-format report exports (CSV/XLSX).
 import io
 import csv
 import re
+import time
 import logging
 from datetime import datetime, date
 from typing import Any, Dict, List, Optional
@@ -14,6 +15,13 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
+
+_COUNSELLORS_LIST_CACHE: dict[str, tuple[float, dict]] = {}
+_COUNSELLORS_LIST_TTL = 300.0  # 5 minutes
+
+
+def clear_counsellors_cache():
+    _COUNSELLORS_LIST_CACHE.clear()
 
 
 def extract_employee_id(owner_name: Optional[str]) -> str:
@@ -288,6 +296,13 @@ def get_counsellors_list(
     Uses analytics.dashboard_agg when available for sub-second performance, with
     automatic fallback to staging.records.
     """
+    cache_key = f"{academic_year or 'all'}:{campus or 'all'}:{search or ''}"
+    now = time.time()
+    if cache_key in _COUNSELLORS_LIST_CACHE:
+        ts, cached_val = _COUNSELLORS_LIST_CACHE[cache_key]
+        if now - ts < _COUNSELLORS_LIST_TTL:
+            return cached_val
+
     has_agg = db.execute(text("SELECT 1 FROM analytics.dashboard_agg LIMIT 1")).scalar() is not None
 
     if has_agg:
@@ -377,7 +392,7 @@ def get_counsellors_list(
 
     overall_conv = round((total_admissions / total_leads * 100), 2) if total_leads > 0 else 0.0
 
-    return {
+    result = {
         "status": "success",
         "total_counsellors": len(counsellors_list),
         "summary": {
@@ -394,6 +409,8 @@ def get_counsellors_list(
         },
         "counsellors": counsellors_list,
     }
+    _COUNSELLORS_LIST_CACHE[cache_key] = (now, result)
+    return result
 
 
 def get_counsellor_detail_report(

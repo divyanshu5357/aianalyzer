@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getProgramHierarchyChildren } from '@/lib/api/programs';
+import dashboardCache from '@/lib/cache/dashboardCache';
 import type {
   ProgramReportRow,
   ProgramHierarchyParams,
@@ -257,10 +258,11 @@ export default function ProgramReportTable({
       return;
     }
 
-    // Check cache first
+    // Check cache first (both local ref and persistent shared cache)
     const cacheKey = `${buildScopeKey(filters)}|${nodeId}`;
-    if (childCache.current.has(cacheKey)) {
-      const cached = childCache.current.get(cacheKey)!;
+    const cached = childCache.current.get(cacheKey) || dashboardCache.getTreeChildren<ProgramReportRow>(cacheKey);
+    if (cached) {
+      childCache.current.set(cacheKey, cached);
       setNodes((prev) => {
         const next = new Map(prev);
         const n = next.get(nodeId);
@@ -288,6 +290,7 @@ export default function ProgramReportTable({
       const resp = await getProgramHierarchyChildren(params);
       const children = resp.rows;
       childCache.current.set(cacheKey, children);
+      dashboardCache.setTreeChildren(cacheKey, children);
       setNodes((prev) => {
         const next = new Map(prev);
         const n = next.get(nodeId);
@@ -553,9 +556,26 @@ export default function ProgramReportTable({
 
   if (loading) {
     return (
-      <div className="flex flex-col items-center justify-center py-24 gap-4">
-        <div className="w-10 h-10 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-        <p className="text-sm text-gray-400">Loading program report…</p>
+      <div
+        className={`relative overflow-auto rounded-xl border ${isDark ? 'border-white/10 bg-[#0d0f1a]/40' : 'border-slate-200 bg-white'}`}
+        style={{ maxHeight: 'calc(100vh - 190px)' }}
+      >
+        <div className="p-4 space-y-3 animate-pulse">
+          <div className="flex gap-4 border-b pb-3 border-white/5">
+            <div className={`h-4 w-48 rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
+            <div className={`h-4 w-24 rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
+            <div className={`h-4 w-24 rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
+            <div className={`h-4 w-24 rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} />
+          </div>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="flex gap-4 py-2.5 border-b border-white/5">
+              <div className={`h-3.5 rounded ${isDark ? 'bg-white/5' : 'bg-slate-100'}`} style={{ width: `${140 + (i % 4) * 35}px` }} />
+              <div className={`h-3.5 w-16 rounded ml-auto ${isDark ? 'bg-white/5' : 'bg-slate-100'}`} />
+              <div className={`h-3.5 w-16 rounded ${isDark ? 'bg-white/5' : 'bg-slate-100'}`} />
+              <div className={`h-3.5 w-20 rounded ${isDark ? 'bg-white/5' : 'bg-slate-100'}`} />
+            </div>
+          ))}
+        </div>
       </div>
     );
   }

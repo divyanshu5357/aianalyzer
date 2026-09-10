@@ -2,6 +2,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getStateHierarchyChildren } from '@/lib/api/states';
+import dashboardCache from '@/lib/cache/dashboardCache';
 import type {
   StateReportRow,
   StateHierarchyParams,
@@ -236,9 +237,11 @@ export default function StateReportTable({
       return;
     }
 
-    // Check memory cache first
-    const cached = childCache.current.get(row.id);
+    // Check memory cache first (both local ref and shared cache)
+    const cacheKey = `${buildScopeKey(filters)}|${row.id}`;
+    const cached = childCache.current.get(row.id) || dashboardCache.getTreeChildren<StateReportRow>(cacheKey);
     if (cached) {
+      childCache.current.set(row.id, cached);
       setNodes((prev) => {
         const next = new Map(prev);
         const existing = next.get(row.id) || { row, state: 'collapsed', children: [] };
@@ -267,6 +270,7 @@ export default function StateReportTable({
       const res = await getStateHierarchyChildren(params);
       const children = res.rows;
       childCache.current.set(row.id, children);
+      dashboardCache.setTreeChildren(cacheKey, children);
 
       setNodes((prev) => {
         const next = new Map(prev);
@@ -430,16 +434,18 @@ export default function StateReportTable({
           {/* Table Body */}
           <tbody className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-100'}`}>
             {loading ? (
-              <tr>
-                <td colSpan={19} className="py-20 text-center">
-                  <div className="flex flex-col items-center justify-center gap-3">
-                    <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-                    <span className={`text-xs ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
-                      Loading state analytics from PostgreSQL...
-                    </span>
-                  </div>
-                </td>
-              </tr>
+              Array.from({ length: 8 }).map((_, idx) => (
+                <tr key={idx} className="animate-pulse">
+                  <td className="px-3 py-3">
+                    <div className={`h-3.5 rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} style={{ width: `${90 + (idx % 4) * 25}px` }} />
+                  </td>
+                  {Array.from({ length: 18 }).map((_, cIdx) => (
+                    <td key={cIdx} className="px-3 py-3 text-right">
+                      <div className={`h-3 w-12 rounded ml-auto ${isDark ? 'bg-white/5' : 'bg-slate-100'}`} />
+                    </td>
+                  ))}
+                </tr>
+              ))
             ) : flatRows.length === 0 ? (
               <tr>
                 <td colSpan={19} className="py-16 text-center">

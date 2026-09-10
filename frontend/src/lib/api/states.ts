@@ -13,7 +13,8 @@ import type {
 } from './types';
 
 export async function getStateReport(
-  params: StateReportParams = {}
+  params: StateReportParams = {},
+  options?: RequestInit
 ): Promise<StateReportResponse> {
   const query = new URLSearchParams();
   if (params.academic_year) query.set('academic_year', String(params.academic_year));
@@ -26,13 +27,15 @@ export async function getStateReport(
   if (params.sort_order) query.set('sort_order', params.sort_order);
 
   const res = await apiRequest<{ success: boolean; data: StateReportResponse }>(
-    `/api/states/report?${query.toString()}`
+    `/api/states/report?${query.toString()}`,
+    options
   );
   return res.data;
 }
 
 export async function getStateHierarchyChildren(
-  params: StateHierarchyParams
+  params: StateHierarchyParams,
+  options?: RequestInit
 ): Promise<StateHierarchyResponse> {
   const query = new URLSearchParams();
   query.set('level', params.level);
@@ -48,7 +51,8 @@ export async function getStateHierarchyChildren(
   if (params.sort_order) query.set('sort_order', params.sort_order);
 
   const res = await apiRequest<{ success: boolean; data: StateHierarchyResponse }>(
-    `/api/states/report/children?${query.toString()}`
+    `/api/states/report/children?${query.toString()}`,
+    options
   );
   return res.data;
 }

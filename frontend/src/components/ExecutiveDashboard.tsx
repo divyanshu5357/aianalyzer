@@ -61,6 +61,7 @@ import {
   API_BASE_URL,
 } from "../lib/api";
 import dashboardCache from "../lib/cache/dashboardCache";
+import { prefetchAdjacentPages } from "../lib/cache/prefetch";
 import IndiaStateMap from "./maps/IndiaStateMap";
 
 export type NavTab = "dashboard" | "upload" | "analytics" | "sources" | "chat";
@@ -228,6 +229,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     if (cachedOv) {
       setOverview(cachedOv);
       setIsLoading(false);
+      prefetchAdjacentPages({
+        academic_year: currentFilters.years?.[0],
+        campus: currentFilters.campus,
+        from_date: currentFilters.from_date,
+        to_date: currentFilters.to_date,
+      });
     } else {
       setIsLoading(true);
     }
@@ -268,6 +275,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       .then((overviewData) => {
         setOverview(overviewData);
         setIsLoading(false);
+        prefetchAdjacentPages({
+          academic_year: currentFilters.years?.[0],
+          campus: currentFilters.campus,
+          from_date: currentFilters.from_date,
+          to_date: currentFilters.to_date,
+        });
       })
       .catch((err) => {
         if (err?.name !== "AbortError") {

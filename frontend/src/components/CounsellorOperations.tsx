@@ -33,7 +33,16 @@ import {
 import dashboardCache from "../lib/cache/dashboardCache";
 
 export const CounsellorOperations: React.FC = () => {
-  const { theme, activePeriodLabel, periods, availableCampuses, analyticalYears } = useApp();
+  const {
+    theme,
+    activePeriodLabel,
+    periods,
+    availableCampuses,
+    analyticalYears,
+    year: globalYear,
+    selectedCampus: globalCampus,
+    refreshTrigger,
+  } = useApp();
   const isDark = theme === "dark";
 
   // Level selection state: null = Level 1 (List), non-null = Level 2 (Detail Report)
@@ -41,6 +50,7 @@ export const CounsellorOperations: React.FC = () => {
 
   // Filter state
   const defaultYear = useMemo(() => {
+    if (globalYear) return String(globalYear);
     if (activePeriodLabel && /^\d{4}/.test(activePeriodLabel)) {
       return activePeriodLabel.slice(0, 4);
     }
@@ -48,11 +58,24 @@ export const CounsellorOperations: React.FC = () => {
       return String(periods[0].period_start_year || periods[0].period_end_year || new Date().getFullYear());
     }
     return String(new Date().getFullYear());
-  }, [activePeriodLabel, periods]);
+  }, [globalYear, activePeriodLabel, periods]);
 
   const [selectedYear, setSelectedYear] = useState<string>(defaultYear);
-  const [selectedCampus, setSelectedCampus] = useState<string>("all");
+  const [selectedCampus, setSelectedCampus] = useState<string>(globalCampus || "all");
   const [searchQuery, setSearchQuery] = useState<string>("");
+
+  // Keep in sync with global scope when user changes it on header
+  useEffect(() => {
+    if (globalYear) {
+      setSelectedYear(String(globalYear));
+    }
+  }, [globalYear]);
+
+  useEffect(() => {
+    if (globalCampus) {
+      setSelectedCampus(globalCampus);
+    }
+  }, [globalCampus]);
 
   const initialListKey = dashboardCache.buildKey("counsellors:list", {
     academic_year: selectedYear,
@@ -90,40 +113,41 @@ export const CounsellorOperations: React.FC = () => {
   // ----------------------------------------------------
   // Level 1: Fetch Counsellors Summary List
   // ----------------------------------------------------
-  const fetchCounsellorsList = useCallback(async () => {
+  const fetchCounsellorsList = useCallback(() => {
     const key = dashboardCache.buildKey("counsellors:list", {
       academic_year: selectedYear,
       campus: selectedCampus,
       search: searchQuery,
     });
-    const cached = dashboardCache.peek<any>(key);
+
+    const cached = dashboardCache.swr(
+      key,
+      () =>
+        getCounsellorsList({
+          academic_year: selectedYear,
+          campus: selectedCampus,
+          search: searchQuery,
+        }),
+      (res) => {
+        setListData(res);
+        setIsLoadingList(false);
+      },
+      { forceRefresh: refreshTrigger > 0 }
+    );
+
     if (cached) {
       setListData(cached);
       setIsLoadingList(false);
     } else {
       setIsLoadingList(true);
     }
-
-    try {
-      const res = await dashboardCache.fetchWithCache(
-        key,
-        () =>
-          getCounsellorsList({
-            academic_year: selectedYear,
-            campus: selectedCampus,
-            search: searchQuery,
-          })
-      );
-      setListData(res);
-    } catch (err) {
-      console.error("Failed to fetch counsellors list:", err);
-    } finally {
-      setIsLoadingList(false);
-    }
-  }, [selectedYear, selectedCampus, searchQuery]);
+  }, [selectedYear, selectedCampus, searchQuery, refreshTrigger]);
 
   useEffect(() => {
     fetchCounsellorsList();
+    return () => {
+      dashboardCache.abortScope("counsellors:list");
+    };
   }, [fetchCounsellorsList]);
 
   // ----------------------------------------------------
@@ -803,9 +827,44 @@ export const CounsellorOperations: React.FC = () => {
           </span>
         </div>
 
-        {isLoadingList ? (
-          <div className="flex items-center justify-center py-16 gap-3 text-xs font-bold text-blue-500">
-            <Loader2 className="w-6 h-6 animate-spin" /> Loading counsellors directory...
+        {isLoadingList && !listData ? (
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border-collapse">
+              <thead>
+                <tr className={`border-b text-[11px] font-extrabold uppercase tracking-wider ${isDark ? "border-slate-800 text-slate-400" : "border-slate-200 text-slate-500"}`}>
+                  <th className="py-3.5 px-4">Counsellor</th>
+                  <th className="py-3.5 px-4">Owner ID</th>
+                  <th className="py-3.5 px-4 text-right">Leads Assigned</th>
+                  <th className="py-3.5 px-4 text-right">Total Admissions</th>
+                  <th className="py-3.5 px-4 text-right">Overall Conversion %</th>
+                  <th className="py-3.5 px-4 text-center">Action</th>
+                </tr>
+              </thead>
+              <tbody className={`divide-y ${isDark ? "divide-slate-800/60" : "divide-slate-200"}`}>
+                {Array.from({ length: 8 }).map((_, idx) => (
+                  <tr key={idx} className="animate-pulse">
+                    <td className="py-3.5 px-4">
+                      <div className={`h-4 rounded ${isDark ? "bg-white/10" : "bg-slate-200"}`} style={{ width: `${120 + (idx % 3) * 30}px` }} />
+                    </td>
+                    <td className="py-3.5 px-4">
+                      <div className={`h-4 w-16 rounded ${isDark ? "bg-white/5" : "bg-slate-100"}`} />
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className={`h-4 w-16 rounded ml-auto ${isDark ? "bg-white/5" : "bg-slate-100"}`} />
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className={`h-4 w-12 rounded ml-auto ${isDark ? "bg-white/5" : "bg-slate-100"}`} />
+                    </td>
+                    <td className="py-3.5 px-4 text-right">
+                      <div className={`h-4 w-14 rounded ml-auto ${isDark ? "bg-white/5" : "bg-slate-100"}`} />
+                    </td>
+                    <td className="py-3.5 px-4 text-center">
+                      <div className={`h-6 w-20 rounded mx-auto ${isDark ? "bg-white/5" : "bg-slate-100"}`} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         ) : filteredCounsellors.length === 0 ? (
           <div className="py-16 text-center text-xs italic text-slate-500">

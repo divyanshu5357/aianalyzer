@@ -1,11 +1,19 @@
 import logging
 import re
+import time
 from typing import Any
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.analytics.scope_resolver import resolve_dataset_scope
 
 logger = logging.getLogger(__name__)
+
+_FILTER_OPTIONS_CACHE: dict[str, tuple[float, dict]] = {}
+_FILTER_CACHE_TTL = 300.0  # 5 minutes
+
+
+def clear_filter_options_cache():
+    _FILTER_OPTIONS_CACHE.clear()
 
 
 def _resolve_dimension_col(dimension: str) -> str:
@@ -73,6 +81,13 @@ def get_dashboard_filter_options(
     years: list[int] | str | None = None,
 ) -> dict[str, list[str]]:
     """Query dynamic, distinct non-null filter options available in resolved scope."""
+    cache_key = f"{campus or 'all'}:{sorted(years) if isinstance(years, list) else years}"
+    now = time.time()
+    if cache_key in _FILTER_OPTIONS_CACHE:
+        ts, cached_val = _FILTER_OPTIONS_CACHE[cache_key]
+        if now - ts < _FILTER_CACHE_TTL:
+            return cached_val
+
     scope_data = resolve_dataset_scope(db, campus=campus, years=years)
     dataset_ids = scope_data["dataset_ids"]
 
@@ -104,7 +119,7 @@ def get_dashboard_filter_options(
         except Exception:
             avail_years = []
             avail_campuses = []
-        return {
+        res = {
             "academic_sessions": avail_years,
             "campuses": avail_campuses,
             "states": [],
@@ -112,6 +127,8 @@ def get_dashboard_filter_options(
             "programs": [],
             "lead_types": [],
         }
+        _FILTER_OPTIONS_CACHE[cache_key] = (now, res)
+        return res
 
     # Helper for distinct column values across dataset_ids
     def get_distinct(col: str) -> list[str]:
@@ -177,7 +194,7 @@ def get_dashboard_filter_options(
         "default_to": max_date,
     }
 
-    return {
+    result = {
         "academic_sessions": [str(y) for y in scope_data["scope"]["years"]],
         "campuses": get_distinct("campus_name"),
         "states": get_distinct("state"),
@@ -186,6 +203,8 @@ def get_dashboard_filter_options(
         "lead_types": get_distinct("lead_type"),
         "date_range": date_range,
     }
+    _FILTER_OPTIONS_CACHE[cache_key] = (now, result)
+    return result
 
 
 def check_dimension_exists(db: Session, dataset_ids: list[str], col: str) -> bool:
