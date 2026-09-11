@@ -396,13 +396,13 @@ export default function ProgramReportTable({
               <span className="w-5 h-5 flex-shrink-0" />
             )}
             <span
-              className="text-xs font-medium truncate flex-1"
+              className="text-xs font-medium truncate"
               style={{ color: getLevelTextColor(row.level) }}
               title={row.program}
             >
               {row.program}
             </span>
-            {/* Small Insight Trigger Icon */}
+            {/* Prominent Program AI Insights Button Badge */}
             {(row.level === 1 || row.level === 2) && (
               <button
                 type="button"
@@ -410,14 +410,15 @@ export default function ProgramReportTable({
                   e.stopPropagation();
                   setSelectedInsightProgram(row.program_group || row.program);
                 }}
-                className={`flex-shrink-0 ml-1.5 w-5 h-5 rounded flex items-center justify-center transition-all ${
+                className={`inline-flex items-center gap-1 px-1.5 py-0.5 ml-2 rounded text-[10px] font-semibold transition-all cursor-pointer border flex-shrink-0 shadow-xs hover:scale-105 ${
                   isDark
-                    ? 'text-indigo-400/80 hover:text-indigo-200 hover:bg-indigo-500/25'
-                    : 'text-indigo-600/80 hover:text-indigo-800 hover:bg-indigo-100/80'
+                    ? 'bg-indigo-950/90 text-indigo-300 border-indigo-700/80 hover:bg-indigo-900 hover:border-indigo-500'
+                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300'
                 }`}
                 title={`Click to view AI Insights & Root Cause Drivers for ${row.program}`}
               >
-                <span className="text-[11px] select-none">✨</span>
+                <span className="text-xs leading-none">✨</span>
+                <span className="text-[10px] font-medium leading-none">Insights</span>
               </button>
             )}
           </div>
