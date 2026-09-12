@@ -86,12 +86,16 @@ function MiniSparkline({ data, color = '#6366f1' }: { data: number[]; color?: st
 
 // ── Variance Badge ────────────────────────────────────────────────────────────
 
-function VarBadge({ value, pct }: { value: number; pct: number }) {
+function VarBadge({ value, pct, isDark = true }: { value: number; pct: number; isDark?: boolean }) {
   if (value === 0 && pct === 0) return <span className="text-gray-500 text-xs">—</span>;
   const isPos = value >= 0;
   const cls = isPos
-    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
-    : 'bg-red-500/15 text-red-400 border border-red-500/25';
+    ? isDark
+      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+    : isDark
+      ? 'bg-red-500/15 text-red-400 border border-red-500/25'
+      : 'bg-red-50 text-red-700 border border-red-200';
   const sign = isPos ? '+' : '';
   return (
     <span className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${cls}`}>
@@ -102,13 +106,17 @@ function VarBadge({ value, pct }: { value: number; pct: number }) {
 
 // ── Refund Cell ───────────────────────────────────────────────────────────────
 
-function RefundCell({ py, cy, diff }: { py: number; cy: number; diff: number }) {
+function RefundCell({ py, cy, diff, isDark = true }: { py: number; cy: number; diff: number; isDark?: boolean }) {
   const isPos = diff > 0;
   const sign = isPos ? '+' : '';
-  const cls = isPos ? 'text-red-400' : diff < 0 ? 'text-emerald-400' : 'text-gray-500';
+  const cls = isPos
+    ? (isDark ? 'text-red-400' : 'text-red-600')
+    : diff < 0
+      ? (isDark ? 'text-emerald-400' : 'text-emerald-600')
+      : (isDark ? 'text-gray-500' : 'text-slate-400');
   return (
     <span className="text-xs whitespace-nowrap">
-      <span className="text-gray-300">{py} → {cy}</span>{' '}
+      <span className={isDark ? 'text-gray-300' : 'text-slate-500'}>{py} → {cy}</span>{' '}
       <span className={cls}>({sign}{diff})</span>
     </span>
   );
@@ -129,7 +137,11 @@ function MobileProgramCard({
   const leadsUp = row.var_leads >= 0;
 
   // Card border-left color: green if admissions up, red if down
-  const borderColor = admUp ? '#10b981' : '#ef4444';
+  const greenColor = isDark ? '#10b981' : '#059669';
+  const redColor = isDark ? '#ef4444' : '#dc2626';
+  const borderColor = admUp ? greenColor : redColor;
+  const admColor = admUp ? greenColor : redColor;
+  const leadsColor = leadsUp ? greenColor : redColor;
 
   // Background tint
   const cardBg = isDark
@@ -148,7 +160,11 @@ function MobileProgramCard({
         padding: '12px 14px',
         boxShadow: isDark
           ? '0 1px 3px rgba(0,0,0,0.4)'
-          : '0 1px 3px rgba(0,0,0,0.08)',
+          : '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
+        border: isDark ? 'none' : '1px solid #e2e8f0',
+        borderLeftWidth: 3,
+        borderLeftStyle: 'solid' as const,
+        borderLeftColor: borderColor,
         position: 'relative',
         overflow: 'hidden',
       }}
@@ -179,9 +195,9 @@ function MobileProgramCard({
           fontWeight: 700,
           padding: '3px 8px',
           borderRadius: 6,
-          background: admUp ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
-          color: admUp ? '#10b981' : '#ef4444',
-          border: `1px solid ${admUp ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
+          background: admUp ? (isDark ? 'rgba(16,185,129,0.15)' : 'rgba(5,150,105,0.12)') : (isDark ? 'rgba(239,68,68,0.15)' : 'rgba(220,38,38,0.12)'),
+          color: admColor,
+          border: `1px solid ${admUp ? (isDark ? 'rgba(16,185,129,0.25)' : 'rgba(5,150,105,0.2)') : (isDark ? 'rgba(239,68,68,0.25)' : 'rgba(220,38,38,0.2)')}`,
           whiteSpace: 'nowrap',
           flexShrink: 0,
         }}>
@@ -194,7 +210,7 @@ function MobileProgramCard({
       <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
         {/* Leads */}
         <div style={{
-          background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+          background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
           borderRadius: 7,
           padding: '7px 8px',
           textAlign: 'center',
@@ -204,7 +220,7 @@ function MobileProgramCard({
           <div style={{
             fontSize: 10,
             fontWeight: 600,
-            color: leadsUp ? '#10b981' : '#ef4444',
+            color: leadsColor,
             marginTop: 1,
           }}>
             {leadsUp ? '↑' : '↓'} {leadsUp ? '+' : ''}{row.var_leads_pct.toFixed(0)}%
@@ -213,7 +229,7 @@ function MobileProgramCard({
 
         {/* CUCET */}
         <div style={{
-          background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+          background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
           borderRadius: 7,
           padding: '7px 8px',
           textAlign: 'center',
@@ -223,7 +239,7 @@ function MobileProgramCard({
           <div style={{
             fontSize: 10,
             fontWeight: 600,
-            color: row.var_cucet >= 0 ? '#10b981' : '#ef4444',
+            color: row.var_cucet >= 0 ? greenColor : redColor,
             marginTop: 1,
           }}>
             {row.var_cucet >= 0 ? '↑' : '↓'} {row.var_cucet >= 0 ? '+' : ''}{row.var_cucet_pct.toFixed(0)}%
@@ -239,11 +255,11 @@ function MobileProgramCard({
           border: `1px solid ${admUp ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
         }}>
           <div style={{ fontSize: 9, fontWeight: 500, color: isDark ? '#9ca3af' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Adm</div>
-          <div style={{ fontSize: 14, fontWeight: 700, color: admUp ? '#10b981' : '#ef4444' }}>{row.cy_adm.toLocaleString()}</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: admColor }}>{row.cy_adm.toLocaleString()}</div>
           <div style={{
             fontSize: 10,
             fontWeight: 600,
-            color: admUp ? '#10b981' : '#ef4444',
+            color: admColor,
             marginTop: 1,
           }}>
             {admUp ? '↑' : '↓'} {admUp ? '+' : ''}{row.var_adm_pct.toFixed(0)}%
@@ -262,11 +278,11 @@ function MobileProgramCard({
           </span>
           {row.refund_py_vs_cy && (
             <span style={{ fontSize: 10, color: isDark ? '#9ca3af' : '#6b7280' }}>
-              Ref <span style={{ fontWeight: 600, color: row.refund_py_vs_cy.diff > 0 ? '#ef4444' : '#10b981' }}>{row.refund_py_vs_cy.diff > 0 ? '+' : ''}{row.refund_py_vs_cy.diff}</span>
+              Ref <span style={{ fontWeight: 600, color: row.refund_py_vs_cy.diff > 0 ? redColor : greenColor }}>{row.refund_py_vs_cy.diff > 0 ? '+' : ''}{row.refund_py_vs_cy.diff}</span>
             </span>
           )}
         </div>
-        <MiniSparkline data={row.lead_trend} color={admUp ? '#10b981' : '#ef4444'} />
+        <MiniSparkline data={row.lead_trend} color={admColor} />
       </div>
     </div>
   );
@@ -290,17 +306,17 @@ function MobileTotalCard({ row, isDark }: { row: ProgramReportRow; isDark: boole
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Leads</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_leads.toLocaleString()}</div>
-          <VarBadge value={row.var_leads} pct={row.var_leads_pct} />
+          <VarBadge value={row.var_leads} pct={row.var_leads_pct} isDark={isDark} />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>CUCET</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_cucet.toLocaleString()}</div>
-          <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} />
+          <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Adm</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#10b981' : '#059669' }}>{row.cy_adm.toLocaleString()}</div>
-          <VarBadge value={row.var_adm} pct={row.var_adm_pct} />
+          <VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} />
         </div>
       </div>
     </div>
@@ -690,26 +706,26 @@ export default function ProgramReportTable({
         {/* Col 2-4: PY/CY Leads + Var */}
         <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{row.py_leads.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-gray-100' : 'text-slate-800'}`}>{row.cy_leads.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_leads} pct={row.var_leads_pct} /></td>
+        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_leads} pct={row.var_leads_pct} isDark={isDark} /></td>
 
         {/* Col 5-7: PY/CY CUCET + Var */}
         <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{row.py_cucet.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-100' : 'text-slate-800'}`}>{row.cy_cucet.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} /></td>
+        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} /></td>
 
         {/* Col 8: Lead-CUCET % */}
-        <td className="px-3 py-2 text-xs text-right text-amber-400 tabular-nums">{row.lead_cucet_pct.toFixed(1)}%</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>{row.lead_cucet_pct.toFixed(1)}%</td>
 
         {/* Col 9-11: PY/CY Adm + Var */}
         <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{row.py_adm.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right text-emerald-400 tabular-nums font-medium">{row.cy_adm.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} /></td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{row.cy_adm.toLocaleString()}</td>
+        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} /></td>
 
         {/* Col 12: Lead-Adm % */}
-        <td className="px-3 py-2 text-xs text-right text-sky-400 tabular-nums">{row.lead_adm_pct.toFixed(1)}%</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-sky-400' : 'text-sky-600'}`}>{row.lead_adm_pct.toFixed(1)}%</td>
 
         {/* Col 13: Cucet-Adm % */}
-        <td className="px-3 py-2 text-xs text-right text-violet-400 tabular-nums">{row.cucet_adm_pct.toFixed(1)}%</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>{row.cucet_adm_pct.toFixed(1)}%</td>
 
         {/* Col 14: Lead Trend sparkline */}
         <td className="px-3 py-2">
@@ -721,15 +737,15 @@ export default function ProgramReportTable({
 
         {/* Col 16: Refund Py vs Cy */}
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
-          {refund ? <RefundCell py={refund.py} cy={refund.cy} diff={refund.diff} /> : '—'}
+          {refund ? <RefundCell py={refund.py} cy={refund.cy} diff={refund.diff} isDark={isDark} /> : '—'}
         </td>
 
         {/* Col 17: Refund % Py vs Cy */}
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
           {refundPct ? (
             <span className="text-xs">
-              <span className="text-gray-400">{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
-              <span className={refundPct.diff_pct <= 0 ? 'text-emerald-400' : 'text-red-400'}>
+              <span className={isDark ? 'text-gray-400' : 'text-slate-500'}>{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
+              <span className={refundPct.diff_pct <= 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-red-400' : 'text-red-600')}>
                 ({refundPct.diff_pct >= 0 ? '+' : ''}{refundPct.diff_pct.toFixed(0)}%)
               </span>
             </span>
@@ -761,28 +777,28 @@ export default function ProgramReportTable({
         </td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_leads.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_leads.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_leads} pct={row.var_leads_pct} /></td>
+        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_leads} pct={row.var_leads_pct} isDark={isDark} /></td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_cucet.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_cucet.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} /></td>
-        <td className="px-3 py-2 text-xs text-right text-amber-300 font-semibold tabular-nums">{row.lead_cucet_pct.toFixed(1)}%</td>
+        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} /></td>
+        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>{row.lead_cucet_pct.toFixed(1)}%</td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_adm.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right text-emerald-300 font-bold tabular-nums">{row.cy_adm.toLocaleString()}</td>
-        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} /></td>
-        <td className="px-3 py-2 text-xs text-right text-sky-300 font-semibold tabular-nums">{row.lead_adm_pct.toFixed(1)}%</td>
-        <td className="px-3 py-2 text-xs text-right text-violet-300 font-semibold tabular-nums">{row.cucet_adm_pct.toFixed(1)}%</td>
+        <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-600'}`}>{row.cy_adm.toLocaleString()}</td>
+        <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} /></td>
+        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-sky-300' : 'text-sky-600'}`}>{row.lead_adm_pct.toFixed(1)}%</td>
+        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-violet-300' : 'text-violet-600'}`}>{row.cucet_adm_pct.toFixed(1)}%</td>
         <td className="px-3 py-2">
           <Sparkline data={row.lead_trend} color="#818cf8" />
         </td>
         <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.net_admissions.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
-          {refund ? <RefundCell py={refund.py} cy={refund.cy} diff={refund.diff} /> : '—'}
+          {refund ? <RefundCell py={refund.py} cy={refund.cy} diff={refund.diff} isDark={isDark} /> : '—'}
         </td>
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
           {refundPct ? (
             <span className="text-xs">
-              <span className="text-gray-400">{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
-              <span className={refundPct.diff_pct <= 0 ? 'text-emerald-400' : 'text-red-400'}>
+              <span className={isDark ? 'text-gray-400' : 'text-slate-500'}>{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
+              <span className={refundPct.diff_pct <= 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-red-400' : 'text-red-600')}>
                 ({refundPct.diff_pct >= 0 ? '+' : ''}{refundPct.diff_pct.toFixed(0)}%)
               </span>
             </span>
@@ -834,12 +850,12 @@ export default function ProgramReportTable({
     const isActive = sortBy === col;
     if (isActive) {
       return (
-        <span className="ml-1 text-indigo-400">
+        <span className={`ml-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
           {sortOrder === 'desc' ? '↓' : '↑'}
         </span>
       );
     }
-    return <span className="ml-1 text-gray-600 group-hover:text-gray-400">↕</span>;
+    return <span className={`ml-1 ${isDark ? 'text-gray-600 group-hover:text-gray-400' : 'text-slate-300 group-hover:text-slate-400'}`}>↕</span>;
   }
 
   // ── Mobile Loading Skeleton ──────────────────────────────────────────────────
@@ -852,7 +868,8 @@ export default function ProgramReportTable({
               borderRadius: 10,
               background: isDark ? '#111827' : '#ffffff',
               padding: '14px 16px',
-              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.08)'}`,
+              boxShadow: isDark ? 'none' : '0 1px 2px rgba(0,0,0,0.04)',
             }}>
               <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
                 <div className={`rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} style={{ width: 120, height: 14 }} />
@@ -949,7 +966,7 @@ export default function ProgramReportTable({
   // ── Desktop Table View ──────────────────────────────────────────────────────
   return (
     <div
-      className="relative overflow-auto rounded-xl border border-white/10"
+      className={`relative overflow-auto rounded-xl border ${isDark ? 'border-white/10' : 'border-slate-200'}`}
       style={{ maxHeight: 'calc(100vh - 190px)', scrollbarWidth: 'thin' }}
     >
       <table className="w-full border-collapse text-xs" style={{ minWidth: 1600 }}>
