@@ -18,7 +18,54 @@ interface CacheEntry<T> {
   ttlMs: number;
 }
 
-const DEFAULT_TTL_MS = 5 * 60 * 1000; // 5 minutes
+const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
+const STORAGE_PREFIX = "ai_dash_cache:";
+
+function safeSessionGet(key: string): any {
+  if (typeof window === "undefined" || !window.sessionStorage) return null;
+  try {
+    const raw = sessionStorage.getItem(STORAGE_PREFIX + key);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (Date.now() - parsed.timestamp > parsed.ttlMs) {
+      sessionStorage.removeItem(STORAGE_PREFIX + key);
+      return null;
+    }
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function safeSessionSet(key: string, entry: CacheEntry<any>): void {
+  if (typeof window === "undefined" || !window.sessionStorage) return;
+  try {
+    sessionStorage.setItem(STORAGE_PREFIX + key, JSON.stringify(entry));
+  } catch {
+    // QuotaExceeded or disabled
+  }
+}
+
+function safeSessionRemove(key: string): void {
+  if (typeof window === "undefined" || !window.sessionStorage) return;
+  try {
+    sessionStorage.removeItem(STORAGE_PREFIX + key);
+  } catch {}
+}
+
+function safeSessionClear(): void {
+  if (typeof window === "undefined" || !window.sessionStorage) return;
+  try {
+    const keysToRemove: string[] = [];
+    for (let i = 0; i < sessionStorage.length; i++) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith(STORAGE_PREFIX)) {
+        keysToRemove.push(k);
+      }
+    }
+    keysToRemove.forEach((k) => sessionStorage.removeItem(k));
+  } catch {}
+}
 
 class MemoryCache {
   private store = new Map<string, CacheEntry<any>>();
@@ -39,17 +86,42 @@ class MemoryCache {
   }
 
   /**
-   * Synchronously peek at existing valid cache data without fetching.
-   * Returns data if present and not expired, otherwise null.
+   * Peek ONLY from in-memory RAM cache (safe for initial React useState without SSR hydration mismatches).
    */
-  public peek<T>(key: string): T | null {
+  public peekMemory<T>(key: string): T | null {
     const entry = this.store.get(key);
     if (!entry) return null;
     if (Date.now() - entry.timestamp > entry.ttlMs) {
       this.store.delete(key);
+      safeSessionRemove(key);
       return null;
     }
     return entry.data as T;
+  }
+
+  /**
+   * Synchronously peek at existing valid cache data without fetching.
+   * Checks both in-memory store and browser sessionStorage (instant 0ms render across page reloads).
+   */
+  public peek<T>(key: string): T | null {
+    const entry = this.store.get(key);
+    if (entry) {
+      if (Date.now() - entry.timestamp > entry.ttlMs) {
+        this.store.delete(key);
+        safeSessionRemove(key);
+        return null;
+      }
+      return entry.data as T;
+    }
+
+    // Check sessionStorage backup for instant 0ms F5 / page reload restoration
+    const sessionEntry = safeSessionGet(key);
+    if (sessionEntry) {
+      this.store.set(key, sessionEntry);
+      return sessionEntry.data as T;
+    }
+
+    return null;
   }
 
   /**
@@ -60,14 +132,16 @@ class MemoryCache {
   }
 
   /**
-   * Store data in cache with TTL.
+   * Store data in cache with TTL (both memory and sessionStorage).
    */
   public set<T>(key: string, data: T, ttlMs: number = DEFAULT_TTL_MS): void {
-    this.store.set(key, {
+    const entry: CacheEntry<T> = {
       data,
       timestamp: Date.now(),
       ttlMs,
-    });
+    };
+    this.store.set(key, entry);
+    safeSessionSet(key, entry);
   }
 
   /**
@@ -202,11 +276,13 @@ class MemoryCache {
       this.store.clear();
       this.inFlight.clear();
       this.treeStore.clear();
+      safeSessionClear();
       return;
     }
     for (const key of Array.from(this.store.keys())) {
       if (key.startsWith(prefix) || key.includes(prefix)) {
         this.store.delete(key);
+        safeSessionRemove(key);
       }
     }
     this.clearTreeChildren(prefix);
@@ -229,6 +305,7 @@ class MemoryCache {
       const matchCampus = !campusStr || key.toLowerCase().includes(campusStr);
       if (matchYear && matchCampus) {
         this.store.delete(key);
+        safeSessionRemove(key);
       }
     }
     for (const key of Array.from(this.treeStore.keys())) {
@@ -246,6 +323,7 @@ class MemoryCache {
   public delete(key: string): void {
     this.store.delete(key);
     this.inFlight.delete(key);
+    safeSessionRemove(key);
   }
 
   /**

@@ -2,6 +2,7 @@
  * Executive Dashboard and Entity Analytics API
  */
 import { API_BASE_URL, readApiError, buildDashboardQuery } from "./client";
+import dashboardCache from "../cache/dashboardCache";
 import type {
   DashboardFilters,
   DashboardFilterOptionsResponse,
@@ -34,15 +35,23 @@ export async function getDashboardScope(campus?: string, years?: number[]): Prom
 }
 
 export async function getDashboardFilterOptions(session?: string, campus?: string, years?: number[], options?: RequestInit): Promise<DashboardFilterOptionsResponse> {
-  const params = new URLSearchParams();
-  if (session && session !== "all") params.set("academic_session", session);
-  if (campus && campus !== "all") params.set("campus", campus);
-  if (years && years.length > 0) params.set("years", years.join(","));
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/options?${params.toString()}`, options);
-  if (!response.ok) {
-    throw new Error(await readApiError(response, "Failed to fetch filter options"));
-  }
-  return response.json();
+  const cacheKey = dashboardCache.buildKey("dashboard:options", {
+    session: session && session !== "all" ? session : undefined,
+    campus: campus && campus !== "all" ? campus : undefined,
+    years: years?.length ? years.join(",") : undefined,
+  });
+
+  return dashboardCache.fetchWithCache(cacheKey, async () => {
+    const params = new URLSearchParams();
+    if (session && session !== "all") params.set("academic_session", session);
+    if (campus && campus !== "all") params.set("campus", campus);
+    if (years && years.length > 0) params.set("years", years.join(","));
+    const response = await fetch(`${API_BASE_URL}/api/dashboard/options?${params.toString()}`, options);
+    if (!response.ok) {
+      throw new Error(await readApiError(response, "Failed to fetch filter options"));
+    }
+    return response.json();
+  });
 }
 
 export async function getDashboardOverview(filters?: DashboardFilters, options?: RequestInit): Promise<OverviewResponse> {

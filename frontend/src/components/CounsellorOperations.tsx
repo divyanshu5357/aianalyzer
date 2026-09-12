@@ -82,7 +82,7 @@ export const CounsellorOperations: React.FC = () => {
     campus: selectedCampus,
     search: searchQuery,
   });
-  const cachedInitialList = dashboardCache.peek<any>(initialListKey);
+  const cachedInitialList = dashboardCache.peekMemory<any>(initialListKey);
 
   // Level 1 Data state
   const [listData, setListData] = useState<{

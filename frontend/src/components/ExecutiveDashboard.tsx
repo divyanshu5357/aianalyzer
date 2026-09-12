@@ -127,12 +127,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
   // Options & Data State (initialized from cache if returning from navigation)
   const [filterOptions, setFilterOptions] = useState<DashboardFilterOptionsResponse | null>(null);
-  const [overview, setOverview] = useState<OverviewResponse | null>(() => dashboardCache.peek<OverviewResponse>(initialOverviewKey));
-  const [insights, setInsights] = useState<InsightItem[]>(() => dashboardCache.peek<InsightItem[]>(initialInsightsKey) || []);
-  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrendItem[]>(() => dashboardCache.peek<MonthlyTrendItem[]>(initialTrendKey) || []);
-  const [rankings, setRankings] = useState<PerformanceRankingsResponse | null>(() => dashboardCache.peek<PerformanceRankingsResponse>(initialRankingsKey));
+  const [overview, setOverview] = useState<OverviewResponse | null>(() => dashboardCache.peekMemory<OverviewResponse>(initialOverviewKey));
+  const [insights, setInsights] = useState<InsightItem[]>(() => dashboardCache.peekMemory<InsightItem[]>(initialInsightsKey) || []);
+  const [monthlyTrend, setMonthlyTrend] = useState<MonthlyTrendItem[]>(() => dashboardCache.peekMemory<MonthlyTrendItem[]>(initialTrendKey) || []);
+  const [rankings, setRankings] = useState<PerformanceRankingsResponse | null>(() => dashboardCache.peekMemory<PerformanceRankingsResponse>(initialRankingsKey));
 
-  const [isLoading, setIsLoading] = useState<boolean>(() => !dashboardCache.peek(initialOverviewKey));
+  const [isLoading, setIsLoading] = useState<boolean>(() => !dashboardCache.peekMemory(initialOverviewKey));
   const [error, setError] = useState<string | null>(null);
   const [loadVersion, setLoadVersion] = useState(0);
 
@@ -150,16 +150,16 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   const [detailError, setDetailError] = useState<string | null>(null);
 
   // Phase 11.7B: Gender and Geographic Analytics State
-  const [genderMonths, setGenderMonths] = useState<GenderMonthItem[]>(() => dashboardCache.peek<GenderAdmissionsResponse>(initialGenderKey)?.months || []);
-  const [genderCategories, setGenderCategories] = useState<string[]>(() => dashboardCache.peek<GenderAdmissionsResponse>(initialGenderKey)?.gender_categories || []);
-  const [totalGenderAdmissions, setTotalGenderAdmissions] = useState<number>(() => dashboardCache.peek<GenderAdmissionsResponse>(initialGenderKey)?.total_admissions || 0);
-  const [genderLoading, setGenderLoading] = useState<boolean>(() => !dashboardCache.peek(initialGenderKey));
+  const [genderMonths, setGenderMonths] = useState<GenderMonthItem[]>(() => dashboardCache.peekMemory<GenderAdmissionsResponse>(initialGenderKey)?.months || []);
+  const [genderCategories, setGenderCategories] = useState<string[]>(() => dashboardCache.peekMemory<GenderAdmissionsResponse>(initialGenderKey)?.gender_categories || []);
+  const [totalGenderAdmissions, setTotalGenderAdmissions] = useState<number>(() => dashboardCache.peekMemory<GenderAdmissionsResponse>(initialGenderKey)?.total_admissions || 0);
+  const [genderLoading, setGenderLoading] = useState<boolean>(() => !dashboardCache.peekMemory(initialGenderKey));
 
-  const [indiaStatesData, setIndiaStatesData] = useState<StateAdmissionItem[]>(() => dashboardCache.peek<StateAdmissionsResponse>(initialStateKey)?.states || []);
-  const [totalIndiaAdmissions, setTotalIndiaAdmissions] = useState<number>(() => dashboardCache.peek<StateAdmissionsResponse>(initialStateKey)?.total_india_admissions || 0);
-  const [hasPyStateData, setHasPyStateData] = useState<boolean>(() => dashboardCache.peek<StateAdmissionsResponse>(initialStateKey)?.has_py_data ?? true);
-  const [stateComparisonYear, setStateComparisonYear] = useState<number | null>(() => dashboardCache.peek<StateAdmissionsResponse>(initialStateKey)?.comparison_year ?? null);
-  const [indiaStatesLoading, setIndiaStatesLoading] = useState<boolean>(() => !dashboardCache.peek(initialStateKey));
+  const [indiaStatesData, setIndiaStatesData] = useState<StateAdmissionItem[]>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.states || []);
+  const [totalIndiaAdmissions, setTotalIndiaAdmissions] = useState<number>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.total_india_admissions || 0);
+  const [hasPyStateData, setHasPyStateData] = useState<boolean>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.has_py_data ?? true);
+  const [stateComparisonYear, setStateComparisonYear] = useState<number | null>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.comparison_year ?? null);
+  const [indiaStatesLoading, setIndiaStatesLoading] = useState<boolean>(() => !dashboardCache.peekMemory(initialStateKey));
 
   // Data Control Modal State
   const [showDataControlModal, setShowDataControlModal] = useState(false);
@@ -217,9 +217,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   }, [selectedCampus, setDateRangeLimits, setFromDate, setToDate]);
 
   useEffect(() => {
-    const controller = new AbortController();
-    const { signal } = controller;
-
     const ovKey = buildDashKey("overview", currentFilters);
     const inKey = buildDashKey("insights", currentFilters);
     const genKey = buildDashKey("gender", currentFilters);
@@ -266,12 +263,12 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     }
 
     setError(null);
-    loadFilterOptions(signal);
+    loadFilterOptions();
 
     const force = loadVersion > 0;
 
     dashboardCache
-      .fetchWithCache(ovKey, () => getDashboardOverview(currentFilters, { signal }), { forceRefresh: force })
+      .fetchWithCache(ovKey, () => getDashboardOverview(currentFilters), { forceRefresh: force })
       .then((overviewData) => {
         setOverview(overviewData);
         setIsLoading(false);
@@ -291,7 +288,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       });
 
     dashboardCache
-      .fetchWithCache(inKey, () => getDashboardInsights(currentFilters, { signal }), { forceRefresh: force })
+      .fetchWithCache(inKey, () => getDashboardInsights(currentFilters), { forceRefresh: force })
       .then((insightsData) => {
         setInsights(insightsData);
       })
@@ -302,7 +299,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       });
 
     dashboardCache
-      .fetchWithCache(genKey, () => getAdmissionsByGender(currentFilters, { signal }), { forceRefresh: force })
+      .fetchWithCache(genKey, () => getAdmissionsByGender(currentFilters), { forceRefresh: force })
       .then((genderRes) => {
         setGenderMonths(genderRes?.months || []);
         setGenderCategories(genderRes?.gender_categories || []);
@@ -317,7 +314,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       });
 
     dashboardCache
-      .fetchWithCache(stKey, () => getAdmissionsByState(currentFilters, { signal }), { forceRefresh: force })
+      .fetchWithCache(stKey, () => getAdmissionsByState(currentFilters), { forceRefresh: force })
       .then((stateRes) => {
         setIndiaStatesData(stateRes?.states || []);
         setTotalIndiaAdmissions(stateRes?.total_india_admissions || 0);
@@ -331,15 +328,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           setIndiaStatesLoading(false);
         }
       });
-
-    return () => {
-      controller.abort();
-    };
   }, [loadVersion, currentFilters, loadFilterOptions]);
 
   // Refetch performance rankings independently when rankings dimension tab or filters change
   useEffect(() => {
-    const controller = new AbortController();
     const rankKey = buildDashKey("rankings", currentFilters, rankingsDimension);
     const cachedRank = dashboardCache.peek<PerformanceRankingsResponse>(rankKey);
     if (cachedRank) {
@@ -348,7 +340,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     dashboardCache
       .fetchWithCache(
         rankKey,
-        () => getDashboardPerformanceRankings(rankingsDimension, currentFilters, { signal: controller.signal }),
+        () => getDashboardPerformanceRankings(rankingsDimension, currentFilters),
         { forceRefresh: loadVersion > 0 }
       )
       .then((rankingsData) => setRankings(rankingsData))
@@ -357,12 +349,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           console.error("Failed to load performance rankings:", err);
         }
       });
-    return () => controller.abort();
   }, [rankingsDimension, currentFilters, loadVersion]);
 
   // Refetch monthly trend when metric tab changes
   useEffect(() => {
-    const controller = new AbortController();
     const trendKey = buildDashKey("monthlyTrend", currentFilters, mainMetric);
     const cachedTrend = dashboardCache.peek<MonthlyTrendItem[]>(trendKey);
     if (cachedTrend) {
@@ -371,7 +361,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     dashboardCache
       .fetchWithCache(
         trendKey,
-        () => getDashboardMonthlyTrend(mainMetric, currentFilters, { signal: controller.signal }),
+        () => getDashboardMonthlyTrend(mainMetric, currentFilters),
         { forceRefresh: loadVersion > 0 }
       )
       .then((data) => setMonthlyTrend(data))
@@ -380,7 +370,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           console.error("Failed to refresh monthly trend:", err);
         }
       });
-    return () => controller.abort();
   }, [mainMetric, currentFilters, loadVersion]);
 
   // Load entity detail when an entity is clicked

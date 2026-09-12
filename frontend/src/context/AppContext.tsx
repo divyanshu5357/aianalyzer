@@ -194,12 +194,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   useEffect(() => {
-    setTimeout(() => {
+    const timer = setTimeout(() => {
       fetchActiveDataset();
       fetchPeriods();
       fetchFilterOptions();
     }, 0);
-  }, [fetchActiveDataset, fetchPeriods, fetchFilterOptions]);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const applyDateRange = useCallback(() => {
     if (!fromDate && !toDate) {

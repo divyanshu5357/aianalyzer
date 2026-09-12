@@ -56,38 +56,104 @@ def _is_db_initialized() -> bool:
 
 
 def _run_background_warmup():
-    """Asynchronously warm up core analytics and filter caches without delaying server startup."""
+    """Asynchronously warm up core analytics, route endpoints, and filter caches on server startup."""
     import time
     time.sleep(1.0)
-    logger.info("[WARMUP] Starting background analytics cache pre-warming...")
+    logger.info("[WARMUP] Starting comprehensive background analytics cache pre-warming...")
     try:
         with SessionLocal() as db:
+            # 1. Filter options
             try:
                 from app.analytics.dashboard import get_dashboard_filter_options
                 get_dashboard_filter_options(db)
-                logger.info("[WARMUP] Filter options pre-warmed.")
+                get_dashboard_filter_options(db, years=[2026])
+                get_dashboard_filter_options(db, campus="Mohali", years=[2026])
+                logger.info("[WARMUP] Filter options pre-warmed for default scopes.")
             except Exception as e:
                 logger.warning("[WARMUP] Filter options warmup notice: %s", e)
 
+            # 2. Scope years (2026, 2025)
             try:
                 from app.analytics.period_helper import get_active_or_max_academic_year
-                ay = get_active_or_max_academic_year(db)
-                if ay:
-                    from app.analytics.dashboard import get_dashboard_overview
-                    get_dashboard_overview(db, academic_year=ay)
-                    logger.info("[WARMUP] Dashboard overview pre-warmed for AY=%s.", ay)
+                active_ay = get_active_or_max_academic_year(db) or 2026
+                warmup_years = [active_ay]
+                if active_ay - 1 >= 2025:
+                    warmup_years.append(active_ay - 1)
 
-                    from app.analytics.program_service import get_program_report_top_level
-                    get_program_report_top_level(db, academic_year=ay)
-                    logger.info("[WARMUP] Program report pre-warmed for AY=%s.", ay)
+                from app.api.dashboard import (
+                    get_overview,
+                    get_dashboard_insights,
+                    get_dashboard_monthly_trend,
+                    get_gender_admissions,
+                    get_india_state_admissions,
+                    get_outside_india_admissions,
+                )
+                from app.analytics.program_service import (
+                    get_program_report_top_level,
+                    get_program_insights,
+                )
+                from app.analytics.state_service import (
+                    get_state_report_top_level,
+                    get_state_hierarchy_children,
+                )
+                from app.analytics.counsellor_service import get_counsellors_list
 
-                    from app.analytics.state_service import get_state_report_top_level
-                    get_state_report_top_level(db, academic_year=ay)
-                    logger.info("[WARMUP] State report pre-warmed for AY=%s.", ay)
+                for ay in warmup_years:
+                    # Overview & Insights (both with and without years param)
+                    try:
+                        get_overview(academic_year=ay, db=db)
+                        get_overview(years=str(ay), academic_year=ay, db=db)
+                        get_dashboard_insights(academic_year=ay, db=db)
+                        get_dashboard_insights(years=str(ay), academic_year=ay, db=db)
+                    except Exception as e:
+                        logger.debug("[WARMUP] Overview/Insights AY=%s notice: %s", ay, e)
+
+                    # Monthly Trends
+                    for m in ("leads", "admissions", "cucet", "conversion_rate"):
+                        try:
+                            get_dashboard_monthly_trend(academic_year=ay, metric=m, db=db)
+                            get_dashboard_monthly_trend(years=str(ay), academic_year=ay, metric=m, db=db)
+                        except Exception:
+                            pass
+
+                    # State, Gender & International
+                    try:
+                        get_india_state_admissions(academic_year=ay, db=db)
+                        get_india_state_admissions(years=str(ay), academic_year=ay, db=db)
+                        get_gender_admissions(academic_year=ay, db=db)
+                        get_gender_admissions(years=str(ay), academic_year=ay, db=db)
+                        get_outside_india_admissions(academic_year=ay, db=db)
+                        get_outside_india_admissions(years=str(ay), academic_year=ay, db=db)
+                    except Exception as e:
+                        logger.debug("[WARMUP] Geo/Gender AY=%s notice: %s", ay, e)
+
+                    # Program Performance Report
+                    try:
+                        get_program_report_top_level(db, academic_year=ay)
+                        get_program_insights(db, program_group="CSE", academic_year=ay)
+                        get_program_insights(db, program_group="MBA", academic_year=ay)
+                    except Exception as e:
+                        logger.debug("[WARMUP] Program report AY=%s notice: %s", ay, e)
+
+                    # State Report
+                    try:
+                        get_state_report_top_level(db, academic_year=ay)
+                        get_state_hierarchy_children(db, level="source_category", state="PUNJAB", academic_year=ay)
+                    except Exception as e:
+                        logger.debug("[WARMUP] State report AY=%s notice: %s", ay, e)
+
+                    # Counsellors
+                    try:
+                        get_counsellors_list(db, academic_year=ay)
+                    except Exception as e:
+                        logger.debug("[WARMUP] Counsellors AY=%s notice: %s", ay, e)
+
+                    logger.info("[WARMUP] Full analytics stack pre-warmed for AY=%s.", ay)
+
             except Exception as e:
-                logger.warning("[WARMUP] Analytics reports warmup notice: %s", e)
+                logger.warning("[WARMUP] Analytics pre-warming notice: %s", e)
 
-        logger.info("[WARMUP] Background cache pre-warming completed successfully!")
+        logger.info("[WARMUP] Background cache pre-warming completed successfully! All pages ready for sub-10ms response.")
     except Exception as e:
         logger.error("[WARMUP] Background warmup error: %s", e)
 

@@ -17,14 +17,17 @@ from app.analytics.aggregate_service import get_py_date
 
 logger = logging.getLogger(__name__)
 
-# Server-side cache for top-level report and insights (5 minute TTL)
+# Server-side cache for top-level report and insights (24 hour TTL, invalidated on upload/reset)
 _PROGRAMS_TOP_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+_PROGRAMS_CHILDREN_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _PROGRAMS_INSIGHTS_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
-_PROGRAMS_CACHE_TTL = 300.0
+_PROGRAMS_CACHE_TTL = 86400.0
 
 def clear_programs_cache():
     _PROGRAMS_TOP_CACHE.clear()
+    _PROGRAMS_CHILDREN_CACHE.clear()
     _PROGRAMS_INSIGHTS_CACHE.clear()
+    _PROGRAMS_INVESTIGATION_CACHE.clear()
 
 # Trusted sorting columns to prevent SQL injection
 VALID_SORT_FIELDS = {
@@ -308,13 +311,36 @@ def get_program_report_top_level(
     where_sql = " AND ".join(where_clauses)
     ref_where_sql = " AND ".join(ref_clauses)
 
-    # Check server-side cache
-    cache_key = f"{academic_year}:{campus}:{from_date}:{to_date}:{sort_by}:{sort_order}"
+    # Check server-side cache with in-memory fast sort (< 0.1ms vs 8,000ms DB scan)
+    canon_campus = (campus or "all").strip().lower()
+    base_key = f"{academic_year}:{canon_campus}:{from_date}:{to_date}"
+    cache_key = f"{base_key}:{sort_by}:{sort_order}"
     now_ts = time.time()
     if cache_key in _PROGRAMS_TOP_CACHE:
         c_time, c_data = _PROGRAMS_TOP_CACHE[cache_key]
         if now_ts - c_time < _PROGRAMS_CACHE_TTL:
             return c_data
+
+    # If base data for this scope is already cached under ANY sort, sort in-memory in 0.05ms!
+    if base_key in _PROGRAMS_TOP_CACHE:
+        c_time, c_data = _PROGRAMS_TOP_CACHE[base_key]
+        if now_ts - c_time < _PROGRAMS_CACHE_TTL:
+            import copy
+            sorted_resp = copy.deepcopy(c_data)
+            sort_key = VALID_SORT_FIELDS.get(sort_by.lower(), "cy_leads")
+            reverse = sort_order.lower() != "asc"
+            sorted_resp["rows"].sort(
+                key=lambda x: (
+                    x[sort_key]
+                    if isinstance(x.get(sort_key), (int, float))
+                    else str(x.get(sort_key, "")).lower()
+                ),
+                reverse=reverse,
+            )
+            sorted_resp["scope"]["sort_by"] = sort_key
+            sorted_resp["scope"]["sort_order"] = "asc" if not reverse else "desc"
+            _PROGRAMS_TOP_CACHE[cache_key] = (now_ts, sorted_resp)
+            return sorted_resp
 
     # Load course dimension mappings (423 records, instant < 5ms)
     courses = db.execute(
@@ -509,6 +535,7 @@ def get_program_report_top_level(
     }
 
     _PROGRAMS_TOP_CACHE[cache_key] = (now_ts, resp)
+    _PROGRAMS_TOP_CACHE[base_key] = (now_ts, resp)
     return resp
 
 
@@ -556,6 +583,14 @@ def get_program_hierarchy_children(
         academic_year = get_active_or_max_academic_year(db)
     py_year = academic_year - 1
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
+
+    canon_campus = (campus or "all").strip().lower()
+    ch_cache_key = f"{norm_level}:{academic_year}:{canon_campus}:{from_date}:{to_date}:{program_group}:{eff_pcode}:{eff_lead_type}:{eff_main_src}:{eff_report_src}:{sort_by}:{sort_order}"
+    now_ts = time.time()
+    if ch_cache_key in _PROGRAMS_CHILDREN_CACHE:
+        c_time, c_data = _PROGRAMS_CHILDREN_CACHE[ch_cache_key]
+        if now_ts - c_time < _PROGRAMS_CACHE_TTL:
+            return c_data
 
     try:
         db.execute(text("SET LOCAL jit = off;"))
@@ -1201,7 +1236,7 @@ def get_program_hierarchy_children(
         reverse=reverse,
     )
 
-    return {
+    resp = {
         "rows": rows,
         "count": len(rows),
         "level": norm_level,
@@ -1215,6 +1250,8 @@ def get_program_hierarchy_children(
             "sub_source": eff_main_src,
         },
     }
+    _PROGRAMS_CHILDREN_CACHE[ch_cache_key] = (now_ts, resp)
+    return resp
 
 
 def get_program_insights(

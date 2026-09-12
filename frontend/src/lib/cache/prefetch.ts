@@ -62,7 +62,7 @@ export function prefetchAdjacentPages(scope: PageScope) {
             sort_by: "cy_leads",
             sort_order: "desc",
           }),
-        { ttlMs: 5 * 60 * 1000 }
+        { ttlMs: 24 * 60 * 60 * 1000 }
       ).catch(() => {});
     }
 
@@ -87,7 +87,7 @@ export function prefetchAdjacentPages(scope: PageScope) {
             sort_by: "cy_leads",
             sort_order: "desc",
           }),
-        { ttlMs: 5 * 60 * 1000 }
+        { ttlMs: 24 * 60 * 60 * 1000 }
       ).catch(() => {});
     }
 
@@ -106,7 +106,7 @@ export function prefetchAdjacentPages(scope: PageScope) {
             campus: scope.campus,
             search: "",
           }),
-        { ttlMs: 5 * 60 * 1000 }
+        { ttlMs: 24 * 60 * 60 * 1000 }
       ).catch(() => {});
     }
   });

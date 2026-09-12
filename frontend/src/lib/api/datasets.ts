@@ -2,6 +2,7 @@
  * Dataset Management, Periods, and Admin Configuration API
  */
 import { API_BASE_URL, readApiError, parseApiError } from "./client";
+import dashboardCache from "../cache/dashboardCache";
 import type {
   ActiveDatasetInfo,
   PeriodSummary,
@@ -22,34 +23,44 @@ export async function getActiveDataset(
   academicYear?: number,
   campus?: string
 ): Promise<{ active: boolean; dataset: ActiveDatasetInfo | null }> {
-  try {
-    const params = new URLSearchParams();
-    if (academicYear) params.set("academic_year", String(academicYear));
-    if (campus && campus.toLowerCase() !== "all") params.set("campus", campus);
-    const qs = params.toString() ? `?${params.toString()}` : "";
-    const response = await fetch(`${API_BASE_URL}/api/data/active${qs}`);
-    if (!response.ok) {
+  const cacheKey = dashboardCache.buildKey("data:active", {
+    academic_year: academicYear,
+    campus: campus && campus.toLowerCase() !== "all" ? campus : undefined,
+  });
+
+  return dashboardCache.fetchWithCache(cacheKey, async () => {
+    try {
+      const params = new URLSearchParams();
+      if (academicYear) params.set("academic_year", String(academicYear));
+      if (campus && campus.toLowerCase() !== "all") params.set("campus", campus);
+      const qs = params.toString() ? `?${params.toString()}` : "";
+      const response = await fetch(`${API_BASE_URL}/api/data/active${qs}`);
+      if (!response.ok) {
+        return { active: false, dataset: null };
+      }
+      return response.json();
+    } catch {
       return { active: false, dataset: null };
     }
-    return response.json();
-  } catch {
-    return { active: false, dataset: null };
-  }
+  });
 }
 
 export async function getAllPeriods(): Promise<{ total: number; periods: PeriodSummary[]; years: number[] }> {
-  try {
-    const response = await fetch(`${API_BASE_URL}/api/periods`);
-    if (!response.ok) return { total: 0, periods: [], years: [] };
-    const data = await response.json();
-    return {
-      total: data.total || 0,
-      periods: data.periods || [],
-      years: data.years || [],
-    };
-  } catch {
-    return { total: 0, periods: [], years: [] };
-  }
+  const cacheKey = "system:periods:all";
+  return dashboardCache.fetchWithCache(cacheKey, async () => {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/periods`);
+      if (!response.ok) return { total: 0, periods: [], years: [] };
+      const data = await response.json();
+      return {
+        total: data.total || 0,
+        periods: data.periods || [],
+        years: data.years || [],
+      };
+    } catch {
+      return { total: 0, periods: [], years: [] };
+    }
+  });
 }
 
 export async function getPeriodsCompare(

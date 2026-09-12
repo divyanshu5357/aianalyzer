@@ -17,7 +17,7 @@ from sqlalchemy.orm import Session
 logger = logging.getLogger(__name__)
 
 _COUNSELLORS_LIST_CACHE: dict[str, tuple[float, dict]] = {}
-_COUNSELLORS_LIST_TTL = 300.0  # 5 minutes
+_COUNSELLORS_LIST_TTL = 86400.0  # 24 hours (invalidated on dataset upload/reset)
 
 
 def clear_counsellors_cache():

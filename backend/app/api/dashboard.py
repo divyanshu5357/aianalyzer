@@ -35,7 +35,7 @@ router = APIRouter(
 )
 
 _DASH_API_CACHE: dict[str, tuple[float, Any]] = {}
-_DASH_API_CACHE_TTL = 60.0  # 60 seconds
+_DASH_API_CACHE_TTL = 86400.0  # 24 hours (invalidated on dataset upload/reset)
 
 
 def clear_dash_api_cache():

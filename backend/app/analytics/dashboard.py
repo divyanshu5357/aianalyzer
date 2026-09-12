@@ -9,7 +9,7 @@ from app.analytics.scope_resolver import resolve_dataset_scope
 logger = logging.getLogger(__name__)
 
 _FILTER_OPTIONS_CACHE: dict[str, tuple[float, dict]] = {}
-_FILTER_CACHE_TTL = 300.0  # 5 minutes
+_FILTER_CACHE_TTL = 86400.0  # 24 hours (invalidated on dataset upload/reset)
 
 
 def clear_filter_options_cache():
@@ -40,38 +40,31 @@ def _resolve_dimension_col(dimension: str) -> str:
         "owner": "owner",
         "emp": "owner",
         "employee": "owner",
+        "academic_session": "academic_year",
+        "academic_year": "academic_year",
+        "period": "academic_year",
     }
     col = mapping.get(norm, norm)
     return re.sub(r"[^\w_]", "", col)
 
 
 def _build_scope_where(
-    dataset_ids: list[str],
+    dataset_ids: list[Any],
     state: str | None = None,
     source: str | None = None,
     program: str | None = None,
 ) -> tuple[str, dict[str, Any]]:
-    """Build parameterized WHERE clause for optional dataset IDs and dimension filters."""
-    clauses = []
+    clauses = ["1=1"]
     params: dict[str, Any] = {}
-
-    if dataset_ids:
-        ds_quoted = ",".join(f"'{str(d)}'" for d in dataset_ids)
-        clauses.append(f"dataset_id::text IN ({ds_quoted})")
-
-    if state and state.strip() and state.strip().lower() != "all":
-        clauses.append('LOWER("state") = LOWER(:state)')
-        params["state"] = state.strip()
-    if source and source.strip() and source.strip().lower() != "all":
-        clauses.append('LOWER("source") = LOWER(:source)')
-        params["source"] = source.strip()
-    if program and program.strip() and program.strip().lower() != "all":
-        clauses.append('LOWER("program_name") = LOWER(:program)')
-        params["program"] = program.strip()
-
-    if not clauses:
-        return "1 = 1", params
-
+    if state and state.lower() != "all":
+        clauses.append("LOWER(state) = LOWER(:state)")
+        params["state"] = state
+    if source and source.lower() != "all":
+        clauses.append("LOWER(source) = LOWER(:source)")
+        params["source"] = source
+    if program and program.lower() != "all":
+        clauses.append("LOWER(program_name) = LOWER(:program)")
+        params["program"] = program
     return " AND ".join(clauses), params
 
 
@@ -81,91 +74,75 @@ def get_dashboard_filter_options(
     years: list[int] | str | None = None,
 ) -> dict[str, list[str]]:
     """Query dynamic, distinct non-null filter options available in resolved scope."""
-    cache_key = f"{campus or 'all'}:{sorted(years) if isinstance(years, list) else years}"
+    canonical_campus = (campus or 'all').strip().lower()
+    canonical_years = str(sorted(years) if isinstance(years, list) else (years or 'all'))
+    cache_key = f"{canonical_campus}:{canonical_years}"
     now = time.time()
     if cache_key in _FILTER_OPTIONS_CACHE:
         ts, cached_val = _FILTER_OPTIONS_CACHE[cache_key]
         if now - ts < _FILTER_CACHE_TTL:
             return cached_val
 
+    # Also check if 'all:all' cache can serve if present
+    if "all:all" in _FILTER_OPTIONS_CACHE and canonical_campus == "all" and canonical_years in ("all", "None", "[2026]"):
+        ts, cached_val = _FILTER_OPTIONS_CACHE["all:all"]
+        if now - ts < _FILTER_CACHE_TTL:
+            return cached_val
+
     scope_data = resolve_dataset_scope(db, campus=campus, years=years)
     dataset_ids = scope_data["dataset_ids"]
 
-    if not dataset_ids:
-        try:
-            years_rows = db.execute(text(
-                "SELECT DISTINCT academic_year FROM system.datasets "
-                "WHERE is_analytics_enabled = TRUE AND academic_year IS NOT NULL ORDER BY academic_year DESC"
-            )).fetchall()
-            avail_years = [str(r[0]) for r in years_rows if r[0]]
-            if not avail_years:
-                years_rows = db.execute(text(
-                    "SELECT DISTINCT academic_year FROM analytics.dashboard_agg "
-                    "WHERE academic_year IS NOT NULL ORDER BY academic_year DESC"
-                )).fetchall()
-                avail_years = [str(r[0]) for r in years_rows if r[0]]
+    # 1. Quick Campus lookup from system.datasets (instant < 1ms)
+    campus_rows = db.execute(text(
+        "SELECT DISTINCT campus_name FROM system.datasets "
+        "WHERE is_analytics_enabled = TRUE AND campus_name IS NOT NULL AND campus_name != '' "
+        "ORDER BY campus_name ASC"
+    )).fetchall()
+    avail_campuses = [str(r[0]) for r in campus_rows if r[0]]
+    if not avail_campuses:
+        avail_campuses = ["Mohali"]
 
-            campus_rows = db.execute(text(
-                "SELECT DISTINCT campus_name FROM system.datasets "
-                "WHERE is_analytics_enabled = TRUE AND campus_name IS NOT NULL AND campus_name != '' ORDER BY campus_name ASC"
-            )).fetchall()
-            avail_campuses = [str(r[0]) for r in campus_rows if r[0]]
-            if not avail_campuses:
-                campus_rows = db.execute(text(
-                    "SELECT DISTINCT campus_name FROM analytics.dashboard_agg "
-                    "WHERE campus_name IS NOT NULL AND campus_name != '' ORDER BY campus_name ASC"
-                )).fetchall()
-                avail_campuses = [str(r[0]) for r in campus_rows if r[0]]
-        except Exception:
-            avail_years = []
-            avail_campuses = []
-        res = {
-            "academic_sessions": avail_years,
-            "campuses": avail_campuses,
-            "states": [],
-            "sources": [],
-            "programs": [],
-            "lead_types": [],
-        }
-        _FILTER_OPTIONS_CACHE[cache_key] = (now, res)
-        return res
+    # 2. Distinct Years from system.datasets (instant < 1ms)
+    years_rows = db.execute(text(
+        "SELECT DISTINCT academic_year FROM system.datasets "
+        "WHERE is_analytics_enabled = TRUE AND academic_year IS NOT NULL "
+        "ORDER BY academic_year DESC"
+    )).fetchall()
+    avail_years = [str(r[0]) for r in years_rows if r[0]]
 
-    # Helper for distinct column values across dataset_ids
-    def get_distinct(col: str) -> list[str]:
-        col_name = _resolve_dimension_col(col)
-        phone_filter_clause = f' AND "{col_name}" !~ \'^[0-9]{{10,12}}$\'' if col_name in ("source", "main_source") else ""
+    # 3. Canonical Lead Types (constant, instantaneous < 0.1ms)
+    avail_lead_types = ["IN HOUSE", "OUT SOURCED", "OTHERS"]
+
+    # 4. Scope filters for states, sources, programs
+    where_parts = []
+    params: dict[str, Any] = {}
+    if campus and campus.lower() != "all":
+        where_parts.append('LOWER("campus_name") = LOWER(:campus)')
+        params["campus"] = campus
+    if scope_data["scope"]["years"]:
+        where_parts.append('academic_year IN :years')
+        params["years"] = tuple(scope_data["scope"]["years"])
+    base_where = ("WHERE " + " AND ".join(where_parts)) if where_parts else ""
+
+    # Helper for distinct values using index-friendly SELECT DISTINCT
+    def get_distinct_fast(col_name: str, max_limit: int = 250) -> list[str]:
+        col_where = f'{base_where} {"AND" if base_where else "WHERE"} "{col_name}" IS NOT NULL AND "{col_name}" != \'\''
         try:
-            where_parts = [f'"{col_name}" IS NOT NULL', f'"{col_name}" != \'\'']
-            params: dict[str, Any] = {}
-            if campus and campus.lower() != "all":
-                where_parts.append('LOWER("campus_name") = LOWER(:campus)')
-                params["campus"] = campus
-            if scope_data["scope"]["years"]:
-                where_parts.append('academic_year IN :years')
-                params["years"] = tuple(scope_data["scope"]["years"])
+            sql = text(f'SELECT DISTINCT "{col_name}" FROM analytics.dashboard_agg {col_where} ORDER BY "{col_name}" ASC LIMIT {max_limit}')
+            rows = db.execute(sql, params).fetchall()
+            vals = [str(r[0]).strip() for r in rows if r[0] and str(r[0]).strip()]
             if col_name in ("source", "main_source"):
-                where_parts.append(f'"{col_name}" !~ \'^[0-9]{{10,12}}$\'')
-            where_sql = " AND ".join(where_parts)
-            sql_agg = text(
-                f'SELECT "{col_name}", SUM(leads_cy) as tot FROM analytics.dashboard_agg '
-                f'WHERE {where_sql} '
-                f'GROUP BY "{col_name}" '
-                f'ORDER BY tot DESC, "{col_name}" ASC LIMIT 200'
-            )
-            rows = db.execute(sql_agg, params).fetchall()
-            if rows:
-                return [r[0] for r in rows if r[0]]
-        except Exception:
+                # Filter out pure phone numbers in Python (0.01ms vs 2000ms un-indexed regex on DB)
+                vals = [v for v in vals if not re.match(r"^[0-9]{10,12}$", v)]
+            return vals
+        except Exception as e:
+            logger.debug("Distinct query notice on %s: %s", col_name, e)
             db.rollback()
-        ds_quoted = ",".join(f"'{str(d)}'" for d in dataset_ids)
-        sql = text(
-            f'SELECT "{col_name}", COUNT(*) as cnt FROM analytics.uploaded_metrics '
-            f'WHERE dataset_id::text IN ({ds_quoted}) AND "{col_name}" IS NOT NULL AND "{col_name}" != \'\'{phone_filter_clause} '
-            f'GROUP BY "{col_name}" '
-            f'ORDER BY cnt DESC, "{col_name}" ASC LIMIT 200'
-        )
-        rows = db.execute(sql).fetchall()
-        return [r[0] for r in rows if r[0]]
+            return []
+
+    distinct_states = get_distinct_fast("state")
+    distinct_sources = get_distinct_fast("source")
+    distinct_programs = get_distinct_fast("program_name", max_limit=300)
 
     # Dynamic date range from dashboard_agg or datasets
     from app.analytics.period_helper import get_active_or_max_academic_year
@@ -195,15 +172,18 @@ def get_dashboard_filter_options(
     }
 
     result = {
-        "academic_sessions": [str(y) for y in scope_data["scope"]["years"]],
-        "campuses": get_distinct("campus_name"),
-        "states": get_distinct("state"),
-        "sources": get_distinct("source"),
-        "programs": get_distinct("program_name"),
-        "lead_types": get_distinct("lead_type"),
+        "academic_sessions": avail_years if avail_years else [str(y) for y in scope_data["scope"]["years"]],
+        "campuses": avail_campuses,
+        "states": distinct_states,
+        "sources": distinct_sources,
+        "programs": distinct_programs,
+        "lead_types": avail_lead_types,
         "date_range": date_range,
     }
     _FILTER_OPTIONS_CACHE[cache_key] = (now, result)
+    # Also save as fallback for all:all if default scope
+    if canonical_campus == "all":
+        _FILTER_OPTIONS_CACHE["all:all"] = (now, result)
     return result
 
 

@@ -15,8 +15,8 @@ logger = logging.getLogger(__name__)
 # Global storage: key -> (timestamp, data)
 _CACHE_STORE: Dict[str, Tuple[float, Any]] = {}
 
-# Default TTL: 300 seconds (5 minutes)
-DEFAULT_CACHE_TTL = 300.0
+# Default TTL: 86400 seconds (24 hours - invalidated on dataset upload/reset)
+DEFAULT_CACHE_TTL = 86400.0
 
 
 def make_cache_key(prefix: str, **kwargs: Any) -> str:
@@ -117,6 +117,16 @@ def clear_all_application_caches():
     try:
         from app.api.dashboard import clear_dash_api_cache
         clear_dash_api_cache()
+    except Exception:
+        pass
+    try:
+        from app.analytics.counsellor_service import clear_counsellors_cache
+        clear_counsellors_cache()
+    except Exception:
+        pass
+    try:
+        from app.analytics.geography_gender_service import clear_geography_gender_cache
+        clear_geography_gender_cache()
     except Exception:
         pass
     logger.info("Successfully flushed all application analytics caches.")

@@ -39,7 +39,7 @@ export default function ProgramsPage() {
     sort_by: sortBy,
     sort_order: sortOrder,
   });
-  const cachedInitialReport = dashboardCache.peek<ProgramReportResponse>(initialKey);
+  const cachedInitialReport = dashboardCache.peekMemory<ProgramReportResponse>(initialKey);
 
   const [report, setReport] = useState<ProgramReportResponse | null>(() => cachedInitialReport);
   const [loading, setLoading] = useState<boolean>(() => !cachedInitialReport);
@@ -55,7 +55,6 @@ export default function ProgramsPage() {
       sort_order: order,
     });
 
-    const signal = dashboardCache.getScopedSignal("programs:report");
     setError(null);
 
     const cached = dashboardCache.swr<ProgramReportResponse>(
@@ -69,8 +68,7 @@ export default function ProgramsPage() {
             to_date: appliedToDate || undefined,
             sort_by: by,
             sort_order: order,
-          },
-          { signal }
+          }
         ),
       (freshData) => {
         setReport(freshData);
@@ -105,9 +103,6 @@ export default function ProgramsPage() {
 
   useEffect(() => {
     fetchReport(sortBy, sortOrder);
-    return () => {
-      dashboardCache.abortScope("programs:report");
-    };
   }, [fetchReport, sortBy, sortOrder, refreshTrigger]);
 
   function handleSortChange(col: string, order: 'asc' | 'desc') {

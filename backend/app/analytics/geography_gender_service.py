@@ -8,7 +8,8 @@ Provides server-side PostgreSQL aggregation for:
 """
 
 import logging
-from typing import Any, Dict, List, Optional
+import time
+from typing import Any, Dict, List, Optional, Tuple
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 
@@ -16,6 +17,12 @@ from app.database.repository import resolve_raw_dataset
 from app.normalization.state_resolver import CANONICAL_INDIAN_STATES, FOREIGN_LOCATIONS
 
 logger = logging.getLogger(__name__)
+
+_GEO_CACHE: Dict[str, Tuple[float, Any]] = {}
+_GEO_CACHE_TTL = 86400.0  # 24 hours (invalidated on dataset upload/reset)
+
+def clear_geography_gender_cache():
+    _GEO_CACHE.clear()
 
 # Standard ISO 3166-2:IN state codes for all 36 Indian States and Union Territories
 STATE_CODES: Dict[str, str] = {
@@ -140,6 +147,15 @@ def get_admissions_by_gender(
     """
     from app.analytics.period_helper import get_active_or_max_academic_year
     year = academic_year or get_active_or_max_academic_year(db)
+
+    canon_campus = (campus or "all").strip().lower()
+    cache_key = f"gender:{year}:{canon_campus}:{month}:{lead_type}:{program}:{source}:{state}:{from_date}:{to_date}"
+    now_ts = time.time()
+    if cache_key in _GEO_CACHE:
+        c_time, c_data = _GEO_CACHE[cache_key]
+        if now_ts - c_time < _GEO_CACHE_TTL:
+            return c_data
+
     ds_id, cy_yr, py_yr = resolve_raw_dataset(db, target_year=year)
     if not ds_id:
         return {
@@ -284,6 +300,8 @@ def get_admissions_by_gender(
             "from_date": from_date,
             "to_date": to_date,
         }
+        _GEO_CACHE[cache_key] = (now_ts, resp)
+        return resp
     except Exception as e:
         logger.warning("Error fetching admissions by gender for year=%s: %s", year, e)
         return {
@@ -321,6 +339,15 @@ def get_admissions_by_india_state(
 
     from app.analytics.period_helper import get_active_or_max_academic_year
     year = academic_year or get_active_or_max_academic_year(db)
+
+    canon_campus = (campus or "all").strip().lower()
+    cache_key = f"state:{year}:{canon_campus}:{month}:{lead_type}:{program}:{source}:{from_date}:{to_date}"
+    now_ts = time.time()
+    if cache_key in _GEO_CACHE:
+        c_time, c_data = _GEO_CACHE[cache_key]
+        if now_ts - c_time < _GEO_CACHE_TTL:
+            return c_data
+
     ds_id, cy_yr, py_yr = resolve_raw_dataset(db, target_year=year)
     cy_year = cy_yr or year
     comp_year = py_yr or (cy_year - 1)
@@ -526,8 +553,10 @@ def get_admissions_by_india_state(
             "unmapped_admissions": unmapped_admissions,
             "international_admissions": international_admissions,
             "states": states_list,
-            "top_states": states_list[:5],
+            "top_states": top_states,
         }
+        _GEO_CACHE[cache_key] = (now_ts, resp)
+        return resp
     except Exception as exc:
         logger.warning("Error in get_admissions_by_india_state for year=%s: %s", cy_year, exc)
         return {
@@ -568,6 +597,15 @@ def get_international_admissions(
     """
     from app.analytics.period_helper import get_active_or_max_academic_year
     year = academic_year or get_active_or_max_academic_year(db)
+
+    canon_campus = (campus or "all").strip().lower()
+    cache_key = f"intl:{year}:{canon_campus}:{month}:{lead_type}:{program}:{source}:{from_date}:{to_date}"
+    now_ts = time.time()
+    if cache_key in _GEO_CACHE:
+        c_time, c_data = _GEO_CACHE[cache_key]
+        if now_ts - c_time < _GEO_CACHE_TTL:
+            return c_data
+
     ds_id, cy_yr, py_yr = resolve_raw_dataset(db, target_year=year)
     if not ds_id:
         return {
@@ -684,3 +722,5 @@ def get_international_admissions(
             "Domestic Indian admissions and leads are strictly excluded."
         ),
     }
+    _GEO_CACHE[cache_key] = (now_ts, resp)
+    return resp

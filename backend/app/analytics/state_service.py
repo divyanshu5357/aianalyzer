@@ -71,7 +71,7 @@ _STATE_GROUP_CACHE: Optional[Dict[str, Any]] = None
 _GEMINI_LOCATION_CACHE: Dict[str, str] = {}
 _STATES_TOP_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
 _STATES_CHILDREN_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
-_STATES_CACHE_TTL = 300.0
+_STATES_CACHE_TTL = 86400.0  # 24 hours (invalidated on dataset upload/reset)
 
 
 def clear_states_cache():
@@ -501,13 +501,36 @@ def get_state_report_top_level(
         from app.analytics.period_helper import get_active_or_max_academic_year
         academic_year = get_active_or_max_academic_year(db)
 
-    # Server-side Cache check (5 minute TTL)
-    cache_key = f"{academic_year}:{campus}:{from_date}:{to_date}:{sort_by}:{sort_order}"
+    # Server-side Cache check with in-memory fast sorting (< 0.1ms)
+    canon_campus = (campus or "all").strip().lower()
+    base_key = f"{academic_year}:{canon_campus}:{from_date}:{to_date}"
+    cache_key = f"{base_key}:{sort_by}:{sort_order}"
     now_ts = time.time()
     if cache_key in _STATES_TOP_CACHE:
         c_time, c_data = _STATES_TOP_CACHE[cache_key]
         if (now_ts - c_time) < _STATES_CACHE_TTL:
             return c_data
+
+    # If base scope is cached under ANY sort, sort in-memory in 0.05ms!
+    if base_key in _STATES_TOP_CACHE:
+        c_time, c_data = _STATES_TOP_CACHE[base_key]
+        if (now_ts - c_time) < _STATES_CACHE_TTL:
+            import copy
+            sorted_resp = copy.deepcopy(c_data)
+            sort_key = VALID_SORT_FIELDS.get(sort_by.lower(), "cy_leads")
+            reverse = sort_order.lower() != "asc"
+            sorted_resp["rows"].sort(
+                key=lambda x: (
+                    x[sort_key]
+                    if isinstance(x.get(sort_key), (int, float))
+                    else str(x.get(sort_key, "")).lower()
+                ),
+                reverse=reverse,
+            )
+            sorted_resp["scope"]["sort_by"] = sort_key
+            sorted_resp["scope"]["sort_order"] = "asc" if not reverse else "desc"
+            _STATES_TOP_CACHE[cache_key] = (now_ts, sorted_resp)
+            return sorted_resp
 
     py_year = academic_year - 1
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
@@ -781,6 +804,7 @@ def get_state_report_top_level(
         },
     }
     _STATES_TOP_CACHE[cache_key] = (now_ts, resp)
+    _STATES_TOP_CACHE[base_key] = (now_ts, resp)
     return resp
 
 

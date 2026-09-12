@@ -1,9 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useApp } from "../context/AppContext";
+import { prefetchAdjacentPages } from "../lib/cache/prefetch";
 import {
   LayoutDashboard,
   UploadCloud,
@@ -58,6 +59,20 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const isDark = theme === "dark";
+
+  // Idle background prefetching for adjacent pages (Programs, State Analysis, Counsellor Ops)
+  useEffect(() => {
+    if (!year) return;
+    const timer = setTimeout(() => {
+      prefetchAdjacentPages({
+        academic_year: year,
+        campus: selectedCampus === "all" ? undefined : selectedCampus,
+        from_date: appliedFromDate || undefined,
+        to_date: appliedToDate || undefined,
+      });
+    }, 800);
+    return () => clearTimeout(timer);
+  }, [year, selectedCampus, appliedFromDate, appliedToDate]);
 
   const getPageTitle = () => {
     switch (pathname) {
