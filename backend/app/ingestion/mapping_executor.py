@@ -253,7 +253,18 @@ def execute_mapping_normalization(
             COALESCE(NULLIF(TRIM(r.raw_data->>'{key_main_source}'), ''), NULLIF(TRIM(r.raw_data->>'Origin'), '')),
             COALESCE(NULLIF(TRIM(r.raw_data->>'{key_source}'), ''), NULLIF(TRIM(r.raw_data->>'Source'), '')),
             COALESCE(NULLIF(TRIM(r.raw_data->>'{key_campus}'), ''), NULLIF(TRIM(r.raw_data->>'mx_Campus'), ''), :ds_campus),
-            COALESCE(NULLIF(TRIM(r.raw_data->>'{key_state}'), ''), NULLIF(TRIM(r.raw_data->>'mx_State_New'), ''), NULLIF(TRIM(r.raw_data->>'mx_State'), '')),
+            
+            -- State resolution:
+            -- 1. Check mx_State_New first; only if absent/empty, include mx_State; else ignore mx_State.
+            -- 2. Fall back to city-level state lookup from organization.state_master.
+            -- 3. Map to canonical state_group via organization.state_master.
+            COALESCE(
+                sm_state.state_group,
+                NULLIF(TRIM(r.raw_data->>'mx_State_New'), ''),
+                NULLIF(TRIM(r.raw_data->>'mx_State'), ''),
+                sm_city.state_group,
+                NULLIF(TRIM(r.raw_data->>'{key_state}'), '')
+            ),
             
             -- raw_program_code
             NULLIF(TRIM(COALESCE(r.raw_data->>'{key_program_code}', r.raw_data->>'ProgramCode', r.raw_data->>'Program Code', r.raw_data->>'program_code')), ''),
@@ -300,8 +311,19 @@ def execute_mapping_normalization(
                 ELSE NULLIF(TRIM(r.raw_data->>'{key_course_cluster}'), '')
             END,
             
-            COALESCE(NULLIF(TRIM(r.raw_data->>'{key_state_code}'), ''), NULLIF(TRIM(r.raw_data->>'StateCode'), ''), NULLIF(TRIM(r.raw_data->>'State_Code'), '')),
-            NULLIF(TRIM(r.raw_data->>'{key_zone}'), ''),
+            -- State Code and Zone resolution from canonical state master
+            COALESCE(
+                sm_state.state_code,
+                sm_city.state_code,
+                NULLIF(TRIM(r.raw_data->>'{key_state_code}'), ''),
+                NULLIF(TRIM(r.raw_data->>'StateCode'), ''),
+                NULLIF(TRIM(r.raw_data->>'State_Code'), '')
+            ),
+            COALESCE(
+                sm_state.zone,
+                sm_city.zone,
+                NULLIF(TRIM(r.raw_data->>'{key_zone}'), '')
+            ),
             NULLIF(TRIM(r.raw_data->>'{key_team}'), ''),
             system.parse_month(COALESCE(NULLIF(TRIM(r.raw_data->>'CreatedOn'), ''), NULLIF(TRIM(r.raw_data->>'Created_On'), ''), NULLIF(TRIM(r.raw_data->>'enquiry_date'), ''))),
             system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), ''), NULLIF(TRIM(COALESCE(r.raw_data->>'CreatedOn', r.raw_data->>'Created_On', r.raw_data->>'enquiry_date')), ''))
@@ -311,6 +333,17 @@ def execute_mapping_normalization(
              LOWER(TRIM(COALESCE(r.raw_data->>'{key_program_code}', r.raw_data->>'ProgramCode', r.raw_data->>'Program Code', r.raw_data->>'program_code'))) = LOWER(TRIM(cm.program_code))
              OR LOWER(TRIM(COALESCE(r.raw_data->>'{key_program_code}', r.raw_data->>'ProgramCode', r.raw_data->>'Program Code', r.raw_data->>'program_code'))) = LOWER(TRIM(cm.program_key))
           )
+        LEFT JOIN organization.state_master sm_state
+          ON LOWER(TRIM(sm_state.state_name)) = LOWER(TRIM(COALESCE(
+              NULLIF(TRIM(r.raw_data->>'mx_State_New'), ''),
+              NULLIF(TRIM(r.raw_data->>'mx_State'), ''),
+              NULLIF(TRIM(r.raw_data->>'{key_state}'), '')
+          )))
+        LEFT JOIN organization.state_master sm_city
+          ON LOWER(TRIM(sm_city.state_name)) = LOWER(TRIM(COALESCE(
+              NULLIF(TRIM(r.raw_data->>'mx_City_New'), ''),
+              NULLIF(TRIM(r.raw_data->>'mx_City'), '')
+          )))
         WHERE r.dataset_id = :dataset_id
           AND r.row_number >= :start_row AND r.row_number <= :end_row
         ON CONFLICT (dataset_id, row_number) DO NOTHING;

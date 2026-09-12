@@ -99,7 +99,7 @@ def _build_lead_filter_where(
         params["cluster"] = cluster
 
     if state and state.lower() != "all":
-        conds.append("LOWER(COALESCE(r.raw_data->>'mx_State_New', r.raw_data->>'mx_State', '')) = LOWER(:state)")
+        conds.append("LOWER(COALESCE(NULLIF(TRIM(r.raw_data->>'mx_State_New'), ''), NULLIF(TRIM(r.raw_data->>'mx_State'), ''), '')) = LOWER(:state)")
         params["state"] = state
 
     if source and source.lower() != "all":
@@ -647,7 +647,7 @@ def get_lead_activity(
             COALESCE(cm.program_name, r.raw_data->>'Program Name', r.raw_data->>'Program Code') as program_name,
             COALESCE(cm.course_cluster, r.raw_data->>'course_cluster') as course_cluster,
             COALESCE(cm.degree_type, 'Under Graduate') as degree_type,
-            COALESCE(r.raw_data->>'mx_State_New', r.raw_data->>'mx_State') as state,
+            COALESCE(NULLIF(TRIM(r.raw_data->>'mx_State_New'), ''), NULLIF(TRIM(r.raw_data->>'mx_State'), '')) as state,
             COALESCE(r.raw_data->>'Source', r.raw_data->>'Origin') as source,
             r.raw_data->>'CreatedOn' as created_on,
             r.raw_data->>'mx_First_Allocation_Date_and_Time' as first_allocation_date,

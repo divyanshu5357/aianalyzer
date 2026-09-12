@@ -185,7 +185,18 @@ def normalize_dataset(
             COALESCE(NULLIF(TRIM(raw_data->>'{col_main_source}'), ''), NULLIF(TRIM(raw_data->>'Origin'), '')),
             COALESCE(NULLIF(TRIM(raw_data->>'{col_source}'), ''), NULLIF(TRIM(raw_data->>'Source'), '')),
             COALESCE(NULLIF(TRIM(raw_data->>'{col_campus}'), ''), NULLIF(TRIM(raw_data->>'mx_Campus'), ''), :ds_campus),
-            COALESCE(NULLIF(TRIM(raw_data->>'{col_state}'), ''), NULLIF(TRIM(raw_data->>'mx_State_New'), ''), NULLIF(TRIM(raw_data->>'mx_State'), '')),
+            
+            -- State resolution:
+            -- 1. Check mx_State_New first; only if absent/empty, include mx_State; else ignore mx_State.
+            -- 2. Fall back to city-level state lookup from organization.state_master.
+            -- 3. Map to canonical state_group via organization.state_master.
+            COALESCE(
+                sm_state.state_group,
+                NULLIF(TRIM(raw_data->>'mx_State_New'), ''),
+                NULLIF(TRIM(raw_data->>'mx_State'), ''),
+                sm_city.state_group,
+                NULLIF(TRIM(raw_data->>'{col_state}'), '')
+            ),
             NULLIF(TRIM(raw_data->>'{col_prog}'), ''),
             CASE 
                 WHEN NULLIF(REPLACE(raw_data->>'{col_cy_l}', ',', ''), '') IS NOT NULL THEN (REPLACE(raw_data->>'{col_cy_l}', ',', '')::numeric)
@@ -207,14 +218,35 @@ def normalize_dataset(
             COALESCE(NULLIF(REPLACE(raw_data->>'{col_py_c}', ',', ''), '')::numeric, 0),
             COALESCE(NULLIF(REPLACE(raw_data->>'{col_py_a}', ',', ''), '')::numeric, 0),
             NULLIF(TRIM(raw_data->>'{col_course_cluster}'), ''),
-            NULLIF(TRIM(raw_data->>'{col_state_code}'), ''),
-            NULLIF(TRIM(raw_data->>'{col_zone}'), ''),
+            
+            -- State Code and Zone resolution from canonical state master
+            COALESCE(
+                sm_state.state_code,
+                sm_city.state_code,
+                NULLIF(TRIM(raw_data->>'{col_state_code}'), '')
+            ),
+            COALESCE(
+                sm_state.zone,
+                sm_city.zone,
+                NULLIF(TRIM(raw_data->>'{col_zone}'), '')
+            ),
             NULLIF(TRIM(raw_data->>'{col_team}'), ''),
             system.parse_month(COALESCE(NULLIF(TRIM(raw_data->>'CreatedOn'), ''), NULLIF(TRIM(raw_data->>'Created_On'), ''), NULLIF(TRIM(raw_data->>'enquiry_date'), ''))),
             system.parse_month(NULLIF(TRIM(raw_data->>'mx_AdmissionDate'), ''), NULLIF(TRIM(COALESCE(raw_data->>'CreatedOn', raw_data->>'Created_On', raw_data->>'enquiry_date')), ''))
-        FROM staging.records
-        WHERE dataset_id = :dataset_id
-          AND row_number >= :start_row AND row_number <= :end_row
+        FROM staging.records r
+        LEFT JOIN organization.state_master sm_state
+          ON LOWER(TRIM(sm_state.state_name)) = LOWER(TRIM(COALESCE(
+              NULLIF(TRIM(r.raw_data->>'mx_State_New'), ''),
+              NULLIF(TRIM(r.raw_data->>'mx_State'), ''),
+              NULLIF(TRIM(r.raw_data->>'{col_state}'), '')
+          )))
+        LEFT JOIN organization.state_master sm_city
+          ON LOWER(TRIM(sm_city.state_name)) = LOWER(TRIM(COALESCE(
+              NULLIF(TRIM(r.raw_data->>'mx_City_New'), ''),
+              NULLIF(TRIM(r.raw_data->>'mx_City'), '')
+          )))
+        WHERE r.dataset_id = :dataset_id
+          AND r.row_number >= :start_row AND r.row_number <= :end_row
         {conflict_clause}
     """)
 

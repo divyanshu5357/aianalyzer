@@ -678,12 +678,127 @@ def import_dimension_workbook(db: Session, file_path: str) -> Dict[str, Any]:
                         )
                         stats["sources_updated"] += 1
 
+            # 3. State sheet
+            state_sheet_name = next((s for s in sheet_names if s.lower() in ("state", "states", "state_master", "statemaster")), None)
+            if state_sheet_name:
+                ws = wb[state_sheet_name]
+                rows = list(ws.iter_rows(values_only=True))
+                if rows:
+                    headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+                    header_map = {h.lower(): idx for idx, h in enumerate(headers)}
+
+                    def get_st(row, *col_names):
+                        for name in col_names:
+                            idx = header_map.get(name.lower())
+                            if idx is not None and idx < len(row):
+                                val = row[idx]
+                                if val is not None:
+                                    s = str(val).strip()
+                                    if s and s.lower() != "none":
+                                        return s
+                        return None
+
+                    for row in rows[1:]:
+                        st_name = get_st(row, "State Name", "State", "StateName", "City")
+                        if not st_name:
+                            continue
+                        st_grp = get_st(row, "State Group", "StateGroup") or st_name
+                        st_code = get_st(row, "State Code", "StateCode")
+                        zone = get_st(row, "Zone")
+                        new_zone = get_st(row, "New Zone", "NewZone")
+                        country = get_st(row, "Country") or "India"
+                        country_code = get_st(row, "Country Code", "CountryCode")
+                        p_mohali = get_st(row, "Priority For Mohali Campus", "Priority Mohali")
+                        p_unnao = get_st(row, "Priority For Unnao Campus", "Priority Unnao")
+
+                        db.execute(
+                            text("""
+                                INSERT INTO organization.state_master (
+                                    state_name, state_group, state_code, zone, new_zone, country, country_code, priority_mohali, priority_unnao
+                                ) VALUES (
+                                    :state_name, :state_group, :state_code, :zone, :new_zone, :country, :country_code, :priority_mohali, :priority_unnao
+                                ) ON CONFLICT (state_name) DO UPDATE SET
+                                    state_group = EXCLUDED.state_group,
+                                    state_code = EXCLUDED.state_code,
+                                    zone = EXCLUDED.zone,
+                                    new_zone = EXCLUDED.new_zone,
+                                    country = EXCLUDED.country,
+                                    country_code = EXCLUDED.country_code,
+                                    priority_mohali = EXCLUDED.priority_mohali,
+                                    priority_unnao = EXCLUDED.priority_unnao,
+                                    updated_at = CURRENT_TIMESTAMP
+                            """),
+                            {
+                                "state_name": st_name,
+                                "state_group": st_grp,
+                                "state_code": st_code,
+                                "zone": zone,
+                                "new_zone": new_zone,
+                                "country": country,
+                                "country_code": country_code,
+                                "priority_mohali": p_mohali,
+                                "priority_unnao": p_unnao,
+                            }
+                        )
+                        stats["states_updated"] = stats.get("states_updated", 0) + 1
+
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_state_master_state_name_lower ON organization.state_master (LOWER(TRIM(state_name)))"))
         db.commit()
         return stats
     except Exception as exc:
         db.rollback()
         logger.error("Error in import_dimension_workbook: %s", exc)
         return stats
+
+
+def seed_state_master_from_staging(db: Session) -> int:
+    """
+    Ensures organization.state_master is fully seeded with city-to-state and
+    state-group mappings from any uploaded State dimension records in staging.
+    """
+    try:
+        db.execute(text("CREATE INDEX IF NOT EXISTS idx_state_master_state_name_lower ON organization.state_master (LOWER(TRIM(state_name)))"))
+        cnt = db.execute(text("SELECT COUNT(*) FROM organization.state_master")).scalar() or 0
+        if cnt >= 600:
+            return cnt
+
+        # Seed from staging.records where sheet_name is State
+        db.execute(text("""
+            INSERT INTO organization.state_master (
+                state_name, state_group, state_code, zone, new_zone, country, country_code, priority_mohali, priority_unnao
+            )
+            SELECT DISTINCT ON (TRIM(raw_data->>'State Name'))
+                TRIM(raw_data->>'State Name') as state_name,
+                COALESCE(NULLIF(TRIM(raw_data->>'State Group'), ''), TRIM(raw_data->>'State Name')) as state_group,
+                NULLIF(TRIM(raw_data->>'State Code'), '') as state_code,
+                NULLIF(TRIM(raw_data->>'Zone'), '') as zone,
+                NULLIF(TRIM(raw_data->>'New Zone'), '') as new_zone,
+                COALESCE(NULLIF(TRIM(raw_data->>'Country'), ''), 'India') as country,
+                NULLIF(TRIM(raw_data->>'Country Code'), '') as country_code,
+                NULLIF(TRIM(raw_data->>'Priority For Mohali Campus'), '') as priority_mohali,
+                NULLIF(TRIM(raw_data->>'Priority For Unnao Campus'), '') as priority_unnao
+            FROM staging.records
+            WHERE (raw_data->>'sheet_name' = 'State' OR raw_data->>'State Name' IS NOT NULL)
+              AND NULLIF(TRIM(raw_data->>'State Name'), '') IS NOT NULL
+            ON CONFLICT (state_name) DO UPDATE SET
+                state_group = EXCLUDED.state_group,
+                state_code = EXCLUDED.state_code,
+                zone = EXCLUDED.zone,
+                new_zone = EXCLUDED.new_zone,
+                country = EXCLUDED.country,
+                country_code = EXCLUDED.country_code,
+                priority_mohali = EXCLUDED.priority_mohali,
+                priority_unnao = EXCLUDED.priority_unnao,
+                updated_at = CURRENT_TIMESTAMP;
+        """))
+        db.commit()
+        cnt_after = db.execute(text("SELECT COUNT(*) FROM organization.state_master")).scalar() or 0
+        logger.info("seed_state_master_from_staging: %d records in organization.state_master", cnt_after)
+        return cnt_after
+    except Exception as exc:
+        db.rollback()
+        logger.warning("seed_state_master_from_staging warning: %s", exc)
+        return 0
 
 
 if __name__ == '__main__':

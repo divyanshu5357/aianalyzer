@@ -19,22 +19,46 @@ from app.normalization.lead_type_resolver import IN_HOUSE_KEYWORDS, OUT_SOURCED_
 logger = logging.getLogger(__name__)
 
 
-def _build_sql_state_case() -> str:
-    """Build PostgreSQL CASE statement for state canonicalization."""
-    branches = []
-
+def _build_sql_state_case(db: Optional[Session] = None) -> str:
+    """Build PostgreSQL CASE statement for state canonicalization.
+    
+    Dynamically loads state mappings from organization.state_master while preserving
+    canonical fallbacks and preserving valid non-empty state names.
+    """
     group_by_canonical = {}
-    for raw_k, canonical_v in STATE_LOOKUP.items():
-        group_by_canonical.setdefault(canonical_v, []).append(raw_k.replace("'", "''"))
+    foreign_keys = set(k.lower().strip() for k in FOREIGN_LOCATIONS)
 
+    # 1. First populate from static canonical map for reliable defaults
+    for raw_k, canonical_v in STATE_LOOKUP.items():
+        group_by_canonical.setdefault(canonical_v, set()).add(raw_k.lower().strip())
+
+    # 2. Dynamically augment/override from organization.state_master
+    if db is not None:
+        try:
+            rows = db.execute(text("SELECT state_name, state_group, country FROM organization.state_master WHERE state_name IS NOT NULL")).fetchall()
+            for r in rows:
+                st_name = str(r[0] or "").strip().lower()
+                st_grp = str(r[1] or "").strip()
+                ctry = str(r[2] or "").strip().lower()
+                if not st_name:
+                    continue
+                if ctry == "international" or st_grp.lower() == "international":
+                    foreign_keys.add(st_name)
+                elif st_grp:
+                    group_by_canonical.setdefault(st_grp, set()).add(st_name)
+        except Exception as exc:
+            logger.warning("Dynamic state_master load notice: %s", exc)
+
+    branches = []
     for canonical, keys in group_by_canonical.items():
-        keys_str = ", ".join(f"'{k}'" for k in keys)
+        keys_str = ", ".join("'" + k.replace("'", "''") + "'" for k in sorted(keys))
         branches.append(f"WHEN LOWER(TRIM(COALESCE(state, ''))) IN ({keys_str}) THEN '{canonical}'")
 
-    foreign_keys_str = ", ".join(f"'{k}'" for k in FOREIGN_LOCATIONS)
-    branches.append(f"WHEN LOWER(TRIM(COALESCE(state, ''))) IN ({foreign_keys_str}) THEN 'INTERNATIONAL'")
+    if foreign_keys:
+        foreign_keys_str = ", ".join("'" + k.replace("'", "''") + "'" for k in sorted(foreign_keys))
+        branches.append(f"WHEN LOWER(TRIM(COALESCE(state, ''))) IN ({foreign_keys_str}) THEN 'INTERNATIONAL'")
 
-    return f"CASE {' '.join(branches)} ELSE 'UNMAPPED_STATE' END"
+    return f"CASE {' '.join(branches)} WHEN state IS NOT NULL AND TRIM(state) != '' AND TRIM(state) != 'None' THEN TRIM(state) ELSE 'UNMAPPED_STATE' END"
 
 
 def _build_sql_lead_type_case() -> str:
@@ -51,14 +75,15 @@ def _build_sql_lead_type_case() -> str:
     """
 
 
-def _build_insert_sql(dataset_filter: str = "") -> str:
+def _build_insert_sql(dataset_filter: str = "", db: Optional[Session] = None) -> str:
     """Build the CTE-based INSERT statement for dashboard_agg refresh.
 
     Args:
         dataset_filter: Additional WHERE clause fragment for scoping, e.g.
                         "AND um.dataset_id = :ds_id"
+        db: Optional database session to dynamically load master state mappings
     """
-    state_case_expr = _build_sql_state_case()
+    state_case_expr = _build_sql_state_case(db=db)
     lead_type_case_expr = _build_sql_lead_type_case()
 
     return f"""
@@ -201,7 +226,7 @@ def refresh_dashboard_agg_scoped(
 
     if ds_check is True:
         # Step 3: Re-insert aggregated data for this dataset only
-        insert_sql = _build_insert_sql(dataset_filter="AND um.dataset_id = :ds_id")
+        insert_sql = _build_insert_sql(dataset_filter="AND um.dataset_id = :ds_id", db=db)
         db.execute(text(insert_sql), {"ds_id": ds_id_str})
 
         cnt = db.execute(
@@ -267,7 +292,7 @@ def refresh_dashboard_agg(db: Session) -> dict:
 
     db.execute(text("DELETE FROM analytics.dashboard_agg;"))
 
-    insert_sql = _build_insert_sql()
+    insert_sql = _build_insert_sql(db=db)
     db.execute(text(insert_sql))
     db.commit()
 

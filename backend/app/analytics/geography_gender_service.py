@@ -486,12 +486,23 @@ def get_admissions_by_india_state(
         total_india_admissions = sum(item["admissions"] for item in cy_state_map.values())
         total_india_leads = sum(item["leads"] for item in cy_state_map.values())
 
+        # Dynamic state code resolution from organization.state_master
+        master_state_codes = {}
+        try:
+            code_rows = db.execute(text("SELECT DISTINCT state_group, state_code FROM organization.state_master WHERE state_group IS NOT NULL AND state_code IS NOT NULL")).fetchall()
+            for cr in code_rows:
+                if cr[0] and cr[1]:
+                    master_state_codes[str(cr[0]).strip().lower()] = str(cr[1]).strip().upper()
+                    master_state_codes[str(cr[0]).strip()] = str(cr[1]).strip().upper()
+        except Exception as sc_err:
+            logger.warning("Dynamic state_master code resolution notice: %s", sc_err)
+
         states_list = []
         for st_name in all_state_names:
             cy_info = cy_state_map.get(st_name, {"admissions": 0, "leads": 0})
             cy_adm = cy_info["admissions"]
             cy_ld = cy_info["leads"]
-            st_code = STATE_CODES.get(st_name, "")
+            st_code = master_state_codes.get(st_name) or master_state_codes.get(st_name.lower().strip()) or STATE_CODES.get(st_name, "")
             share = round((cy_adm / total_india_admissions * 100), 2) if total_india_admissions > 0 else 0.0
 
             if has_py_data:
@@ -538,7 +549,7 @@ def get_admissions_by_india_state(
         # Sort by CY admissions descending, then CY leads descending
         states_list.sort(key=lambda x: (x["cy_admissions"], x["cy_leads"]), reverse=True)
 
-        return {
+        resp = {
             "status": "success",
             "academic_year": cy_year,
             "comparison_year": comp_year if has_py_data else None,
@@ -553,7 +564,7 @@ def get_admissions_by_india_state(
             "unmapped_admissions": unmapped_admissions,
             "international_admissions": international_admissions,
             "states": states_list,
-            "top_states": top_states,
+            "top_states": states_list[:5],
         }
         _GEO_CACHE[cache_key] = (now_ts, resp)
         return resp
