@@ -279,7 +279,8 @@ def execute_mapping_normalization(
             END,
             CASE 
                 WHEN NULLIF(REPLACE(r.raw_data->>'{key_cy_c}', ',', ''), '') IS NOT NULL THEN (REPLACE(r.raw_data->>'{key_cy_c}', ',', '')::numeric)
-                WHEN (NULLIF(TRIM(r.raw_data->>'mx_CUCET_Score'), '') IS NOT NULL AND LOWER(TRIM(r.raw_data->>'mx_CUCET_Score')) != 'null') OR r.raw_data->>'mx_CUCET_Exam_Status' IN ('Eligible-for-Scholarship', 'Eligible for Admission but not for Scholarship', 'Not-Eligible for Admissions') THEN 1
+                WHEN NULLIF(TRIM(COALESCE(r.raw_data->>'mx_CUCET_First_Payment_Date', r.raw_data->>'{key_cucet_date}')), '') IS NOT NULL 
+                     AND LOWER(TRIM(COALESCE(r.raw_data->>'mx_CUCET_First_Payment_Date', r.raw_data->>'{key_cucet_date}'))) != 'null' THEN 1
                 ELSE 0
             END,
             CASE 

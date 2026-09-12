@@ -119,7 +119,7 @@ def get_agg_overview(
     to_m = to_date.strip()[:7] if has_date_filter else None
 
     if not cy_ds_check:
-        cy_leads = cy_cucet = cy_admission = None
+        cy_leads = cy_cucet = cy_admission = cy_fasttrack = cy_scholarship = cy_refunds = None
     else:
         if has_date_filter:
             params["from_m"] = from_m
@@ -127,14 +127,20 @@ def get_agg_overview(
             agg_sql = f"""
                 SELECT COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN leads_cy ELSE 0 END),0) AS leads,
                        COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN cucet_cy ELSE 0 END),0) AS cucet,
-                       COALESCE(SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN admission_cy ELSE 0 END),0) AS admission
+                       COALESCE(SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN admission_cy ELSE 0 END),0) AS admission,
+                       COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN fasttrack_cy ELSE 0 END),0) AS fasttrack,
+                       COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN scholarship_cy ELSE 0 END),0) AS scholarship,
+                       COALESCE(SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN refunds_cy ELSE 0 END),0) AS refunds
                 FROM analytics.dashboard_agg
                 WHERE {where_clause}
             """
             fallback_sql = f"""
                 SELECT COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN cy_leads ELSE 0 END),0) AS leads,
                        COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN cy_cucet ELSE 0 END),0) AS cucet,
-                       COALESCE(SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN cy_admission ELSE 0 END),0) AS admission
+                       COALESCE(SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN cy_admission ELSE 0 END),0) AS admission,
+                       COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN COALESCE(cy_fasttrack, 0) ELSE 0 END),0) AS fasttrack,
+                       COALESCE(SUM(CASE WHEN created_month >= :from_m AND created_month <= :to_m THEN COALESCE(cy_scholarship, 0) ELSE 0 END),0) AS scholarship,
+                       COALESCE(SUM(CASE WHEN admission_month >= :from_m AND admission_month <= :to_m THEN COALESCE(cy_refunds, 0) ELSE 0 END),0) AS refunds
                 FROM analytics.uploaded_metrics
                 WHERE {where_clause}
             """
@@ -142,14 +148,20 @@ def get_agg_overview(
             agg_sql = f"""
                 SELECT COALESCE(SUM(leads_cy),0) AS leads,
                        COALESCE(SUM(cucet_cy),0) AS cucet,
-                       COALESCE(SUM(admission_cy),0) AS admission
+                       COALESCE(SUM(admission_cy),0) AS admission,
+                       COALESCE(SUM(fasttrack_cy),0) AS fasttrack,
+                       COALESCE(SUM(scholarship_cy),0) AS scholarship,
+                       COALESCE(SUM(refunds_cy),0) AS refunds
                 FROM analytics.dashboard_agg
                 WHERE {where_clause}
             """
             fallback_sql = f"""
                 SELECT COALESCE(SUM(cy_leads),0) AS leads,
                        COALESCE(SUM(cy_cucet),0) AS cucet,
-                       COALESCE(SUM(cy_admission),0) AS admission
+                       COALESCE(SUM(cy_admission),0) AS admission,
+                       COALESCE(SUM(COALESCE(cy_fasttrack, 0)),0) AS fasttrack,
+                       COALESCE(SUM(COALESCE(cy_scholarship, 0)),0) AS scholarship,
+                       COALESCE(SUM(COALESCE(cy_refunds, 0)),0) AS refunds
                 FROM analytics.uploaded_metrics
                 WHERE {where_clause}
             """
@@ -157,6 +169,9 @@ def get_agg_overview(
         cy_leads = int(agg_row["leads"] or 0)
         cy_cucet = int(agg_row["cucet"] or 0)
         cy_admission = int(agg_row["admission"] or 0)
+        cy_fasttrack = int(agg_row.get("fasttrack") or 0)
+        cy_scholarship = int(agg_row.get("scholarship") or 0)
+        cy_refunds = int(agg_row.get("refunds") or 0)
 
         # Self-healing: If valid RAW dataset exists for cy_year but aggregates returned 0,
         # perform a lightweight dataset-scoped backfill (NOT full year scan).
@@ -198,7 +213,7 @@ def get_agg_overview(
                         cy_admission = int(healed_rows[0]["admission"] or 0)
 
     # PY metrics: verify if valid enabled RAW dataset exists for py_year
-    py_leads = py_cucet = py_admission = None
+    py_leads = py_cucet = py_admission = py_fasttrack = py_scholarship = py_refunds = None
     has_py_dataset = False
     py_from_date = None
     py_to_date = None
@@ -234,14 +249,20 @@ def get_agg_overview(
                 agg_sql_py = f"""
                     SELECT COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN GREATEST(leads_cy, leads_py) ELSE 0 END),0) AS leads,
                            COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN GREATEST(cucet_cy, cucet_py) ELSE 0 END),0) AS cucet,
-                           COALESCE(SUM(CASE WHEN admission_month >= :py_from_m AND admission_month <= :py_to_m THEN GREATEST(admission_cy, admission_py) ELSE 0 END),0) AS admission
+                           COALESCE(SUM(CASE WHEN admission_month >= :py_from_m AND admission_month <= :py_to_m THEN GREATEST(admission_cy, admission_py) ELSE 0 END),0) AS admission,
+                           COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN GREATEST(fasttrack_cy, fasttrack_py) ELSE 0 END),0) AS fasttrack,
+                           COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN GREATEST(scholarship_cy, scholarship_py) ELSE 0 END),0) AS scholarship,
+                           COALESCE(SUM(CASE WHEN admission_month >= :py_from_m AND admission_month <= :py_to_m THEN GREATEST(refunds_cy, refunds_py) ELSE 0 END),0) AS refunds
                     FROM analytics.dashboard_agg
                     WHERE {py_where}
                 """
                 fallback_sql_py = f"""
                     SELECT COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN cy_leads ELSE 0 END),0) AS leads,
                            COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN cy_cucet ELSE 0 END),0) AS cucet,
-                           COALESCE(SUM(CASE WHEN admission_month >= :py_from_m AND admission_month <= :py_to_m THEN cy_admission ELSE 0 END),0) AS admission
+                           COALESCE(SUM(CASE WHEN admission_month >= :py_from_m AND admission_month <= :py_to_m THEN cy_admission ELSE 0 END),0) AS admission,
+                           COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN COALESCE(cy_fasttrack, 0) ELSE 0 END),0) AS fasttrack,
+                           COALESCE(SUM(CASE WHEN created_month >= :py_from_m AND created_month <= :py_to_m THEN COALESCE(cy_scholarship, 0) ELSE 0 END),0) AS scholarship,
+                           COALESCE(SUM(CASE WHEN admission_month >= :py_from_m AND admission_month <= :py_to_m THEN COALESCE(cy_refunds, 0) ELSE 0 END),0) AS refunds
                     FROM analytics.uploaded_metrics
                     WHERE {py_where}
                 """
@@ -249,14 +270,20 @@ def get_agg_overview(
                 agg_sql_py = f"""
                     SELECT COALESCE(SUM(GREATEST(leads_cy, leads_py)),0) AS leads,
                            COALESCE(SUM(GREATEST(cucet_cy, cucet_py)),0) AS cucet,
-                           COALESCE(SUM(GREATEST(admission_cy, admission_py)),0) AS admission
+                           COALESCE(SUM(GREATEST(admission_cy, admission_py)),0) AS admission,
+                           COALESCE(SUM(GREATEST(fasttrack_cy, fasttrack_py)),0) AS fasttrack,
+                           COALESCE(SUM(GREATEST(scholarship_cy, scholarship_py)),0) AS scholarship,
+                           COALESCE(SUM(GREATEST(refunds_cy, refunds_py)),0) AS refunds
                     FROM analytics.dashboard_agg
                     WHERE {py_where}
                 """
                 fallback_sql_py = f"""
                     SELECT COALESCE(SUM(cy_leads),0) AS leads,
                            COALESCE(SUM(cy_cucet),0) AS cucet,
-                           COALESCE(SUM(cy_admission),0) AS admission
+                           COALESCE(SUM(cy_admission),0) AS admission,
+                           COALESCE(SUM(COALESCE(cy_fasttrack, 0)),0) AS fasttrack,
+                           COALESCE(SUM(COALESCE(cy_scholarship, 0)),0) AS scholarship,
+                           COALESCE(SUM(COALESCE(cy_refunds, 0)),0) AS refunds
                     FROM analytics.uploaded_metrics
                     WHERE {py_where}
                 """
@@ -264,6 +291,9 @@ def get_agg_overview(
             py_leads = int(agg_row_py["leads"] or 0)
             py_cucet = int(agg_row_py["cucet"] or 0)
             py_admission = int(agg_row_py["admission"] or 0)
+            py_fasttrack = int(agg_row_py.get("fasttrack") or 0)
+            py_scholarship = int(agg_row_py.get("scholarship") or 0)
+            py_refunds = int(agg_row_py.get("refunds") or 0)
 
             # Self-healing for PY (dataset-scoped, non-blocking)
             if py_leads == 0 and py_admission == 0 and py_ds_check:
@@ -305,18 +335,41 @@ def get_agg_overview(
     cy_conv = _percentage(cy_admission, cy_leads) if (cy_admission is not None and cy_leads is not None) else None
     py_conv = _percentage(py_admission, py_leads) if (py_admission is not None and py_leads is not None) else None
 
+    cy_net_adm = max(0, cy_admission - cy_refunds) if (cy_admission is not None and cy_refunds is not None) else None
+    py_net_adm = max(0, py_admission - py_refunds) if (py_admission is not None and py_refunds is not None) else None
+
     kpis = {
         "leads": {
             "cy": cy_leads,
             "py": py_leads,
             "change": (cy_leads - py_leads) if (cy_leads is not None and py_leads is not None) else None,
             "growth_pct": percentage_change(cy_leads, py_leads) if (cy_leads is not None and py_leads is not None) else None,
+            "sub_metric": {
+                "label": "Fast Track IDs",
+                "full_label": "Successful Fast Track ID Generation",
+                "cy": cy_fasttrack,
+                "py": py_fasttrack,
+                "change": (cy_fasttrack - py_fasttrack) if (cy_fasttrack is not None and py_fasttrack is not None) else None,
+                "growth_pct": percentage_change(cy_fasttrack, py_fasttrack) if (cy_fasttrack is not None and py_fasttrack is not None) else None,
+            },
         },
         "admissions": {
             "cy": cy_admission,
             "py": py_admission,
             "change": (cy_admission - py_admission) if (cy_admission is not None and py_admission is not None) else None,
             "growth_pct": percentage_change(cy_admission, py_admission) if (cy_admission is not None and py_admission is not None) else None,
+            "sub_metric": {
+                "label": "Total Active Admissions",
+                "full_label": "Active Admissions (Gross - Refunds)",
+                "cy": cy_net_adm,
+                "py": py_net_adm,
+                "gross_cy": cy_admission,
+                "gross_py": py_admission,
+                "refunds_cy": cy_refunds,
+                "refunds_py": py_refunds,
+                "change": (cy_net_adm - py_net_adm) if (cy_net_adm is not None and py_net_adm is not None) else None,
+                "growth_pct": percentage_change(cy_net_adm, py_net_adm) if (cy_net_adm is not None and py_net_adm is not None) else None,
+            },
         },
         "conversion_rate": {
             "cy": cy_conv,
@@ -331,6 +384,14 @@ def get_agg_overview(
             "py": py_cucet,
             "change": (cy_cucet - py_cucet) if (cy_cucet is not None and py_cucet is not None) else None,
             "growth_pct": percentage_change(cy_cucet, py_cucet) if (cy_cucet is not None and py_cucet is not None) else None,
+            "sub_metric": {
+                "label": "Eligible for Scholarship",
+                "full_label": "Total Eligible for Scholarship",
+                "cy": cy_scholarship,
+                "py": py_scholarship,
+                "change": (cy_scholarship - py_scholarship) if (cy_scholarship is not None and py_scholarship is not None) else None,
+                "growth_pct": percentage_change(cy_scholarship, py_scholarship) if (cy_scholarship is not None and py_scholarship is not None) else None,
+            },
         }
         cy_cucet_rate = _percentage(cy_admission, cy_cucet) if (cy_admission is not None and cy_cucet is not None) else None
         py_cucet_rate = _percentage(py_admission, py_cucet) if (py_admission is not None and py_cucet is not None) else None

@@ -194,7 +194,8 @@ def normalize_dataset(
             END,
             CASE 
                 WHEN NULLIF(REPLACE(raw_data->>'{col_cy_c}', ',', ''), '') IS NOT NULL THEN (REPLACE(raw_data->>'{col_cy_c}', ',', '')::numeric)
-                WHEN NULLIF(TRIM(raw_data->>'mx_CUCET_Score'), '') IS NOT NULL OR raw_data->>'mx_CUCET_Exam_Status' IN ('Eligible-for-Scholarship', 'Eligible for Admission but not for Scholarship', 'Not-Eligible for Admissions') THEN 1
+                WHEN NULLIF(TRIM(COALESCE(raw_data->>'mx_CUCET_First_Payment_Date', raw_data->>'{col_cucet_date}')), '') IS NOT NULL 
+                     AND LOWER(TRIM(COALESCE(raw_data->>'mx_CUCET_First_Payment_Date', raw_data->>'{col_cucet_date}'))) != 'null' THEN 1
                 ELSE 0
             END,
             CASE 

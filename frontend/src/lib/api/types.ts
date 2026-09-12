@@ -224,11 +224,25 @@ export interface TargetPerformanceResponse {
   items: TargetItem[];
 }
 
+export interface KPISubMetric {
+  label: string;
+  full_label?: string;
+  cy: number;
+  py?: number | null;
+  gross_cy?: number;
+  gross_py?: number | null;
+  refunds_cy?: number;
+  refunds_py?: number | null;
+  change?: number | null;
+  growth_pct?: number | null;
+}
+
 export interface KPIItem {
   cy: number;
   py?: number | null;
   change?: number | null;
   growth_pct?: number | null;
+  sub_metric?: KPISubMetric;
 }
 
 export interface OverviewResponse {

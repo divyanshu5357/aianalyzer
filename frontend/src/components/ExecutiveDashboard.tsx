@@ -115,7 +115,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   }, [selectedCampus, year, appliedFromDate, appliedToDate]);
 
   const [rankingsDimension, setRankingsDimension] = useState<string>("program");
-  const [mainMetric, setMainMetric] = useState<"admissions" | "leads" | "cucet" | "conversion_rate">("admissions");
+  const [mainMetric, setMainMetric] = useState<"admissions" | "leads" | "cucet" | "conversion_rate">("leads");
 
   // Synchronous peek keys for instant render on navigation (<5ms)
   const initialOverviewKey = useMemo(() => buildDashKey("overview", currentFilters), [currentFilters]);
@@ -566,49 +566,37 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
         </div>
       </div>
 
-      {/* 4 Primary KPI Cards */}
+      {/* 4 Primary KPI Cards (Reshuffled: Leads -> CUCET -> Admissions -> Conversion Rate with Interactive Click & Sub-metrics) */}
       {overview && (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          {/* 1. Leads Card */}
           <div
-            className={`p-5 rounded-2xl border transition-all ${
-              isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
+            onClick={() => setMainMetric("leads")}
+            role="button"
+            tabIndex={0}
+            className={`p-5 rounded-2xl border transition-all cursor-pointer transform hover:-translate-y-0.5 select-none ${
+              mainMetric === "leads"
+                ? isDark
+                  ? "bg-[#161F38] border-indigo-500/70 ring-2 ring-indigo-500/50 shadow-lg shadow-indigo-500/10"
+                  : "bg-indigo-50/60 border-indigo-300 ring-2 ring-indigo-500/40 shadow-md"
+                : isDark
+                ? "bg-[#131B2E] border-[#1E293B] hover:border-slate-700"
+                : "bg-white border-slate-200 shadow-sm hover:border-slate-300"
             }`}
           >
             <div className="flex items-center justify-between mb-3">
-              <span className={`text-xs font-extrabold uppercase tracking-wider ${
-                isDark ? "text-slate-400" : "text-slate-500"
-              }`}>
-                Admissions
-              </span>
-              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
-                <Target className="w-4 h-4" />
-              </div>
-            </div>
-            <div className="space-y-1">
-              <div className={`text-2xl font-black ${isDark ? "text-white" : "text-slate-900"}`}>
-                {(overview?.kpis?.admissions?.cy ?? 0).toLocaleString()}
-              </div>
-              <div className="flex items-center justify-between text-xs pt-1">
-                <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview?.kpis?.admissions?.py != null ? `PY: ${(overview.kpis.admissions.py ?? 0).toLocaleString()}` : "Single Year Scope"}
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-extrabold uppercase tracking-wider ${
+                  isDark ? "text-slate-400" : "text-slate-500"
+                }`}>
+                  Leads
                 </span>
-                {renderMetricDiff(overview?.kpis?.admissions?.change ?? 0, overview?.kpis?.admissions?.growth_pct ?? null)}
+                {mainMetric === "leads" && (
+                  <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-indigo-500 text-white animate-pulse">
+                    Active
+                  </span>
+                )}
               </div>
-            </div>
-          </div>
-
-          {/* Leads Card */}
-          <div
-            className={`p-5 rounded-2xl border transition-all ${
-              isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
-            }`}
-          >
-            <div className="flex items-center justify-between mb-3">
-              <span className={`text-xs font-extrabold uppercase tracking-wider ${
-                isDark ? "text-slate-400" : "text-slate-500"
-              }`}>
-                Leads
-              </span>
               <div className="w-8 h-8 rounded-xl bg-indigo-500/10 text-indigo-500 flex items-center justify-center">
                 <Users className="w-4 h-4" />
               </div>
@@ -624,21 +612,58 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 {renderMetricDiff(overview?.kpis?.leads?.change ?? 0, overview?.kpis?.leads?.growth_pct ?? null)}
               </div>
             </div>
+            {/* Sub-metric: Successful Fast Track ID Generation */}
+            {overview?.kpis?.leads?.sub_metric && (
+              <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-[11px] ${
+                isDark ? "border-[#1E293B]" : "border-slate-100"
+              }`}>
+                <div className="flex items-center gap-1.5 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-indigo-500 animate-ping" />
+                  <span className={isDark ? "text-slate-300" : "text-slate-600"}>
+                    Fast Track IDs:
+                  </span>
+                </div>
+                <div className="font-extrabold text-indigo-500 dark:text-indigo-400 flex items-center gap-1">
+                  <span>{(overview.kpis.leads.sub_metric.cy ?? 0).toLocaleString()}</span>
+                  {overview.kpis.leads.sub_metric.py != null && (
+                    <span className="text-[10px] font-normal text-slate-400">
+                      (PY: {(overview.kpis.leads.sub_metric.py ?? 0).toLocaleString()})
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* CUCET Card (if available) */}
+          {/* 2. CUCET Registrations Card */}
           {overview?.has_cucet && overview?.kpis?.cucet ? (
             <div
-              className={`p-5 rounded-2xl border transition-all ${
-                isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
+              onClick={() => setMainMetric("cucet")}
+              role="button"
+              tabIndex={0}
+              className={`p-5 rounded-2xl border transition-all cursor-pointer transform hover:-translate-y-0.5 select-none ${
+                mainMetric === "cucet"
+                  ? isDark
+                    ? "bg-[#181C38] border-violet-500/70 ring-2 ring-violet-500/50 shadow-lg shadow-violet-500/10"
+                    : "bg-violet-50/60 border-violet-300 ring-2 ring-violet-500/40 shadow-md"
+                  : isDark
+                  ? "bg-[#131B2E] border-[#1E293B] hover:border-slate-700"
+                  : "bg-white border-slate-200 shadow-sm hover:border-slate-300"
               }`}
             >
               <div className="flex items-center justify-between mb-3">
-                <span className={`text-xs font-extrabold uppercase tracking-wider ${
-                  isDark ? "text-slate-400" : "text-slate-500"
-                }`}>
-                  CUCET Registrations
-                </span>
+                <div className="flex items-center gap-2">
+                  <span className={`text-xs font-extrabold uppercase tracking-wider ${
+                    isDark ? "text-slate-400" : "text-slate-500"
+                  }`}>
+                    CUCET Registrations
+                  </span>
+                  {mainMetric === "cucet" && (
+                    <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-violet-500 text-white animate-pulse">
+                      Active
+                    </span>
+                  )}
+                </div>
                 <div className="w-8 h-8 rounded-xl bg-violet-500/10 text-violet-500 flex items-center justify-center">
                   <Award className="w-4 h-4" />
                 </div>
@@ -654,10 +679,97 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   {renderMetricDiff(overview.kpis.cucet.change ?? 0, overview.kpis.cucet.growth_pct ?? null)}
                 </div>
               </div>
+              {/* Sub-metric: Total Eligible for Scholarship */}
+              {overview?.kpis?.cucet?.sub_metric && (
+                <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-[11px] ${
+                  isDark ? "border-[#1E293B]" : "border-slate-100"
+                }`}>
+                  <div className="flex items-center gap-1.5 font-bold">
+                    <span className="w-1.5 h-1.5 rounded-full bg-violet-500 animate-ping" />
+                    <span className={isDark ? "text-slate-300" : "text-slate-600"}>
+                      Scholarship Eligible:
+                    </span>
+                  </div>
+                  <div className="font-extrabold text-violet-500 dark:text-violet-400 flex items-center gap-1">
+                    <span>{(overview.kpis.cucet.sub_metric.cy ?? 0).toLocaleString()}</span>
+                    {overview.kpis.cucet.sub_metric.py != null && (
+                      <span className="text-[10px] font-normal text-slate-400">
+                        (PY: {(overview.kpis.cucet.sub_metric.py ?? 0).toLocaleString()})
+                      </span>
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           ) : null}
 
-          {/* Conversion Rate Card */}
+          {/* 3. Admissions Card */}
+          <div
+            onClick={() => setMainMetric("admissions")}
+            role="button"
+            tabIndex={0}
+            className={`p-5 rounded-2xl border transition-all cursor-pointer transform hover:-translate-y-0.5 select-none ${
+              mainMetric === "admissions"
+                ? isDark
+                  ? "bg-[#14223E] border-blue-500/70 ring-2 ring-blue-500/50 shadow-lg shadow-blue-500/10"
+                  : "bg-blue-50/60 border-blue-300 ring-2 ring-blue-500/40 shadow-md"
+                : isDark
+                ? "bg-[#131B2E] border-[#1E293B] hover:border-slate-700"
+                : "bg-white border-slate-200 shadow-sm hover:border-slate-300"
+            }`}
+          >
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-2">
+                <span className={`text-xs font-extrabold uppercase tracking-wider ${
+                  isDark ? "text-slate-400" : "text-slate-500"
+                }`}>
+                  Admissions
+                </span>
+                {mainMetric === "admissions" && (
+                  <span className="px-1.5 py-0.5 text-[9px] font-black uppercase tracking-wider rounded-md bg-blue-500 text-white animate-pulse">
+                    Active
+                  </span>
+                )}
+              </div>
+              <div className="w-8 h-8 rounded-xl bg-blue-500/10 text-blue-500 flex items-center justify-center">
+                <Target className="w-4 h-4" />
+              </div>
+            </div>
+            <div className="space-y-1">
+              <div className={`text-2xl font-black ${isDark ? "text-white" : "text-slate-900"}`}>
+                {(overview?.kpis?.admissions?.cy ?? 0).toLocaleString()}
+              </div>
+              <div className="flex items-center justify-between text-xs pt-1">
+                <span className={isDark ? "text-slate-400" : "text-slate-500"}>
+                  {overview?.kpis?.admissions?.py != null ? `PY: ${(overview.kpis.admissions.py ?? 0).toLocaleString()}` : "Single Year Scope"}
+                </span>
+                {renderMetricDiff(overview?.kpis?.admissions?.change ?? 0, overview?.kpis?.admissions?.growth_pct ?? null)}
+              </div>
+            </div>
+            {/* Sub-metric: Total Active Admissions (Gross - Refunds) */}
+            {overview?.kpis?.admissions?.sub_metric && (
+              <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-[11px] ${
+                isDark ? "border-[#1E293B]" : "border-slate-100"
+              }`}>
+                <div className="flex items-center gap-1.5 font-bold">
+                  <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-ping" />
+                  <span className={isDark ? "text-slate-300" : "text-slate-600"}>
+                    Active Admissions:
+                  </span>
+                </div>
+                <div className="font-extrabold text-blue-500 dark:text-blue-400 flex items-center gap-1">
+                  <span>{(overview.kpis.admissions.sub_metric.cy ?? 0).toLocaleString()}</span>
+                  {overview.kpis.admissions.sub_metric.py != null && (
+                    <span className="text-[10px] font-normal text-slate-400">
+                      (PY: {(overview.kpis.admissions.sub_metric.py ?? 0).toLocaleString()})
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Conversion Rate Card */}
           <div
             className={`p-5 rounded-2xl border transition-all ${
               isDark ? "bg-[#131B2E] border-[#1E293B]" : "bg-white border-slate-200 shadow-sm"
@@ -684,6 +796,18 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 {renderMetricDiff(overview.kpis.conversion_rate.change, overview.kpis.conversion_rate.growth_pct, true)}
               </div>
             </div>
+            {overview?.kpis?.cucet_conversion_rate && (
+              <div className={`mt-3 pt-2.5 border-t flex items-center justify-between text-[11px] ${
+                isDark ? "border-[#1E293B]" : "border-slate-100"
+              }`}>
+                <span className={isDark ? "text-slate-400" : "text-slate-500"}>
+                  CUCET Conv Rate:
+                </span>
+                <span className="font-extrabold text-emerald-500">
+                  {overview.kpis.cucet_conversion_rate.cy}%
+                </span>
+              </div>
+            )}
           </div>
         </div>
       )}

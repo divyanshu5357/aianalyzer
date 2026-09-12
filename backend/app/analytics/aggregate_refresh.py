@@ -79,9 +79,15 @@ def _build_insert_sql(dataset_filter: str = "") -> str:
                 SUM(um.cy_leads) AS leads_cy,
                 SUM(um.cy_cucet) AS cucet_cy,
                 SUM(um.cy_admission) AS admission_cy,
+                SUM(COALESCE(um.cy_fasttrack, 0)) AS fasttrack_cy,
+                SUM(COALESCE(um.cy_scholarship, 0)) AS scholarship_cy,
+                SUM(COALESCE(um.cy_refunds, 0)) AS refunds_cy,
                 SUM(um.py_leads) AS leads_py,
                 SUM(um.py_cucet) AS cucet_py,
-                SUM(um.py_admission) AS admission_py
+                SUM(um.py_admission) AS admission_py,
+                SUM(COALESCE(um.py_fasttrack, 0)) AS fasttrack_py,
+                SUM(COALESCE(um.py_scholarship, 0)) AS scholarship_py,
+                SUM(COALESCE(um.py_refunds, 0)) AS refunds_py
             FROM analytics.uploaded_metrics um
             INNER JOIN system.datasets sd
                 ON sd.id = um.dataset_id
@@ -108,9 +114,15 @@ def _build_insert_sql(dataset_filter: str = "") -> str:
             leads_cy,
             cucet_cy,
             admission_cy,
+            fasttrack_cy,
+            scholarship_cy,
+            refunds_cy,
             leads_py,
             cucet_py,
             admission_py,
+            fasttrack_py,
+            scholarship_py,
+            refunds_py,
             created_at,
             updated_at
         )
@@ -131,9 +143,15 @@ def _build_insert_sql(dataset_filter: str = "") -> str:
             leads_cy,
             cucet_cy,
             admission_cy,
+            fasttrack_cy,
+            scholarship_cy,
+            refunds_cy,
             leads_py,
             cucet_py,
             admission_py,
+            fasttrack_py,
+            scholarship_py,
+            refunds_py,
             NOW() AS created_at,
             NOW() AS updated_at
         FROM raw_agg;
