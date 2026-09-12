@@ -45,6 +45,75 @@ VALID_SORT_FIELDS = {
 }
 
 
+def calculate_program_health(
+    py_adm: int,
+    cy_adm: int,
+    var_adm: int,
+    var_adm_pct: float,
+    py_leads: int,
+    cy_leads: int,
+    var_leads: int,
+    var_leads_pct: float,
+    lead_adm_pct: float,
+    py_refunds: int = 0,
+    cy_refunds: int = 0,
+) -> Dict[str, Any]:
+    """
+    Server-side business-rule health classification based strictly on observed metrics.
+    Configurable and transparent without client-side hardcoding:
+    - 🔴 Needs Attention (attention):
+        Significant admissions drop (var_adm < 0 and var_adm_pct <= -5.0),
+        OR admissions dropped while leads increased by >= 10.0% (conversion collapse).
+    - 🟡 Watch (watch):
+        Moderate decline (-5.0 < var_adm_pct < 0.0),
+        OR leads declined significantly (var_leads_pct <= -10.0) risking future intake,
+        OR high refund rate (> 10.0% of admissions).
+    - 🟢 Healthy (healthy):
+        Positive YoY admissions growth (var_adm >= 0),
+        steady intake and conversion.
+    """
+    # 1. Needs Attention
+    if var_adm < 0 and (var_adm_pct <= -5.0 or (var_leads_pct >= 10.0 and var_adm < 0)):
+        reasons = []
+        if var_adm < 0:
+            reasons.append(f"Admissions declined by {abs(var_adm):,} ({var_adm_pct:.1f}%)")
+        if var_leads_pct >= 10.0 and var_adm < 0:
+            reasons.append(f"Conversion drop despite {var_leads_pct:+.1f}% leads")
+        return {
+            "status": "attention",
+            "label": "Needs Attention",
+            "color": "rose",
+            "reason": "; ".join(reasons) if reasons else "Admissions contraction detected",
+            "badge": "🔴 Attention"
+        }
+
+    # 2. Watch
+    if var_adm < 0 or var_leads_pct <= -10.0 or (cy_adm > 0 and (cy_refunds / cy_adm) > 0.10):
+        reasons = []
+        if var_adm < 0:
+            reasons.append(f"Admissions changed {var_adm:+d} ({var_adm_pct:.1f}%)")
+        if var_leads_pct <= -10.0:
+            reasons.append(f"Lead volume dropped {var_leads_pct:.1f}%")
+        if cy_adm > 0 and (cy_refunds / cy_adm) > 0.10:
+            reasons.append(f"Refund rate {(cy_refunds / cy_adm * 100):.1f}%")
+        return {
+            "status": "watch",
+            "label": "Watch",
+            "color": "amber",
+            "reason": "; ".join(reasons) if reasons else "Metric fluctuations detected",
+            "badge": "🟡 Watch"
+        }
+
+    # 3. Healthy
+    return {
+        "status": "healthy",
+        "label": "Healthy",
+        "color": "emerald",
+        "reason": f"Admissions {var_adm:+d} ({var_adm_pct:+.1f}%), {lead_adm_pct:.1f}% conversion",
+        "badge": "🟢 Healthy"
+    }
+
+
 def _calculate_row_metrics(
     name: str,
     py_leads: int,
@@ -95,11 +164,26 @@ def _calculate_row_metrics(
     cy_refund_rate = round((cy_refunds / cy_adm) * 100, 1) if cy_adm > 0 else 0.0
     refund_rate_diff = round(cy_refund_rate - py_refund_rate, 1)
 
+    health = calculate_program_health(
+        py_adm=py_adm,
+        cy_adm=cy_adm,
+        var_adm=var_adm,
+        var_adm_pct=var_adm_pct,
+        py_leads=py_leads,
+        cy_leads=cy_leads,
+        var_leads=var_leads,
+        var_leads_pct=var_leads_pct,
+        lead_adm_pct=lead_adm_pct,
+        py_refunds=py_refunds,
+        cy_refunds=cy_refunds,
+    )
+
     row = {
         "id": node_id,
         "program": name,
         "level": level,
         "has_children": has_children,
+        "health": health,
         "py_leads": py_leads,
         "cy_leads": cy_leads,
         "var_leads": var_leads,
@@ -1469,4 +1553,464 @@ def get_program_insights(
     }
     _PROGRAMS_INSIGHTS_CACHE[cache_key] = (now_ts, resp)
     return resp
+
+
+_PROGRAMS_INVESTIGATION_CACHE: Dict[str, Tuple[float, Dict[str, Any]]] = {}
+
+
+def get_program_investigation_node(
+    db: Session,
+    program_group: str,
+    academic_year: Optional[int] = None,
+    campus: Optional[str] = None,
+    from_date: Optional[str] = None,
+    to_date: Optional[str] = None,
+    dimension: Optional[str] = None,
+    parent_value: Optional[str] = None,
+) -> Dict[str, Any]:
+    """
+    Evidence-first investigation tree and driver analysis for a program group.
+    Supports lazy cross-dimension drilldown across:
+      - State
+      - Lead Type (IN HOUSE, OUT SOURCED, OTHERS)
+      - Main Source (Direct, Website, Google, etc.)
+      - Counsellor (Owner)
+    All calculations are strictly computed on PostgreSQL from analytics.dashboard_agg.
+    Zero raw staging records scanned.
+    """
+    if not academic_year:
+        from app.analytics.period_helper import get_active_or_max_academic_year
+        academic_year = get_active_or_max_academic_year(db)
+
+    py_year = academic_year - 1
+    has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
+
+    # Server cache check
+    cache_key = f"{program_group}:{academic_year}:{campus}:{from_date}:{to_date}:{dimension}:{parent_value}"
+    now_ts = time.time()
+    if cache_key in _PROGRAMS_INVESTIGATION_CACHE:
+        c_time, c_data = _PROGRAMS_INVESTIGATION_CACHE[cache_key]
+        if (now_ts - c_time) < _PROGRAMS_CACHE_TTL:
+            return c_data
+
+    try:
+        db.execute(text("SET LOCAL jit = off;"))
+    except Exception:
+        pass
+
+    # Find matching program codes and name map
+    courses = db.execute(
+        text("SELECT LOWER(TRIM(program_code)), program_group, program_name FROM organization.course_master WHERE program_group IS NOT NULL")
+    ).fetchall()
+    matching_pcodes = {r[0] for r in courses if r[1] and r[1].strip().upper() == program_group.strip().upper()}
+    course_name_map = {r[0]: (r[2].strip() if r[2] else r[0].upper()) for r in courses if r[0]}
+    if not matching_pcodes:
+        matching_pcodes = {program_group.strip().lower()}
+
+    where_clauses = ["d.academic_year IN (:py_year, :cy_year)"]
+    params: Dict[str, Any] = {"cy_year": academic_year, "py_year": py_year}
+
+    if program_group.strip().upper() != "ALL":
+        pcode_placeholders = []
+        for idx, pc in enumerate(matching_pcodes):
+            p_key = f"pc_{idx}"
+            pcode_placeholders.append(f":{p_key}")
+            params[p_key] = pc
+        where_clauses.append(f"LOWER(TRIM(d.program_code)) IN ({', '.join(pcode_placeholders)})")
+
+    if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
+        where_clauses.append("LOWER(d.campus_name) = :campus")
+        params["campus"] = campus.strip().lower()
+
+    if has_date_filter:
+        from_m = from_date.strip()[:7]
+        to_m = to_date.strip()[:7]
+        py_from_m = get_py_date(from_date.strip())[:7]
+        py_to_m = get_py_date(to_date.strip())[:7]
+        params["from_m"] = from_m
+        params["to_m"] = to_m
+        params["py_from_m"] = py_from_m
+        params["py_to_m"] = py_to_m
+
+        cy_lead_expr = "CASE WHEN d.academic_year = :cy_year AND d.created_month >= :from_m AND d.created_month <= :to_m THEN d.leads_cy ELSE 0 END"
+        py_lead_expr = "CASE WHEN d.academic_year = :py_year AND d.created_month >= :py_from_m AND d.created_month <= :py_to_m THEN GREATEST(d.leads_cy, d.leads_py) ELSE 0 END"
+        cy_cucet_expr = "CASE WHEN d.academic_year = :cy_year AND d.created_month >= :from_m AND d.created_month <= :to_m THEN d.cucet_cy ELSE 0 END"
+        py_cucet_expr = "CASE WHEN d.academic_year = :py_year AND d.created_month >= :py_from_m AND d.created_month <= :py_to_m THEN GREATEST(d.cucet_cy, d.cucet_py) ELSE 0 END"
+        cy_adm_expr = "CASE WHEN d.academic_year = :cy_year AND d.admission_month >= :from_m AND d.admission_month <= :to_m THEN d.admission_cy ELSE 0 END"
+        py_adm_expr = "CASE WHEN d.academic_year = :py_year AND d.admission_month >= :py_from_m AND d.admission_month <= :py_to_m THEN GREATEST(d.admission_cy, d.admission_py) ELSE 0 END"
+    else:
+        cy_lead_expr = "CASE WHEN d.academic_year = :cy_year THEN d.leads_cy ELSE 0 END"
+        py_lead_expr = "CASE WHEN d.academic_year = :py_year THEN GREATEST(d.leads_cy, d.leads_py) ELSE 0 END"
+        cy_cucet_expr = "CASE WHEN d.academic_year = :cy_year THEN d.cucet_cy ELSE 0 END"
+        py_cucet_expr = "CASE WHEN d.academic_year = :py_year THEN GREATEST(d.cucet_cy, d.cucet_py) ELSE 0 END"
+        cy_adm_expr = "CASE WHEN d.academic_year = :cy_year THEN d.admission_cy ELSE 0 END"
+        py_adm_expr = "CASE WHEN d.academic_year = :py_year THEN GREATEST(d.admission_cy, d.admission_py) ELSE 0 END"
+
+    # Parent filter for lazy drilldown
+    drill_dim = (dimension or "").strip().lower()
+    parent_val = (parent_value or "").strip()
+    if drill_dim and parent_val:
+        if drill_dim == "state":
+            where_clauses.append("LOWER(TRIM(d.state)) = :p_val")
+            params["p_val"] = parent_val.lower()
+        elif drill_dim == "lead_type":
+            where_clauses.append("LOWER(TRIM(COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS'))) = :p_val")
+            params["p_val"] = parent_val.lower()
+        elif drill_dim in ("source", "main_source"):
+            where_clauses.append("LOWER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'Direct'))) = :p_val")
+            params["p_val"] = parent_val.lower()
+        elif drill_dim == "counsellor":
+            where_clauses.append("LOWER(TRIM(COALESCE(NULLIF(TRIM(d.owner), ''), 'Unassigned'))) = :p_val")
+            params["p_val"] = parent_val.lower()
+
+    where_sql = " AND ".join(where_clauses)
+    lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
+    main_src_expr = "COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'Direct')"
+    counsellor_expr = "COALESCE(NULLIF(TRIM(d.owner), ''), 'Unassigned')"
+
+    sql = f"""
+        SELECT 
+            COALESCE(NULLIF(TRIM(d.state), ''), 'UNMAPPED_STATE') as state,
+            {lead_type_expr} as lead_type,
+            {main_src_expr} as main_source,
+            {counsellor_expr} as counsellor,
+            LOWER(TRIM(COALESCE(NULLIF(d.program_code, ''), 'UNKNOWN'))) as program_code,
+            COALESCE(NULLIF(TRIM(d.program_name), ''), '') as program_name,
+            SUM({cy_lead_expr}) as cy_leads,
+            SUM({py_lead_expr}) as py_leads,
+            SUM({cy_cucet_expr}) as cy_cucet,
+            SUM({py_cucet_expr}) as py_cucet,
+            SUM({cy_adm_expr}) as cy_adm,
+            SUM({py_adm_expr}) as py_adm
+        FROM analytics.dashboard_agg d
+        LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+        WHERE {where_sql}
+        GROUP BY 1, 2, 3, 4, 5, 6
+    """
+    rows = db.execute(text(sql), params).fetchall()
+
+    tot_cy_leads = sum(int(r[6] or 0) for r in rows)
+    tot_py_leads = sum(int(r[7] or 0) for r in rows)
+    tot_cy_cucet = sum(int(r[8] or 0) for r in rows)
+    tot_py_cucet = sum(int(r[9] or 0) for r in rows)
+    tot_cy_adm = sum(int(r[10] or 0) for r in rows)
+    tot_py_adm = sum(int(r[11] or 0) for r in rows)
+
+    var_adm = tot_cy_adm - tot_py_adm
+    var_adm_pct = round((var_adm / tot_py_adm * 100), 1) if tot_py_adm > 0 else (0.0 if tot_cy_adm == 0 else 100.0)
+    var_leads = tot_cy_leads - tot_py_leads
+    var_leads_pct = round((var_leads / tot_py_leads * 100), 1) if tot_py_leads > 0 else (0.0 if tot_cy_leads == 0 else 100.0)
+    var_cucet = tot_cy_cucet - tot_py_cucet
+    var_cucet_pct = round((var_cucet / tot_py_cucet * 100), 1) if tot_py_cucet > 0 else (0.0 if tot_cy_cucet == 0 else 100.0)
+
+    conv_cy = round((tot_cy_adm / tot_cy_leads * 100), 2) if tot_cy_leads > 0 else 0.0
+    conv_py = round((tot_py_adm / tot_py_leads * 100), 2) if tot_py_leads > 0 else 0.0
+    var_conv = round(conv_cy - conv_py, 2)
+
+    health = calculate_program_health(
+        py_adm=tot_py_adm,
+        cy_adm=tot_cy_adm,
+        var_adm=var_adm,
+        var_adm_pct=var_adm_pct,
+        py_leads=tot_py_leads,
+        cy_leads=tot_cy_leads,
+        var_leads=var_leads,
+        var_leads_pct=var_leads_pct,
+        lead_adm_pct=conv_cy,
+    )
+
+    # Dimensional Breakdowns
+    state_map: Dict[str, Dict[str, int]] = {}
+    lt_map: Dict[str, Dict[str, int]] = {}
+    src_map: Dict[str, Dict[str, int]] = {}
+    couns_map: Dict[str, Dict[str, int]] = {}
+    prog_map: Dict[str, Dict[str, Any]] = {}
+
+    for r in rows:
+        st, lt, src, cns, pcode, raw_pname = r[0], r[1], r[2], r[3], r[4], r[5]
+        cyl, pyl, cyc, pyc, cya, pya = int(r[6] or 0), int(r[7] or 0), int(r[8] or 0), int(r[9] or 0), int(r[10] or 0), int(r[11] or 0)
+
+        for m, k in [(state_map, st), (lt_map, lt), (src_map, src), (couns_map, cns)]:
+            if k not in m:
+                m[k] = {"cy_leads": 0, "py_leads": 0, "cy_adm": 0, "py_adm": 0}
+            m[k]["cy_leads"] += cyl
+            m[k]["py_leads"] += pyl
+            m[k]["cy_adm"] += cya
+            m[k]["py_adm"] += pya
+
+        # Aggregate sub-programs under this program group
+        if pcode and pcode != "unknown":
+            if pcode not in prog_map:
+                pname = course_name_map.get(pcode, raw_pname or pcode.upper())
+                prog_map[pcode] = {
+                    "program_code": pcode.upper(),
+                    "program_name": pname,
+                    "cy_leads": 0,
+                    "py_leads": 0,
+                    "cy_cucet": 0,
+                    "py_cucet": 0,
+                    "cy_adm": 0,
+                    "py_adm": 0,
+                }
+            prog_map[pcode]["cy_leads"] += cyl
+            prog_map[pcode]["py_leads"] += pyl
+            prog_map[pcode]["cy_cucet"] += cyc
+            prog_map[pcode]["py_cucet"] += pyc
+            prog_map[pcode]["cy_adm"] += cya
+            prog_map[pcode]["py_adm"] += pya
+
+    # Process Sub-Programs Diagnosis (identifying dropping programs and root cause: lead vs conversion)
+    sub_progs_list = []
+    for pcode, pdata in prog_map.items():
+        cya = pdata["cy_adm"]
+        pya = pdata["py_adm"]
+        v_a = cya - pya
+        v_a_pct = round((v_a / pya * 100), 1) if pya > 0 else (0.0 if cya == 0 else 100.0)
+        cyl = pdata["cy_leads"]
+        pyl = pdata["py_leads"]
+        v_l = cyl - pyl
+        v_l_pct = round((v_l / pyl * 100), 1) if pyl > 0 else (0.0 if cyl == 0 else 100.0)
+        c_rate_cy = round((cya / cyl * 100), 2) if cyl > 0 else 0.0
+        c_rate_py = round((pya / pyl * 100), 2) if pyl > 0 else 0.0
+        v_conv = round(c_rate_cy - c_rate_py, 2)
+
+        # Diagnosing whether issue is Lead Volume Deficit, Conversion Collapse, or Compound
+        if v_a < 0:
+            if v_l >= 0 or (v_l < 0 and v_conv <= -1.0 and abs(v_l_pct) < 20):
+                issue_type = "CONVERSION_COLLAPSE"
+                issue_badge = "⚡ Conversion Collapse"
+                issue_label = "Conversion Issue"
+                diagnosis = f"Leads {'grew' if v_l > 0 else 'held'} ({v_l_pct:+.1f}%), but conversion dropped from {c_rate_py:.1f}% to {c_rate_cy:.1f}% ({v_conv:+.1f}% pts), losing {abs(v_a):,} admissions."
+            elif v_l < 0 and (c_rate_cy >= c_rate_py or abs(v_l_pct) >= 25):
+                issue_type = "LEAD_VOLUME_DEFICIT"
+                issue_badge = "📉 Lead Deficit"
+                issue_label = "Lead Volume Deficit"
+                diagnosis = f"Top-of-funnel leads plunged by {abs(v_l):,} ({v_l_pct:+.1f}%), pulling admissions down despite {c_rate_cy:.1f}% conversion."
+            else:
+                issue_type = "COMPOUND_CONTRACTION"
+                issue_badge = "⚠️ Compound Contraction"
+                issue_label = "Compound Contraction"
+                diagnosis = f"Both lead volume ({v_l_pct:+.1f}%) and conversion ({c_rate_py:.1f}% → {c_rate_cy:.1f}%) contracted."
+        elif v_a > 0:
+            issue_type = "GROWTH_EXPANSION"
+            issue_badge = "🟢 Growth Expansion"
+            issue_label = "Growth"
+            diagnosis = f"Admissions expanded +{v_a:,} ({v_a_pct:+.1f}%) backed by {cyl:,} leads and {c_rate_cy:.1f}% conversion."
+        else:
+            issue_type = "STABLE"
+            issue_badge = "⚪ Stable"
+            issue_label = "Stable"
+            diagnosis = f"Admissions held flat ({cya:,}) with {v_l_pct:+.1f}% lead trend."
+
+        sub_progs_list.append({
+            "program_code": pdata["program_code"],
+            "program_name": pdata["program_name"],
+            "cy_admissions": cya,
+            "py_admissions": pya,
+            "var_admissions": v_a,
+            "var_admissions_pct": v_a_pct,
+            "cy_leads": cyl,
+            "py_leads": pyl,
+            "var_leads": v_l,
+            "var_leads_pct": v_l_pct,
+            "conversion_rate_cy": c_rate_cy,
+            "conversion_rate_py": c_rate_py,
+            "var_conversion_rate": v_conv,
+            "issue_type": issue_type,
+            "issue_badge": issue_badge,
+            "issue_label": issue_label,
+            "diagnosis": diagnosis,
+        })
+
+    dropping_sub_progs = [p for p in sub_progs_list if p["var_admissions"] < 0]
+    dropping_sub_progs.sort(key=lambda x: (x["var_admissions"], x["var_leads"]))
+
+    expanding_sub_progs = [p for p in sub_progs_list if p["var_admissions"] > 0]
+    expanding_sub_progs.sort(key=lambda x: (-x["var_admissions"], -x["var_leads"]))
+
+    # Build ranked drivers
+    candidate_drivers = []
+    dim_defs = [
+        ("state", "State", state_map),
+        ("lead_type", "Lead Type", lt_map),
+        ("main_source", "Source", src_map),
+        ("counsellor", "Counsellor", couns_map),
+    ]
+
+    for d_code, d_label, d_data in dim_defs:
+        # Don't show current parent dimension again
+        if drill_dim == d_code:
+            continue
+        for name, vals in d_data.items():
+            if not name or name.upper() in ("UNMAPPED_STATE", "UNKNOWN", "UNASSIGNED"):
+                continue
+            cya = vals["cy_adm"]
+            pya = vals["py_adm"]
+            v_a = cya - pya
+            v_a_pct = round((v_a / pya * 100), 1) if pya > 0 else (0.0 if cya == 0 else 100.0)
+            cyl = vals["cy_leads"]
+            pyl = vals["py_leads"]
+            v_l = cyl - pyl
+            v_l_pct = round((v_l / pyl * 100), 1) if pyl > 0 else (0.0 if cyl == 0 else 100.0)
+            c_rate = round((cya / cyl * 100), 2) if cyl > 0 else 0.0
+
+            candidate_drivers.append({
+                "id": f"{d_code}:{name}",
+                "dimension": d_code,
+                "dimension_label": d_label,
+                "name": name,
+                "cy_adm": cya,
+                "py_adm": pya,
+                "var_adm": v_a,
+                "var_adm_pct": v_a_pct,
+                "cy_leads": cyl,
+                "py_leads": pyl,
+                "var_leads": v_l,
+                "var_leads_pct": v_l_pct,
+                "conversion_rate": c_rate,
+            })
+
+    # Separate negative vs positive drivers
+    negatives = [d for d in candidate_drivers if d["var_adm"] < 0 or (d["var_adm"] == 0 and d["var_leads"] < 0)]
+    negatives.sort(key=lambda x: (x["var_adm"], x["var_leads"]))
+
+    positives = [d for d in candidate_drivers if d["var_adm"] > 0]
+    positives.sort(key=lambda x: (-x["var_adm"], -x["var_leads"]))
+
+    # Primary Issue Classification
+    if var_adm < 0 and var_leads >= 0:
+        primary_issue_type = "CONVERSION_DECLINE"
+        main_issue_text = "Lead volume is stable/growing, but conversion declined significantly."
+    elif var_adm < 0 and var_leads < 0 and abs(var_leads_pct) >= abs(var_adm_pct):
+        primary_issue_type = "LEAD_VOLUME_DEFICIT"
+        main_issue_text = "Admissions declined primarily driven by lower top-of-funnel lead volume."
+    elif var_adm < 0 and var_leads < 0:
+        primary_issue_type = "COMPOUND_CONTRACTION"
+        main_issue_text = "Both lead intake and conversion rates experienced contractions."
+    elif var_adm >= 0 and var_leads > 0 and var_adm_pct >= var_leads_pct:
+        primary_issue_type = "GROWTH_EXPANSION"
+        main_issue_text = f"Admissions are growing faster than lead volume ({var_adm_pct:+.1f}% vs {var_leads_pct:+.1f}%)."
+    elif var_adm >= 0:
+        primary_issue_type = "VOLUME_DRIVEN_GROWTH"
+        main_issue_text = "Admissions increased backed by lead volume expansion."
+    else:
+        primary_issue_type = "STABLE_PERFORMANCE"
+        main_issue_text = "Performance across core intake metrics remains stable."
+
+    # Strongest observed drivers
+    top_neg = negatives[0] if negatives else None
+    top_pos = positives[0] if positives else None
+
+    # Management Summary
+    what_changed = f"Admissions {'increased' if var_adm >= 0 else 'decreased'} by {abs(var_adm):,} ({var_adm_pct:+.1f}%) YoY."
+    if top_neg:
+        top_neg_summary = f"{top_neg['dimension_label']} '{top_neg['name']}' showed the largest negative drag ({top_neg['var_adm']:+d} admissions, {top_neg['var_adm_pct']:+.1f}%)."
+    else:
+        top_neg_summary = "No major contraction drivers detected."
+
+    if top_pos:
+        top_pos_summary = f"{top_pos['dimension_label']} '{top_pos['name']}' drove the strongest admissions gain ({top_pos['var_adm']:+d} admissions, {top_pos['var_adm_pct']:+.1f}%)."
+    else:
+        top_pos_summary = "Growth distributed evenly across channels."
+
+    # Actionable issues list for Investigation Tree (Top 3 distinct dimensions if possible)
+    seen_dims = set()
+    issues_list = []
+    for d in negatives:
+        if d["dimension"] not in seen_dims and len(issues_list) < 3:
+            seen_dims.add(d["dimension"])
+            issues_list.append({
+                "id": d["id"],
+                "dimension": d["dimension"],
+                "dimension_label": d["dimension_label"],
+                "name": d["name"],
+                "badge": "🔴 Attention" if d["var_adm"] <= -50 else "🟡 Watch",
+                "title": f"{d['dimension_label']}: {d['name']}",
+                "description": f"Admissions dropped by {abs(d['var_adm']):,} ({d['var_adm_pct']:+.1f}%) with {d['var_leads']:+d} leads.",
+                "py_adm": d["py_adm"],
+                "cy_adm": d["cy_adm"],
+                "var_adm": d["var_adm"],
+                "var_adm_pct": d["var_adm_pct"],
+                "py_leads": d["py_leads"],
+                "cy_leads": d["cy_leads"],
+                "var_leads": d["var_leads"],
+                "var_leads_pct": d["var_leads_pct"],
+                "can_drill_down": True,
+            })
+
+    # Positive drivers list (Top 3)
+    seen_pos_dims = set()
+    positives_list = []
+    for d in positives:
+        if d["dimension"] not in seen_pos_dims and len(positives_list) < 3:
+            seen_pos_dims.add(d["dimension"])
+            positives_list.append({
+                "id": d["id"],
+                "dimension": d["dimension"],
+                "dimension_label": d["dimension_label"],
+                "name": d["name"],
+                "badge": "🟢 Positive",
+                "title": f"{d['dimension_label']}: {d['name']}",
+                "description": f"Admissions increased by +{d['var_adm']:,} ({d['var_adm_pct']:+.1f}%) with {d['conversion_rate']:.1f}% conversion.",
+                "py_adm": d["py_adm"],
+                "cy_adm": d["cy_adm"],
+                "var_adm": d["var_adm"],
+                "var_adm_pct": d["var_adm_pct"],
+                "can_drill_down": True,
+            })
+
+    # Build breadcrumb path
+    drill_path = [{"level": "program", "value": program_group}]
+    if drill_dim and parent_val:
+        drill_path.append({"level": drill_dim, "value": parent_val})
+
+    # Available next dimensions for cross-dimensional investigation
+    all_dims = ["state", "lead_type", "main_source", "counsellor"]
+    next_dims = [d for d in all_dims if d != drill_dim]
+
+    res = {
+        "success": True,
+        "program_group": program_group,
+        "academic_year": academic_year,
+        "campus": campus or "All Campuses",
+        "current_drilldown": {"dimension": drill_dim or None, "parent_value": parent_val or None},
+        "drill_path": drill_path,
+        "health": health,
+        "primary_issue_type": primary_issue_type,
+        "main_issue": main_issue_text,
+        "what_changed": what_changed,
+        "strongest_negative_driver": top_neg_summary,
+        "strongest_positive_driver": top_pos_summary,
+        "metrics": {
+            "cy_admissions": tot_cy_adm,
+            "py_admissions": tot_py_adm,
+            "var_admissions": var_adm,
+            "var_admissions_pct": var_adm_pct,
+            "cy_leads": tot_cy_leads,
+            "py_leads": tot_py_leads,
+            "var_leads": var_leads,
+            "var_leads_pct": var_leads_pct,
+            "cy_cucet": tot_cy_cucet,
+            "py_cucet": tot_py_cucet,
+            "var_cucet": var_cucet,
+            "var_cucet_pct": var_cucet_pct,
+            "conversion_rate_cy": conv_cy,
+            "conversion_rate_py": conv_py,
+            "var_conversion_rate": var_conv,
+        },
+        "issues": issues_list,
+        "positive_drivers": positives_list,
+        "next_dimensions": next_dims,
+        "sub_programs_analysis": {
+            "total_count": len(prog_map),
+            "dropping_count": len(dropping_sub_progs),
+            "expanding_count": len(expanding_sub_progs),
+            "dropping_programs": dropping_sub_progs,
+            "expanding_programs": expanding_sub_progs,
+        },
+    }
+
+    _PROGRAMS_INVESTIGATION_CACHE[cache_key] = (now_ts, res)
+    return res
+
 

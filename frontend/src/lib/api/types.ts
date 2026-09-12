@@ -831,11 +831,21 @@ export interface RefundPctPyCy {
   diff_pct: number;
 }
 
+export interface ProgramHealth {
+  status: 'healthy' | 'watch' | 'attention';
+  label: string;
+  color: 'emerald' | 'amber' | 'rose' | string;
+  reason: string;
+  badge: string;
+  signals?: string[];
+}
+
 export interface ProgramReportRow {
   id: string;
   program: string;
   level: 1 | 2 | 3 | 4 | 5;
   has_children: boolean;
+  health?: ProgramHealth;
   py_leads: number;
   cy_leads: number;
   var_leads: number;
@@ -865,6 +875,90 @@ export interface ProgramReportRow {
   report_source?: string;
   source_category?: string;
   sub_source?: string;
+}
+
+export interface InvestigationDriver {
+  id: string;
+  dimension: 'state' | 'lead_type' | 'main_source' | 'counsellor' | string;
+  dimension_label: string;
+  name: string;
+  badge: string;
+  title: string;
+  description: string;
+  py_adm: number;
+  cy_adm: number;
+  var_adm: number;
+  var_adm_pct: number;
+  py_leads?: number;
+  cy_leads?: number;
+  var_leads?: number;
+  var_leads_pct?: number;
+  conversion_rate?: number;
+  can_drill_down: boolean;
+}
+
+export interface SubProgramInsight {
+  program_code: string;
+  program_name: string;
+  cy_admissions: number;
+  py_admissions: number;
+  var_admissions: number;
+  var_admissions_pct: number;
+  cy_leads: number;
+  py_leads: number;
+  var_leads: number;
+  var_leads_pct: number;
+  conversion_rate_cy: number;
+  conversion_rate_py: number;
+  var_conversion_rate: number;
+  issue_type: 'CONVERSION_COLLAPSE' | 'LEAD_VOLUME_DEFICIT' | 'COMPOUND_CONTRACTION' | 'GROWTH_EXPANSION' | 'STABLE' | string;
+  issue_badge: string;
+  issue_label: string;
+  diagnosis: string;
+}
+
+export interface SubProgramsAnalysis {
+  total_count: number;
+  dropping_count: number;
+  expanding_count: number;
+  dropping_programs: SubProgramInsight[];
+  expanding_programs: SubProgramInsight[];
+}
+
+export interface ProgramInvestigationNode {
+  success: boolean;
+  program_group: string;
+  academic_year: number;
+  campus: string;
+  current_drilldown: { dimension: string | null; parent_value: string | null };
+  drill_path: Array<{ level: string; value: string }>;
+  health: ProgramHealth;
+  primary_issue_type: string;
+  main_issue: string;
+  what_changed: string;
+  strongest_negative_driver: string;
+  strongest_positive_driver: string;
+  metrics: {
+    cy_admissions: number;
+    py_admissions: number;
+    var_admissions: number;
+    var_admissions_pct: number;
+    cy_leads: number;
+    py_leads: number;
+    var_leads: number;
+    var_leads_pct: number;
+    cy_cucet: number;
+    py_cucet: number;
+    var_cucet: number;
+    var_cucet_pct: number;
+    conversion_rate_cy: number;
+    conversion_rate_py: number;
+    var_conversion_rate: number;
+  };
+  issues: InvestigationDriver[];
+  positive_drivers: InvestigationDriver[];
+  next_dimensions: string[];
+  sub_programs_analysis?: SubProgramsAnalysis;
 }
 
 export interface ProgramReportScope {

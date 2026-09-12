@@ -9,6 +9,20 @@ import type {
   ProgramHierarchyParams,
 } from '@/lib/api/types';
 
+// ── useIsMobile Hook ─────────────────────────────────────────────────────────
+
+function useIsMobile(breakpoint = 640) {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const mql = window.matchMedia(`(max-width: ${breakpoint - 1}px)`);
+    setIsMobile(mql.matches);
+    const handler = (e: MediaQueryListEvent) => setIsMobile(e.matches);
+    mql.addEventListener('change', handler);
+    return () => mql.removeEventListener('change', handler);
+  }, [breakpoint]);
+  return isMobile;
+}
+
 // ── Sparkline Component ──────────────────────────────────────────────────────
 
 function Sparkline({ data, color = '#6366f1' }: { data: number[]; color?: string }) {
@@ -47,6 +61,29 @@ function Sparkline({ data, color = '#6366f1' }: { data: number[]; color?: string
   );
 }
 
+// ── Mini Sparkline (for mobile cards) ─────────────────────────────────────────
+
+function MiniSparkline({ data, color = '#6366f1' }: { data: number[]; color?: string }) {
+  if (!data || data.length < 2) return null;
+  const max = Math.max(...data, 1);
+  const min = Math.min(...data);
+  const range = max - min || 1;
+  const w = 48;
+  const h = 18;
+  const pts = data
+    .map((v, i) => {
+      const x = (i / (data.length - 1)) * w;
+      const y = h - ((v - min) / range) * h;
+      return `${x.toFixed(1)},${y.toFixed(1)}`;
+    })
+    .join(' ');
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} style={{ overflow: 'visible' }}>
+      <polyline points={pts} fill="none" stroke={color} strokeWidth="1.5" strokeLinejoin="round" strokeLinecap="round" />
+    </svg>
+  );
+}
+
 // ── Variance Badge ────────────────────────────────────────────────────────────
 
 function VarBadge({ value, pct }: { value: number; pct: number }) {
@@ -74,6 +111,199 @@ function RefundCell({ py, cy, diff }: { py: number; cy: number; diff: number }) 
       <span className="text-gray-300">{py} → {cy}</span>{' '}
       <span className={cls}>({sign}{diff})</span>
     </span>
+  );
+}
+
+// ── Mobile Program Card ───────────────────────────────────────────────────────
+
+function MobileProgramCard({
+  row,
+  isDark,
+  onSelect,
+}: {
+  row: ProgramReportRow;
+  isDark: boolean;
+  onSelect: () => void;
+}) {
+  const admUp = row.var_adm >= 0;
+  const leadsUp = row.var_leads >= 0;
+
+  // Card border-left color: green if admissions up, red if down
+  const borderColor = admUp ? '#10b981' : '#ef4444';
+
+  // Background tint
+  const cardBg = isDark
+    ? admUp ? 'rgba(16,185,129,0.04)' : 'rgba(239,68,68,0.04)'
+    : admUp ? 'rgba(16,185,129,0.03)' : 'rgba(239,68,68,0.03)';
+
+  return (
+    <div
+      onClick={onSelect}
+      className="active:scale-[0.98] transition-transform duration-100 cursor-pointer"
+      style={{
+        borderLeft: `3px solid ${borderColor}`,
+        borderRadius: 10,
+        background: isDark ? '#111827' : '#ffffff',
+        marginBottom: 8,
+        padding: '12px 14px',
+        boxShadow: isDark
+          ? '0 1px 3px rgba(0,0,0,0.4)'
+          : '0 1px 3px rgba(0,0,0,0.08)',
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      {/* Subtle background tint */}
+      <div style={{ position: 'absolute', inset: 0, background: cardBg, pointerEvents: 'none' }} />
+
+      {/* Row 1: Program name + Admission badge */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+        <span style={{
+          fontSize: 13,
+          fontWeight: 600,
+          color: isDark ? '#e2e8f0' : '#1e293b',
+          flex: 1,
+          overflow: 'hidden',
+          textOverflow: 'ellipsis',
+          whiteSpace: 'nowrap',
+        }}>
+          {row.program}
+        </span>
+
+        {/* Admission change badge */}
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          fontSize: 11,
+          fontWeight: 700,
+          padding: '3px 8px',
+          borderRadius: 6,
+          background: admUp ? 'rgba(16,185,129,0.15)' : 'rgba(239,68,68,0.15)',
+          color: admUp ? '#10b981' : '#ef4444',
+          border: `1px solid ${admUp ? 'rgba(16,185,129,0.25)' : 'rgba(239,68,68,0.25)'}`,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 12 }}>{admUp ? '▲' : '▼'}</span>
+          {admUp ? '+' : ''}{row.var_adm} Adm
+        </span>
+      </div>
+
+      {/* Row 2: 3-column metric grid */}
+      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+        {/* Leads */}
+        <div style={{
+          background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+          borderRadius: 7,
+          padding: '7px 8px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 500, color: isDark ? '#9ca3af' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Leads</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#f1f5f9' : '#1e293b' }}>{row.cy_leads.toLocaleString()}</div>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: leadsUp ? '#10b981' : '#ef4444',
+            marginTop: 1,
+          }}>
+            {leadsUp ? '↑' : '↓'} {leadsUp ? '+' : ''}{row.var_leads_pct.toFixed(0)}%
+          </div>
+        </div>
+
+        {/* CUCET */}
+        <div style={{
+          background: isDark ? 'rgba(255,255,255,0.04)' : 'rgba(0,0,0,0.02)',
+          borderRadius: 7,
+          padding: '7px 8px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 500, color: isDark ? '#9ca3af' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>CUCET</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#f1f5f9' : '#1e293b' }}>{row.cy_cucet.toLocaleString()}</div>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: row.var_cucet >= 0 ? '#10b981' : '#ef4444',
+            marginTop: 1,
+          }}>
+            {row.var_cucet >= 0 ? '↑' : '↓'} {row.var_cucet >= 0 ? '+' : ''}{row.var_cucet_pct.toFixed(0)}%
+          </div>
+        </div>
+
+        {/* Admissions */}
+        <div style={{
+          background: admUp ? 'rgba(16,185,129,0.08)' : 'rgba(239,68,68,0.08)',
+          borderRadius: 7,
+          padding: '7px 8px',
+          textAlign: 'center',
+          border: `1px solid ${admUp ? 'rgba(16,185,129,0.2)' : 'rgba(239,68,68,0.2)'}`,
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 500, color: isDark ? '#9ca3af' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Adm</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: admUp ? '#10b981' : '#ef4444' }}>{row.cy_adm.toLocaleString()}</div>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: admUp ? '#10b981' : '#ef4444',
+            marginTop: 1,
+          }}>
+            {admUp ? '↑' : '↓'} {admUp ? '+' : ''}{row.var_adm_pct.toFixed(0)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Conversion rates + mini sparkline */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: 8, paddingTop: 8, borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}` }}>
+        <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+          <span style={{ fontSize: 10, color: isDark ? '#9ca3af' : '#6b7280' }}>
+            L→A <span style={{ fontWeight: 600, color: isDark ? '#38bdf8' : '#0284c7' }}>{row.lead_adm_pct.toFixed(1)}%</span>
+          </span>
+          <span style={{ fontSize: 10, color: isDark ? '#9ca3af' : '#6b7280' }}>
+            Net <span style={{ fontWeight: 600, color: isDark ? '#e2e8f0' : '#1e293b' }}>{row.net_admissions.toLocaleString()}</span>
+          </span>
+          {row.refund_py_vs_cy && (
+            <span style={{ fontSize: 10, color: isDark ? '#9ca3af' : '#6b7280' }}>
+              Ref <span style={{ fontWeight: 600, color: row.refund_py_vs_cy.diff > 0 ? '#ef4444' : '#10b981' }}>{row.refund_py_vs_cy.diff > 0 ? '+' : ''}{row.refund_py_vs_cy.diff}</span>
+            </span>
+          )}
+        </div>
+        <MiniSparkline data={row.lead_trend} color={admUp ? '#10b981' : '#ef4444'} />
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile Total Card ─────────────────────────────────────────────────────────
+
+function MobileTotalCard({ row, isDark }: { row: ProgramReportRow; isDark: boolean }) {
+  return (
+    <div style={{
+      borderRadius: 10,
+      background: isDark ? 'linear-gradient(135deg, #1e1b4b, #312e81)' : 'linear-gradient(135deg, #eef2ff, #e0e7ff)',
+      padding: '14px 16px',
+      marginBottom: 8,
+      border: `1px solid ${isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)'}`,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', color: isDark ? '#a5b4fc' : '#4f46e5', marginBottom: 10 }}>
+        ⬛ Total
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Leads</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_leads.toLocaleString()}</div>
+          <VarBadge value={row.var_leads} pct={row.var_leads_pct} />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>CUCET</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_cucet.toLocaleString()}</div>
+          <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Adm</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#10b981' : '#059669' }}>{row.cy_adm.toLocaleString()}</div>
+          <VarBadge value={row.var_adm} pct={row.var_adm_pct} />
+        </div>
+      </div>
+    </div>
   );
 }
 
@@ -111,6 +341,8 @@ interface ProgramReportTableProps {
   sortBy: string;
   sortOrder: 'asc' | 'desc';
   onSortChange: (col: string, order: 'asc' | 'desc') => void;
+  selectedProgram?: string | null;
+  onSelectProgram?: (program: string) => void;
   loading?: boolean;
   isDark?: boolean;
 }
@@ -124,21 +356,32 @@ export default function ProgramReportTable({
   sortBy,
   sortOrder,
   onSortChange,
+  selectedProgram,
+  onSelectProgram,
   loading = false,
   isDark = true,
 }: ProgramReportTableProps) {
+  const isMobile = useIsMobile();
+
   // Scope-aware child cache: Map<nodeId, ProgramReportRow[]>
   const childCache = useRef<Map<string, ProgramReportRow[]>>(new Map());
   const prevScopeKey = useRef<string>('');
 
   // Node state map: nodeId → RowNode
   const [nodes, setNodes] = useState<Map<string, RowNode>>(() => {
+    const savedExpanded = dashboardCache.getProgramUiState().expandedNodeIds;
     const m = new Map<string, RowNode>();
-    topRows.forEach((r) => m.set(r.id, { row: r, state: 'collapsed', children: [] }));
+    topRows.forEach((r) =>
+      m.set(r.id, {
+        row: r,
+        state: savedExpanded.has(r.id) ? 'expanded' : 'collapsed',
+        children: [],
+      })
+    );
     return m;
   });
 
-  // Selected program for deep AI diagnostic modal
+  // Selected program for fallback AI diagnostic modal
   const [selectedInsightProgram, setSelectedInsightProgram] = useState<string | null>(null);
 
   // Re-init nodes when top rows or scope changes (filter invalidation)
@@ -149,8 +392,17 @@ export default function ProgramReportTable({
       childCache.current.clear();
       prevScopeKey.current = currentKey;
     }
+    const savedExpanded = dashboardCache.getProgramUiState().expandedNodeIds;
     const m = new Map<string, RowNode>();
-    topRows.forEach((r) => m.set(r.id, { row: r, state: 'collapsed', children: [] }));
+    topRows.forEach((r) => {
+      const isExp = savedExpanded.has(r.id);
+      const cachedChildren = childCache.current.get(`${currentKey}|${r.id}`) || [];
+      m.set(r.id, {
+        row: r,
+        state: isExp && cachedChildren.length > 0 ? 'expanded' : 'collapsed',
+        children: cachedChildren,
+      });
+    });
     setNodes(m);
   }, [topRows, filters]);
 
@@ -259,6 +511,9 @@ export default function ProgramReportTable({
         if (n) next.set(nodeId, { ...n, state: 'collapsed' });
         return next;
       });
+      const currentExpanded = new Set(dashboardCache.getProgramUiState().expandedNodeIds);
+      currentExpanded.delete(nodeId);
+      dashboardCache.setProgramUiState({ expandedNodeIds: currentExpanded });
       return;
     }
 
@@ -276,6 +531,9 @@ export default function ProgramReportTable({
         });
         return next;
       });
+      const currentExpanded = new Set(dashboardCache.getProgramUiState().expandedNodeIds);
+      currentExpanded.add(nodeId);
+      dashboardCache.setProgramUiState({ expandedNodeIds: currentExpanded });
       return;
     }
 
@@ -304,6 +562,9 @@ export default function ProgramReportTable({
         });
         return next;
       });
+      const currentExpanded = new Set(dashboardCache.getProgramUiState().expandedNodeIds);
+      currentExpanded.add(nodeId);
+      dashboardCache.setProgramUiState({ expandedNodeIds: currentExpanded });
     } catch (err) {
       console.error('Failed to load children for', nodeId, err);
       setNodes((prev) => {
@@ -355,13 +616,30 @@ export default function ProgramReportTable({
     const refund = row.refund_py_vs_cy;
     const refundPct = row.refund_pct_py_vs_cy;
 
-    const rowHoverCls = isDark ? 'hover:bg-white/[0.03]' : 'hover:bg-slate-50';
+    const isSelected = selectedProgram && (selectedProgram === row.program || selectedProgram === row.program_group);
+    const selectedCls = isSelected
+      ? isDark
+        ? 'bg-indigo-950/40 ring-1 ring-inset ring-indigo-500/40'
+        : 'bg-indigo-50/80 ring-1 ring-inset ring-indigo-300'
+      : '';
+    const rowHoverCls = isDark ? 'hover:bg-white/[0.04]' : 'hover:bg-slate-50';
     const borderCls = isDark ? 'border-white/5' : 'border-slate-100';
+
+    const handleRowClick = () => {
+      if (row.level === 1 || row.level === 2) {
+        if (onSelectProgram) {
+          onSelectProgram(row.program_group || row.program);
+        } else {
+          setSelectedInsightProgram(row.program_group || row.program);
+        }
+      }
+    };
 
     return (
       <tr
         key={row.id}
-        className={`border-b transition-colors duration-100 ${rowHoverCls} ${borderCls} ${levelBg(row.level)}`}
+        onClick={handleRowClick}
+        className={`border-b transition-colors duration-100 ${selectedCls || levelBg(row.level)} ${rowHoverCls} ${borderCls} ${(row.level === 1 || row.level === 2) ? 'cursor-pointer' : ''}`}
       >
         {/* Col 1: Program (frozen) */}
         <td
@@ -374,8 +652,12 @@ export default function ProgramReportTable({
           >
             {expandable ? (
               <button
-                onClick={() => handleToggle(row)}
-                className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleToggle(row);
+                }}
+                className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all cursor-pointer"
+                title={isExpanded ? 'Collapse' : 'Expand hierarchy'}
               >
                 {isLoading ? (
                   <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none">
@@ -402,25 +684,6 @@ export default function ProgramReportTable({
             >
               {row.program}
             </span>
-            {/* Prominent Program AI Insights Button Badge */}
-            {(row.level === 1 || row.level === 2) && (
-              <button
-                type="button"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  setSelectedInsightProgram(row.program_group || row.program);
-                }}
-                className={`inline-flex items-center gap-1 px-1.5 py-0.5 ml-2 rounded text-[10px] font-semibold transition-all cursor-pointer border flex-shrink-0 shadow-xs hover:scale-105 ${
-                  isDark
-                    ? 'bg-indigo-950/90 text-indigo-300 border-indigo-700/80 hover:bg-indigo-900 hover:border-indigo-500'
-                    : 'bg-indigo-50 text-indigo-700 border-indigo-200 hover:bg-indigo-100 hover:border-indigo-300'
-                }`}
-                title={`Click to view AI Insights & Root Cause Drivers for ${row.program}`}
-              >
-                <span className="text-xs leading-none">✨</span>
-                <span className="text-[10px] font-medium leading-none">Insights</span>
-              </button>
-            )}
           </div>
         </td>
 
@@ -492,7 +755,9 @@ export default function ProgramReportTable({
       >
         <td className={`sticky left-0 z-10 border-r pl-4 pr-2 py-2.5 ${isDark ? 'border-white/10' : 'border-indigo-200'}`}
             style={{ background: frozenBgTotal }}>
-          <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>⬛ Total</span>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>⬛ Total</span>
+          </div>
         </td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_leads.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_leads.toLocaleString()}</td>
@@ -577,6 +842,35 @@ export default function ProgramReportTable({
     return <span className="ml-1 text-gray-600 group-hover:text-gray-400">↕</span>;
   }
 
+  // ── Mobile Loading Skeleton ──────────────────────────────────────────────────
+  if (loading && isMobile) {
+    return (
+      <div style={{ padding: '8px 4px' }}>
+        <div className="animate-pulse" style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+          {Array.from({ length: 6 }).map((_, i) => (
+            <div key={i} style={{
+              borderRadius: 10,
+              background: isDark ? '#111827' : '#ffffff',
+              padding: '14px 16px',
+              border: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)'}`,
+            }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 10 }}>
+                <div className={`rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} style={{ width: 120, height: 14 }} />
+                <div className={`rounded ${isDark ? 'bg-white/10' : 'bg-slate-200'}`} style={{ width: 60, height: 20 }} />
+              </div>
+              <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+                {[0,1,2].map(j => (
+                  <div key={j} className={`rounded ${isDark ? 'bg-white/5' : 'bg-slate-100'}`} style={{ height: 48, borderRadius: 7 }} />
+                ))}
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Desktop Loading Skeleton ────────────────────────────────────────────────
   if (loading) {
     return (
       <div
@@ -603,6 +897,56 @@ export default function ProgramReportTable({
     );
   }
 
+  // ── Mobile Card View ────────────────────────────────────────────────────────
+  if (isMobile) {
+    const handleMobileSelect = (row: ProgramReportRow) => {
+      if (onSelectProgram) {
+        onSelectProgram(row.program_group || row.program);
+      } else {
+        setSelectedInsightProgram(row.program_group || row.program);
+      }
+    };
+
+    return (
+      <div style={{ maxHeight: 'calc(100vh - 190px)', overflowY: 'auto', padding: '4px 0', WebkitOverflowScrolling: 'touch' }}>
+        {/* Total card at top */}
+        {totalRow && <MobileTotalCard row={totalRow} isDark={isDark} />}
+
+        {/* Program cards */}
+        {topRows.map((row) => (
+          <MobileProgramCard
+            key={row.id}
+            row={row}
+            isDark={isDark}
+            onSelect={() => handleMobileSelect(row)}
+          />
+        ))}
+
+        {topRows.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 16px', color: isDark ? '#6b7280' : '#9ca3af', fontSize: 13 }}>
+            No programs found
+          </div>
+        )}
+
+        {/* Program AI Insight Diagnostic Modal */}
+        {selectedInsightProgram && (
+          <ProgramInsightModal
+            programName={selectedInsightProgram}
+            scopeParams={{
+              academic_year: filters.academic_year,
+              campus: filters.campus,
+              from_date: filters.from_date,
+              to_date: filters.to_date,
+            }}
+            isDark={isDark}
+            onClose={() => setSelectedInsightProgram(null)}
+          />
+        )}
+      </div>
+    );
+  }
+
+  // ── Desktop Table View ──────────────────────────────────────────────────────
   return (
     <div
       className="relative overflow-auto rounded-xl border border-white/10"

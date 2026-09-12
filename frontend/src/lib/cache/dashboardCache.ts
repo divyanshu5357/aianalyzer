@@ -268,8 +268,31 @@ class MemoryCache {
   public size(): number {
     return this.store.size;
   }
+
+  // ── Programs UI State Persistence ──────────────────────────────────────────
+  private programUiState = {
+    expandedNodeIds: new Set<string>(),
+    selectedProgram: null as string | null,
+    isDrawerOpen: false,
+    sortBy: 'cy_leads',
+    sortOrder: 'desc' as 'asc' | 'desc',
+    issuesOnly: false,
+  };
+
+  public getProgramUiState() {
+    return this.programUiState;
+  }
+
+  public setProgramUiState(updates: Partial<typeof this.programUiState>) {
+    this.programUiState = {
+      ...this.programUiState,
+      ...updates,
+      expandedNodeIds: updates.expandedNodeIds ? new Set(updates.expandedNodeIds) : this.programUiState.expandedNodeIds,
+    };
+  }
 }
 
 export const dashboardCache = new MemoryCache();
 export default dashboardCache;
+
 

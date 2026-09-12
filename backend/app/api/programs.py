@@ -10,6 +10,7 @@ from app.analytics.program_service import (
     get_program_report_top_level,
     get_program_hierarchy_children,
     get_program_insights,
+    get_program_investigation_node,
 )
 
 router = APIRouter(prefix="/api/programs", tags=["Program Performance Report"])
@@ -179,5 +180,52 @@ def get_program_insights_endpoint(
             status_code=500,
             detail=f"Failed to generate program insights for '{target_group}': {str(exc)}",
         )
+
+
+@router.get("/investigation")
+def get_program_investigation_endpoint(
+    program_group: Optional[str] = Query(None, description="Program group name (e.g. CSE, MBA, M.Com)"),
+    program: Optional[str] = Query(None, description="Alias for program_group"),
+    academic_year: Optional[int] = Query(None, description="Academic year (CY)"),
+    campus: Optional[str] = Query(None, description="Campus filter"),
+    from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
+    to_date: Optional[str] = Query(None, description="End date (YYYY-MM-DD)"),
+    dimension: Optional[str] = Query(None, description="Drilldown dimension (state, lead_type, main_source, counsellor)"),
+    parent_value: Optional[str] = Query(None, description="Filter value for the drilldown dimension"),
+    db: Session = Depends(get_db),
+):
+    """
+    Evidence-first AI Performance Investigation Tree endpoint.
+    Returns:
+      - Program health classification
+      - Primary issue type & concise management digest
+      - Structured negative & positive drivers across State, Lead Type, Source, and Counsellor
+      - Lazy branch expansion for cross-dimensional drilldowns
+    """
+    target_group = (program_group or program or "").strip()
+    if not target_group:
+        raise HTTPException(
+            status_code=400,
+            detail="Parameter 'program_group' or 'program' is required.",
+        )
+
+    try:
+        data = get_program_investigation_node(
+            db=db,
+            program_group=target_group,
+            academic_year=academic_year,
+            campus=campus,
+            from_date=from_date,
+            to_date=to_date,
+            dimension=dimension,
+            parent_value=parent_value,
+        )
+        return data
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to perform program investigation for '{target_group}': {str(exc)}",
+        )
+
 
 

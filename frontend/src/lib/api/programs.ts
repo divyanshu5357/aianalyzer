@@ -72,3 +72,36 @@ export async function getProgramInsights(
   );
   return res.data;
 }
+
+export interface ProgramInvestigationParams {
+  program_group: string;
+  academic_year?: number;
+  campus?: string;
+  from_date?: string;
+  to_date?: string;
+  dimension?: string;
+  parent_value?: string;
+}
+
+export async function getProgramInvestigation(
+  params: ProgramInvestigationParams,
+  options?: RequestInit
+): Promise<import('./types').ProgramInvestigationNode> {
+  const query = new URLSearchParams();
+  query.set('program_group', params.program_group);
+  if (params.academic_year) query.set('academic_year', String(params.academic_year));
+  if (params.campus && params.campus.toLowerCase() !== 'all campuses' && params.campus.toLowerCase() !== 'all') {
+    query.set('campus', params.campus);
+  }
+  if (params.from_date) query.set('from_date', params.from_date);
+  if (params.to_date) query.set('to_date', params.to_date);
+  if (params.dimension) query.set('dimension', params.dimension);
+  if (params.parent_value) query.set('parent_value', params.parent_value);
+
+  const res = await apiRequest<import('./types').ProgramInvestigationNode>(
+    `/api/programs/investigation?${query.toString()}`,
+    options
+  );
+  return res;
+}
+
