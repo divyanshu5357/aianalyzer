@@ -71,8 +71,8 @@ def _build_insert_sql(dataset_filter: str = "") -> str:
                 um.source AS source,
                 COALESCE(um.program_code, um.raw_program_code) AS program_code,
                 um.raw_program_code AS raw_program_code,
-                COALESCE(um.program_name, cm.program_name) AS program_name,
-                COALESCE(um.course_cluster, cm.course_cluster) AS course_cluster,
+                COALESCE(cm.program_name, um.program_name, um.raw_program_code) AS program_name,
+                COALESCE(cm.course_cluster, um.course_cluster) AS course_cluster,
                 um.created_month,
                 um.admission_month,
                 um.owner,
@@ -257,6 +257,61 @@ def refresh_dashboard_agg(db: Session) -> dict:
     duration_ms = round((t_total - t0) * 1000, 2)
     logger.info("[FULL AGG REFRESH] Completed in %.2f ms", duration_ms)
     return {"total_ms": duration_ms}
+
+
+def refresh_program_refunds(db: Session, dataset_id: Optional[str] = None) -> int:
+    """Populate or refresh analytics.program_refunds_summary from staging.records
+    based on business rule: ProspectStage = 'Enrolled' AND mx_Refund_Status = 'Pending'.
+    """
+    logger.info("Refreshing program refunds summary...")
+    ds_filter = "AND r.dataset_id = CAST(:ds_id AS uuid)" if dataset_id else ""
+    params = {"ds_id": dataset_id} if dataset_id else {}
+
+    try:
+        if dataset_id:
+            db.execute(text("""
+                DELETE FROM analytics.program_refunds_summary
+                WHERE academic_year IN (
+                    SELECT academic_year FROM system.datasets WHERE id = CAST(:ds_id AS uuid)
+                )
+            """), params)
+        else:
+            db.execute(text("TRUNCATE TABLE analytics.program_refunds_summary"))
+
+        insert_sql = f"""
+            INSERT INTO analytics.program_refunds_summary (
+                academic_year,
+                campus_name,
+                program_code,
+                source,
+                lead_type,
+                refund_month,
+                refund_count
+            )
+            SELECT 
+                COALESCE(d.academic_year, 2026),
+                COALESCE(NULLIF(TRIM(r.raw_data->>'mx_Campus'), ''), d.campus_name, 'Mohali'),
+                COALESCE(NULLIF(TRIM(r.raw_data->>'Program Code'), ''), NULLIF(TRIM(r.raw_data->>'ProgramCode'), ''), 'OTHER'),
+                COALESCE(NULLIF(TRIM(r.raw_data->>'Source'), ''), NULLIF(TRIM(r.raw_data->>'Origin'), ''), 'Direct'),
+                r.raw_data->>'ProspectStage',
+                system.parse_month(COALESCE(NULLIF(TRIM(r.raw_data->>'mx_Refund_Initiated_On'), ''), NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), ''), NULLIF(TRIM(r.raw_data->>'CreatedOn'), ''))),
+                COUNT(*)
+            FROM staging.records r
+            JOIN system.datasets d ON d.id = r.dataset_id
+            WHERE LOWER(TRIM(r.raw_data->>'ProspectStage')) = 'enrolled'
+              AND LOWER(TRIM(COALESCE(r.raw_data->>'mx_Refund_Status', ''))) = 'pending'
+              {ds_filter}
+            GROUP BY 1, 2, 3, 4, 5, 6
+        """
+        res = db.execute(text(insert_sql), params)
+        db.commit()
+        cnt = res.rowcount if hasattr(res, "rowcount") else 0
+        logger.info("Refreshed program refunds summary: %s rows inserted", cnt)
+        return cnt
+    except Exception as e:
+        logger.warning("Error refreshing program refunds summary: %s", e)
+        db.rollback()
+        return 0
 
 
 def refresh_gender_agg_scoped(
@@ -487,6 +542,15 @@ def ensure_aggregates_populated(db: Session) -> dict:
 
     # Step 3: Backfill gender_monthly_agg where missing
     gender_res = backfill_gender_agg(db)
+
+    # Step 4: Ensure program_refunds_summary is populated
+    try:
+        ref_cnt = db.execute(text("SELECT COUNT(*) FROM analytics.program_refunds_summary")).scalar() or 0
+        if ref_cnt == 0:
+            refresh_program_refunds(db)
+    except Exception as e:
+        logger.warning("Refunds summary check notice: %s", e)
+        db.rollback()
 
     duration_ms = round((time.perf_counter() - t0) * 1000, 2)
     return {

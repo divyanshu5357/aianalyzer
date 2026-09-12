@@ -283,9 +283,8 @@ def execute_mapping_normalization(
                 ELSE 0
             END,
             CASE 
-                WHEN NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '') IS NOT NULL AND LOWER(TRIM(r.raw_data->>'mx_AdmissionDate')) != 'null' THEN 1
                 WHEN NULLIF(REPLACE(r.raw_data->>'{key_cy_a}', ',', ''), '') IS NOT NULL THEN (REPLACE(r.raw_data->>'{key_cy_a}', ',', '')::numeric)
-                WHEN r.raw_data->>'ProspectStage' = 'Enrolled' THEN 1
+                WHEN LOWER(TRIM(COALESCE(r.raw_data->>'{key_lead_type}', r.raw_data->>'ProspectStage', ''))) = 'enrolled' THEN 1
                 ELSE 0
             END,
             COALESCE(NULLIF(REPLACE(r.raw_data->>'{key_py_l}', ',', ''), '')::numeric, 0),

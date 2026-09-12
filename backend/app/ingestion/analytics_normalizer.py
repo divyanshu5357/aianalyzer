@@ -198,9 +198,8 @@ def normalize_dataset(
                 ELSE 0
             END,
             CASE 
-                WHEN NULLIF(TRIM(raw_data->>'mx_AdmissionDate'), '') IS NOT NULL AND LOWER(TRIM(raw_data->>'mx_AdmissionDate')) != 'null' THEN 1
                 WHEN NULLIF(REPLACE(raw_data->>'{col_cy_a}', ',', ''), '') IS NOT NULL THEN (REPLACE(raw_data->>'{col_cy_a}', ',', '')::numeric)
-                WHEN raw_data->>'ProspectStage' = 'Enrolled' THEN 1
+                WHEN LOWER(TRIM(COALESCE(raw_data->>'{col_lead_type}', raw_data->>'ProspectStage', ''))) = 'enrolled' THEN 1
                 ELSE 0
             END,
             COALESCE(NULLIF(REPLACE(raw_data->>'{col_py_l}', ',', ''), '')::numeric, 0),
