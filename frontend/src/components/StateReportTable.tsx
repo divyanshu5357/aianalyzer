@@ -132,6 +132,8 @@ interface StateReportTableProps {
   onSelectState?: (state: string) => void;
   loading?: boolean;
   isDark?: boolean;
+  sourceFilter?: string;
+  activeMetric?: 'lead_cucet_pct' | 'lead_adm_pct' | 'cucet_adm_pct' | null;
 }
 
 const INDENT = 20; // px per hierarchy level
@@ -147,6 +149,8 @@ export default function StateReportTable({
   onSelectState,
   loading = false,
   isDark = true,
+  sourceFilter = 'All',
+  activeMetric = null,
 }: StateReportTableProps) {
   const { year: contextYear, periods } = useAppContext();
   const activeYear = filters.academic_year || contextYear || 2026;
@@ -185,6 +189,11 @@ export default function StateReportTable({
       const result: StateReportRow[] = [];
       function visit(rows: StateReportRow[]) {
         rows.forEach((r) => {
+          // If level 2 (source category) or level 3 (sub-source) and sourceFilter is active
+          if ((r.level === 2 || r.level === 3) && sourceFilter && sourceFilter !== 'All') {
+            const sName = (r.source_category || r.sub_source || r.name || '').toLowerCase();
+            if (!sName.includes(sourceFilter.toLowerCase())) return;
+          }
           result.push(r);
           const node = nodeMap.get(r.id);
           if (node && node.state === 'expanded' && node.children.length > 0) {
@@ -195,7 +204,7 @@ export default function StateReportTable({
       visit(topList);
       return result;
     },
-    []
+    [sourceFilter]
   );
 
   const flatRows = buildFlatRows(nodes, topRows);
@@ -416,7 +425,7 @@ export default function StateReportTable({
               <th onClick={() => handleHeaderClick('var_cucet')} className={`${thBase} text-right`}>
                 <div className="flex items-center justify-end">VAR (CUCET) {renderSortIndicator('var_cucet')}</div>
               </th>
-              <th onClick={() => handleHeaderClick('lead_cucet_pct')} className={`${thBase} text-right`}>
+              <th onClick={() => handleHeaderClick('lead_cucet_pct')} className={`${thBase} text-right ${activeMetric === 'lead_cucet_pct' ? (isDark ? 'bg-blue-600/25 text-white ring-1 ring-blue-400' : 'bg-blue-100 text-blue-900 ring-1 ring-blue-400') : ''}`}>
                 <div className="flex items-center justify-end">LEAD-CUCET % {renderSortIndicator('lead_cucet_pct')}</div>
               </th>
               <th onClick={() => handleHeaderClick('py_adm')} className={`${thBase} text-right`}>
@@ -428,10 +437,10 @@ export default function StateReportTable({
               <th onClick={() => handleHeaderClick('var_adm')} className={`${thBase} text-right`}>
                 <div className="flex items-center justify-end">VAR (ADM) {renderSortIndicator('var_adm')}</div>
               </th>
-              <th onClick={() => handleHeaderClick('lead_adm_pct')} className={`${thBase} text-right`}>
+              <th onClick={() => handleHeaderClick('lead_adm_pct')} className={`${thBase} text-right ${activeMetric === 'lead_adm_pct' ? (isDark ? 'bg-blue-600/25 text-white ring-1 ring-blue-400' : 'bg-blue-100 text-blue-900 ring-1 ring-blue-400') : ''}`}>
                 <div className="flex items-center justify-end">LEAD-ADM % {renderSortIndicator('lead_adm_pct')}</div>
               </th>
-              <th onClick={() => handleHeaderClick('cucet_adm_pct')} className={`${thBase} text-right`}>
+              <th onClick={() => handleHeaderClick('cucet_adm_pct')} className={`${thBase} text-right ${activeMetric === 'cucet_adm_pct' ? (isDark ? 'bg-blue-600/25 text-white ring-1 ring-blue-400' : 'bg-blue-100 text-blue-900 ring-1 ring-blue-400') : ''}`}>
                 <div className="flex items-center justify-end">CUCET-ADM % {renderSortIndicator('cucet_adm_pct')}</div>
               </th>
               <th className={`${thBase} text-center`}>LEAD TREND</th>

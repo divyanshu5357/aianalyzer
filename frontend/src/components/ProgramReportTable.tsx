@@ -363,6 +363,8 @@ interface ProgramReportTableProps {
   onSelectProgram?: (program: string) => void;
   loading?: boolean;
   isDark?: boolean;
+  leadTypeFilter?: string;
+  sourceFilter?: string;
 }
 
 const INDENT = 22; // px per hierarchy level
@@ -378,6 +380,8 @@ export default function ProgramReportTable({
   onSelectProgram,
   loading = false,
   isDark = true,
+  leadTypeFilter = 'All',
+  sourceFilter = 'All',
 }: ProgramReportTableProps) {
   const isMobile = useIsMobile();
   const { year: contextYear, periods } = useAppContext();
@@ -437,6 +441,16 @@ export default function ProgramReportTable({
       const result: ProgramReportRow[] = [];
       function visit(rows: ProgramReportRow[]) {
         rows.forEach((r) => {
+          // If level 3 (lead type) and filter is active
+          if (r.level === 3 && leadTypeFilter && leadTypeFilter !== 'All') {
+            const lt = (r.lead_type || r.source_category || r.program || '').toLowerCase();
+            if (!lt.includes(leadTypeFilter.toLowerCase())) return;
+          }
+          // If level 4 (main source) and filter is active
+          if (r.level === 4 && sourceFilter && sourceFilter !== 'All') {
+            const ms = (r.main_source || r.sub_source || r.program || '').toLowerCase();
+            if (!ms.includes(sourceFilter.toLowerCase())) return;
+          }
           result.push(r);
           const node = nodeMap.get(r.id);
           if (node && node.state === 'expanded' && node.children.length > 0) {
@@ -447,7 +461,7 @@ export default function ProgramReportTable({
       visit(topRows);
       return result;
     },
-    []
+    [leadTypeFilter, sourceFilter]
   );
 
   const flatRows = buildFlatRows(nodes, topRows);
@@ -859,12 +873,12 @@ export default function ProgramReportTable({
     const isActive = sortBy === col;
     if (isActive) {
       return (
-        <span className={`ml-1 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
+        <span className={`ml-1 ${isDark ? 'text-white font-extrabold' : 'text-slate-950 font-extrabold'}`}>
           {sortOrder === 'desc' ? '↓' : '↑'}
         </span>
       );
     }
-    return <span className={`ml-1 ${isDark ? 'text-gray-600 group-hover:text-gray-400' : 'text-slate-300 group-hover:text-slate-400'}`}>↕</span>;
+    return <span className={`ml-1 ${isDark ? 'text-emerald-400/40 group-hover:text-emerald-200' : 'text-slate-700/50 group-hover:text-slate-900'}`}>↕</span>;
   }
 
   // ── Mobile Loading Skeleton ──────────────────────────────────────────────────
@@ -896,7 +910,7 @@ export default function ProgramReportTable({
     );
   }
 
-  // ── Desktop Loading Skeleton ────────────────────────────────────────────────
+  // ── Desktop Loading Skeleton ─────────────────────────────────────────────────
   if (loading) {
     return (
       <div
@@ -980,20 +994,20 @@ export default function ProgramReportTable({
     >
       <table className="w-full border-collapse text-xs" style={{ minWidth: 1600 }}>
         <thead className="sticky top-0 z-30">
-          <tr className={`border-b ${isDark ? 'bg-[#0d0f1a] border-white/10' : 'bg-white border-slate-200'}`}>
+          <tr className={`border-b ${isDark ? 'bg-[#0f241d] border-emerald-500/20' : 'bg-[#9fe3be] border-emerald-400/50'}`}>
             {headers.map((h, i) => (
               <th
                 key={i}
                 onClick={() => handleHeaderClick(h.sortKey)}
                 className={[
-                  'px-3 py-3 text-left font-semibold uppercase tracking-wider text-[10px] whitespace-nowrap border-b select-none',
-                  isDark ? 'border-white/10' : 'border-slate-200',
+                  'px-3 py-3 text-left font-bold uppercase tracking-wider text-[11px] whitespace-nowrap border-b select-none',
+                  isDark ? 'border-emerald-500/20' : 'border-emerald-400/40',
                   h.sortKey ? 'cursor-pointer group' : 'cursor-default',
                   sortBy === h.sortKey
-                    ? (isDark ? 'text-indigo-300' : 'text-indigo-600')
-                    : (isDark ? 'text-gray-400' : 'text-slate-500'),
+                    ? (isDark ? 'text-white underline decoration-2' : 'text-slate-950 underline decoration-2')
+                    : (isDark ? 'text-emerald-200' : 'text-slate-900'),
                   h.frozen
-                    ? `sticky left-0 z-20 border-r ${isDark ? 'bg-[#0d0f1a] border-r-white/10' : 'bg-white border-r-slate-200'}`
+                    ? `sticky left-0 z-20 border-r ${isDark ? 'bg-[#0f241d] border-r-emerald-500/20' : 'bg-[#9fe3be] border-r-emerald-300'}`
                     : '',
                 ].join(' ')}
                 style={h.frozen ? { minWidth: 260 } : {}}

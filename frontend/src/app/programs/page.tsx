@@ -3,11 +3,21 @@
 import React, { useCallback, useEffect, useState, useMemo } from 'react';
 import ProgramReportTable from '@/components/ProgramReportTable';
 import ProgramInvestigationDrawer from '@/components/ProgramInvestigationDrawer';
+import ProgramFilterBar, { ProgramFilterState } from '@/components/ProgramFilterBar';
+import { matchesLeetToGenFilter, matchesTop15Filter } from '@/lib/dimensions/programDimensions';
 import { getProgramReport } from '@/lib/api/programs';
 import { useApp } from '@/context/AppContext';
 import dashboardCache from '@/lib/cache/dashboardCache';
 import { prefetchTopProgramsChildren } from '@/lib/cache/prefetch';
 import type { ProgramReportRow, ProgramReportResponse, PeriodSummary } from '@/lib/api/types';
+
+const initialSlicerFilters: ProgramFilterState = {
+  leadType: 'All',
+  source: 'All',
+  selectedLeetToGen: [],
+  top15: 'All',
+  programName: 'All',
+};
 
 export default function ProgramsPage() {
   const {
@@ -25,6 +35,9 @@ export default function ProgramsPage() {
   const activePeriod = periods.find((p: PeriodSummary) => (p.period_end_year || p.period_start_year) === activeYear);
   const cyYear = activePeriod?.period_end_year || activeYear || 2026;
   const cyShort = `'${String(cyYear).slice(-2)}`;
+
+  // Program Slicer Filter State (Image 1)
+  const [slicerFilters, setSlicerFilters] = useState<ProgramFilterState>(initialSlicerFilters);
 
   // Cached UI state
   const cachedUi = dashboardCache.getProgramUiState();
@@ -113,7 +126,98 @@ export default function ProgramsPage() {
     setSortOrder(order);
   }
 
+  // Filter rows based on active slicer filters
+  const filteredReport = useMemo(() => {
+    if (!report?.rows) return null;
+    const { selectedLeetToGen, top15, programName } = slicerFilters;
+
+    const filteredRows = report.rows.filter((r) => {
+      const name = r.program_group || r.program || '';
+
+      // 1. Lee | Gen | ITP filter
+      if (selectedLeetToGen.length > 0 && !matchesLeetToGenFilter(name, selectedLeetToGen)) {
+        return false;
+      }
+
+      // 2. Top | Next 15 filter
+      if (top15 !== 'All' && !matchesTop15Filter(name, top15)) {
+        return false;
+      }
+
+      // 3. Program Name filter
+      if (programName !== 'All') {
+        const pTarget = programName.toLowerCase();
+        const rName = (r.program || r.program_group || '').toLowerCase();
+        if (!rName.includes(pTarget) && !pTarget.includes(rName)) {
+          return false;
+        }
+      }
+
+      return true;
+    });
+
+    // Compute aggregated total across filtered rows
+    let pyLeads = 0, cyLeads = 0, pyCucet = 0, cyCucet = 0, pyAdm = 0, cyAdm = 0, netAdm = 0;
+    filteredRows.forEach((r) => {
+      pyLeads += r.py_leads;
+      cyLeads += r.cy_leads;
+      pyCucet += r.py_cucet;
+      cyCucet += r.cy_cucet;
+      pyAdm += r.py_adm;
+      cyAdm += r.cy_adm;
+      netAdm += r.net_admissions;
+    });
+
+    const varLeads = cyLeads - pyLeads;
+    const varLeadsPct = pyLeads > 0 ? (varLeads / pyLeads) * 100 : 0;
+    const varCucet = cyCucet - pyCucet;
+    const varCucetPct = pyCucet > 0 ? (varCucet / pyCucet) * 100 : 0;
+    const varAdm = cyAdm - pyAdm;
+    const varAdmPct = pyAdm > 0 ? (varAdm / pyAdm) * 100 : 0;
+    const leadCucetPct = cyLeads > 0 ? (cyCucet / cyLeads) * 100 : 0;
+    const leadAdmPct = cyLeads > 0 ? (cyAdm / cyLeads) * 100 : 0;
+    const cucetAdmPct = cyCucet > 0 ? (cyAdm / cyCucet) * 100 : 0;
+
+    const total: ProgramReportRow = {
+      id: '__total__',
+      level: 1,
+      program: 'TOTAL',
+      program_group: 'TOTAL',
+      has_children: false,
+      py_leads: pyLeads,
+      cy_leads: cyLeads,
+      var_leads: varLeads,
+      var_leads_pct: varLeadsPct,
+      py_cucet: pyCucet,
+      cy_cucet: cyCucet,
+      var_cucet: varCucet,
+      var_cucet_pct: varCucetPct,
+      lead_cucet_pct: leadCucetPct,
+      py_adm: pyAdm,
+      cy_adm: cyAdm,
+      var_adm: varAdm,
+      var_adm_pct: varAdmPct,
+      lead_adm_pct: leadAdmPct,
+      cucet_adm_pct: cucetAdmPct,
+      lead_trend: report.total?.lead_trend || [],
+      net_admissions: netAdm,
+      refund_py_vs_cy: report.total?.refund_py_vs_cy || { py: 0, cy: 0, diff: 0 },
+      refund_pct_py_vs_cy: report.total?.refund_pct_py_vs_cy || { py_pct: 0, cy_pct: 0, diff_pct: 0 },
+      fee_paid: 'N/A',
+      net_fee_paid_pct: 'N/A',
+    };
+
+    return {
+      rows: filteredRows,
+      count: filteredRows.length,
+      total,
+      scope: report.scope,
+    };
+  }, [report, slicerFilters]);
+
   // Health summary metrics across unique programs
+  const displayReport = filteredReport || report;
+
   const { attentionCount, watchCount, healthyCount, firstAttentionProgram } = useMemo(() => {
     let att = 0;
     let wt = 0;
@@ -121,7 +225,7 @@ export default function ProgramsPage() {
     let firstAtt: string | null = null;
     const seen = new Set<string>();
 
-    report?.rows?.forEach((r) => {
+    displayReport?.rows?.forEach((r) => {
       const name = r.program_group || r.program;
       if (name && !seen.has(name)) {
         seen.add(name);
@@ -137,7 +241,7 @@ export default function ProgramsPage() {
     });
 
     return { attentionCount: att, watchCount: wt, healthyCount: hl, firstAttentionProgram: firstAtt };
-  }, [report?.rows]);
+  }, [displayReport?.rows]);
 
   const scopeFilters = {
     academic_year: activeYear,
@@ -201,13 +305,13 @@ export default function ProgramsPage() {
             )}
 
             {/* Stats pills */}
-            {report && (
+            {displayReport && (
               <div className="flex gap-1.5 sm:gap-2 flex-wrap">
                 {[
-                  { label: 'Programs', value: String(report.count), color: isDark ? 'text-indigo-300' : 'text-indigo-600' },
-                  { label: `${cyShort} Leads`, value: report.total.cy_leads.toLocaleString(), color: isDark ? 'text-white' : 'text-slate-900' },
-                  { label: `${cyShort} Adm`, value: report.total.cy_adm.toLocaleString(), color: isDark ? 'text-emerald-300' : 'text-emerald-600' },
-                  { label: 'Net Adm', value: report.total.net_admissions.toLocaleString(), color: isDark ? 'text-sky-300' : 'text-sky-600' },
+                  { label: 'Programs', value: String(displayReport.count), color: isDark ? 'text-indigo-300' : 'text-indigo-600' },
+                  { label: `${cyShort} Leads`, value: displayReport.total.cy_leads.toLocaleString(), color: isDark ? 'text-white' : 'text-slate-900' },
+                  { label: `${cyShort} Adm`, value: displayReport.total.cy_adm.toLocaleString(), color: isDark ? 'text-emerald-300' : 'text-emerald-600' },
+                  { label: 'Net Adm', value: displayReport.total.net_admissions.toLocaleString(), color: isDark ? 'text-sky-300' : 'text-sky-600' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className={`flex items-center gap-1 sm:gap-2 border rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-sm'}`}>
                     <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{label}</span>
@@ -219,6 +323,14 @@ export default function ProgramsPage() {
           </div>
         </div>
       </div>
+
+      {/* Program Slicer Filter Bar (Image 1) */}
+      <ProgramFilterBar
+        filters={slicerFilters}
+        onChange={setSlicerFilters}
+        onReset={() => setSlicerFilters(initialSlicerFilters)}
+        isDark={isDark}
+      />
 
       {/* Legend - hidden on mobile */}
       <div className={`hidden sm:flex px-6 py-2 gap-4 border-b shrink-0 flex-wrap ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
@@ -264,8 +376,8 @@ export default function ProgramsPage() {
           </div>
         ) : (
           <ProgramReportTable
-            topRows={report?.rows ?? []}
-            totalRow={report?.total as ProgramReportRow}
+            topRows={displayReport?.rows ?? []}
+            totalRow={displayReport?.total as ProgramReportRow}
             filters={scopeFilters}
             sortBy={sortBy}
             sortOrder={sortOrder}
@@ -277,6 +389,8 @@ export default function ProgramsPage() {
             }}
             loading={loading && !report}
             isDark={isDark}
+            leadTypeFilter={slicerFilters.leadType}
+            sourceFilter={slicerFilters.source}
           />
         )}
       </div>
