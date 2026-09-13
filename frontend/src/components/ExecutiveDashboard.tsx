@@ -827,48 +827,28 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
             </p>
           </div>
 
-          {/* Shared Metric Selector Tabs (Admissions, Leads, CUCET) */}
-          <div className={`flex items-center p-1 rounded-xl border text-xs ${
-            isDark ? "bg-[#0B0F19] border-[#1E293B]" : "bg-slate-100 border-slate-200"
-          }`}>
-            <button
-              onClick={() => setMainMetric("admissions")}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                mainMetric === "admissions"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : isDark
-                  ? "text-slate-400 hover:text-white"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Admissions
-            </button>
-            <button
-              onClick={() => setMainMetric("leads")}
-              className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                mainMetric === "leads"
-                  ? "bg-blue-600 text-white shadow-xs"
-                  : isDark
-                  ? "text-slate-400 hover:text-white"
-                  : "text-slate-600 hover:text-slate-900"
-              }`}
-            >
-              Leads
-            </button>
-            {overview?.has_cucet && (
-              <button
-                onClick={() => setMainMetric("cucet")}
-                className={`px-3 py-1.5 rounded-lg font-bold transition-all ${
-                  mainMetric === "cucet"
-                    ? "bg-blue-600 text-white shadow-xs"
-                    : isDark
-                    ? "text-slate-400 hover:text-white"
-                    : "text-slate-600 hover:text-slate-900"
-                }`}
-              >
-                CUCET
-              </button>
-            )}
+          {/* Active Metric Indicator (Switched by clicking the Top KPI Cards) */}
+          <div className="flex items-center gap-2">
+            <span className={`text-xs font-bold px-3 py-1.5 rounded-xl border flex items-center gap-2 shadow-xs transition-all ${
+              activeMetric === "leads"
+                ? isDark
+                  ? "bg-indigo-950/50 border-indigo-800 text-indigo-300"
+                  : "bg-indigo-50 border-indigo-200 text-indigo-700"
+                : activeMetric === "cucet"
+                ? isDark
+                  ? "bg-violet-950/50 border-violet-800 text-violet-300"
+                  : "bg-violet-50 border-violet-200 text-violet-700"
+                : isDark
+                ? "bg-blue-950/50 border-blue-800 text-blue-300"
+                : "bg-blue-50 border-blue-200 text-blue-700"
+            }`}>
+              <span className={`w-2 h-2 rounded-full animate-pulse ${
+                activeMetric === "leads" ? "bg-indigo-500" : activeMetric === "cucet" ? "bg-violet-500" : "bg-blue-500"
+              }`} />
+              <span>
+                Metric: <strong>{activeMetric === "leads" ? "Leads" : activeMetric === "cucet" ? "CUCET Registrations" : "Admissions"}</strong>
+              </span>
+            </span>
           </div>
         </div>
 

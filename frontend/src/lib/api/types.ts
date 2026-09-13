@@ -373,12 +373,19 @@ export interface ResolvedScopeResponse {
 
 export interface MonthlyTrendItem {
   month: string;
+  month_key?: string;
+  is_available?: boolean;
   cy_leads: number;
   cy_cucet: number;
   cy_admission: number;
   py_leads: number;
   py_cucet: number;
   py_admission: number;
+  cy?: number;
+  py?: number;
+  target?: number;
+  metric_value?: number;
+  py_value?: number;
   target_leads?: number;
   target_cucet?: number;
   target_admission?: number;
