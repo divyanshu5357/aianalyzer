@@ -194,36 +194,41 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAvailableCampuses(normalized);
       }
       if (opts?.date_range) {
-        const range = opts.date_range;
+        let range = opts.date_range;
+
+        // Grounding guard: If remote API returned 2024/2025 dates for Session 2026 due to legacy cache,
+        // correctly ground to Session 2026's dataset bounds (2025-05-01 to 2026-09-10).
+        if (yr === 2026 && range.max_date < "2026-01-01") {
+          range = {
+            min_date: "2025-05-01",
+            max_date: "2026-09-10",
+            default_from: "2025-11-01",
+            default_to: "2026-09-10",
+          };
+        } else if (yr === 2026 && range.max_date > "2026-09-10") {
+          range = {
+            ...range,
+            max_date: "2026-09-10",
+            default_to: "2026-09-10",
+          };
+        } else if (yr === 2025 && range.min_date > "2024-11-01") {
+          range = {
+            min_date: "2024-07-01",
+            max_date: "2025-10-31",
+            default_from: "2024-11-01",
+            default_to: "2025-10-31",
+          };
+        }
+
         setDateRangeLimits(range);
 
-        // Ground dates strictly to the active dataset's raw extent
-        setFromDate((prev) => {
-          if (!prev || prev < range.min_date || prev > range.max_date) {
-            return range.min_date;
-          }
-          return prev;
-        });
-        setToDate((prev) => {
-          if (!prev || prev > range.max_date || prev < range.min_date) {
-            return range.max_date;
-          }
-          return prev;
-        });
+        // Ground date inputs directly to the selected session's dataset extent
+        setFromDate(range.min_date);
+        setToDate(range.max_date);
 
-        // Automatically clamp or reset applied dates if outside active dataset bounds
-        setAppliedFromDate((prev) => {
-          if (prev && (prev < range.min_date || prev > range.max_date)) {
-            return null;
-          }
-          return prev;
-        });
-        setAppliedToDate((prev) => {
-          if (prev && (prev > range.max_date || prev < range.min_date)) {
-            return null;
-          }
-          return prev;
-        });
+        // Reset applied dates so new session loads its full, authentic scope
+        setAppliedFromDate(null);
+        setAppliedToDate(null);
       }
       return opts;
     } catch {
