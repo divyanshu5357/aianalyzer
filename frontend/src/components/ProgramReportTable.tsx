@@ -2,11 +2,13 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getProgramHierarchyChildren } from '@/lib/api/programs';
+import { useAppContext } from '@/context/AppContext';
 import dashboardCache from '@/lib/cache/dashboardCache';
 import ProgramInsightModal from '@/components/ProgramInsightModal';
 import type {
   ProgramReportRow,
   ProgramHierarchyParams,
+  PeriodSummary,
 } from '@/lib/api/types';
 
 // ── useIsMobile Hook ─────────────────────────────────────────────────────────
@@ -378,6 +380,13 @@ export default function ProgramReportTable({
   isDark = true,
 }: ProgramReportTableProps) {
   const isMobile = useIsMobile();
+  const { year: contextYear, periods } = useAppContext();
+  const activeYear = filters.academic_year || contextYear || 2026;
+  const activePeriod = periods?.find((p: PeriodSummary) => (p.period_end_year || p.period_start_year) === activeYear);
+  const cyYear = activePeriod?.period_end_year || activeYear;
+  const pyYear = activePeriod?.period_start_year || (cyYear - 1);
+  const cyShort = `'${String(cyYear).slice(-2)}`;
+  const pyShort = `'${String(pyYear).slice(-2)}`;
 
   // Scope-aware child cache: Map<nodeId, ProgramReportRow[]>
   const childCache = useRef<Map<string, ProgramReportRow[]>>(new Map());
@@ -814,22 +823,22 @@ export default function ProgramReportTable({
   // sortKey: the backend sort param name, undefined = not sortable
   const headers: { label: string; sortKey?: string; frozen?: boolean }[] = [
     { label: 'Program', frozen: true, sortKey: 'program' },
-    { label: 'PY Leads' },
-    { label: 'CY Leads', sortKey: 'cy_leads' },
+    { label: `${pyShort} Leads` },
+    { label: `${cyShort} Leads`, sortKey: 'cy_leads' },
     { label: 'VAR (Leads)', sortKey: 'var_leads' },
-    { label: 'PY CUCET' },
-    { label: 'CY CUCET', sortKey: 'cy_cucet' },
+    { label: `${pyShort} CUCET` },
+    { label: `${cyShort} CUCET`, sortKey: 'cy_cucet' },
     { label: 'VAR (CUCET)', sortKey: 'var_cucet' },
     { label: 'Lead–CUCET %', sortKey: 'lead_cucet_pct' },
-    { label: 'PY Adm' },
-    { label: 'CY Adm', sortKey: 'cy_adm' },
+    { label: `${pyShort} Adm` },
+    { label: `${cyShort} Adm`, sortKey: 'cy_adm' },
     { label: 'VAR (Adm)', sortKey: 'var_adm' },
     { label: 'Lead–Adm %', sortKey: 'lead_adm_pct' },
     { label: 'CUCET–Adm %', sortKey: 'cucet_adm_pct' },
     { label: 'Lead Trend' },
     { label: 'Net Adm.', sortKey: 'net_admissions' },
-    { label: 'Refund PY→CY' },
-    { label: 'Refund % PY→CY' },
+    { label: `Refund ${pyShort}→${cyShort}` },
+    { label: `Refund % ${pyShort}→${cyShort}` },
     { label: 'Fee Paid' },
     { label: 'Net–Fee %' },
   ];

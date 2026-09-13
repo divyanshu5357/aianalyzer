@@ -7,7 +7,7 @@ import { getStateReport } from '@/lib/api/states';
 import { useApp } from '@/context/AppContext';
 import dashboardCache from '@/lib/cache/dashboardCache';
 import { prefetchTopStatesChildren } from '@/lib/cache/prefetch';
-import type { StateReportRow, StateReportResponse } from '@/lib/api/types';
+import type { StateReportRow, StateReportResponse, PeriodSummary } from '@/lib/api/types';
 
 export default function StateAnalysisPage() {
   const {
@@ -22,6 +22,9 @@ export default function StateAnalysisPage() {
 
   const isDark = theme === 'dark';
   const activeYear = year || (periods.length > 0 ? (periods[0].period_end_year || periods[0].period_start_year || undefined) : undefined);
+  const activePeriod = periods.find((p: PeriodSummary) => (p.period_end_year || p.period_start_year) === activeYear);
+  const cyYear = activePeriod?.period_end_year || activeYear || 2026;
+  const cyShort = `'${String(cyYear).slice(-2)}`;
 
   // Cached UI state
   const cachedUi = dashboardCache.getStateUiState();
@@ -234,8 +237,8 @@ export default function StateAnalysisPage() {
               <div className="flex gap-1.5 sm:gap-2 flex-wrap">
                 {[
                   { label: 'State Groups', value: String(report.count), color: isDark ? 'text-indigo-300' : 'text-indigo-600' },
-                  { label: 'CY Leads', value: report.total.cy_leads.toLocaleString(), color: isDark ? 'text-white' : 'text-slate-900' },
-                  { label: 'CY Adm', value: report.total.cy_adm.toLocaleString(), color: isDark ? 'text-emerald-300' : 'text-emerald-600' },
+                  { label: `${cyShort} Leads`, value: report.total.cy_leads.toLocaleString(), color: isDark ? 'text-white' : 'text-slate-900' },
+                  { label: `${cyShort} Adm`, value: report.total.cy_adm.toLocaleString(), color: isDark ? 'text-emerald-300' : 'text-emerald-600' },
                   { label: 'Net Adm', value: report.total.net_admissions.toLocaleString(), color: isDark ? 'text-sky-300' : 'text-sky-600' },
                 ].map(({ label, value, color }) => (
                   <div

@@ -610,8 +610,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     );
   }
 
-  const cyYear = overview?.current_year;
-  const pyYear = overview?.previous_year;
+  const cyYear = overview?.current_year || year || 2026;
+  const pyYear = overview?.previous_year || (cyYear - 1);
+  const cyShort = `'${String(cyYear).slice(-2)}`;
+  const pyShort = `'${String(pyYear).slice(-2)}`;
   const campusLabel = selectedCampus === "all" ? "All Campuses" : `${selectedCampus} Campus`;
   const datasetCount = overview?.dataset_count ?? 0;
 
@@ -652,7 +654,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   </span>
                   {overview?.py_from_date && overview?.py_to_date && (
                     <span className={`text-[10px] ml-1 font-medium ${isDark ? "text-indigo-400/90" : "text-indigo-600/90"}`}>
-                      (PY: {overview.py_from_date} → {overview.py_to_date})
+                      ({pyShort}: {overview.py_from_date} → {overview.py_to_date})
                     </span>
                   )}
                 </span>
@@ -735,7 +737,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview?.kpis?.leads?.py != null ? `PY: ${(overview.kpis.leads.py ?? 0).toLocaleString()}` : "Single Year Scope"}
+                  {overview?.kpis?.leads?.py != null ? `${pyShort}: ${(overview.kpis.leads.py ?? 0).toLocaleString()}` : "Single Year Scope"}
                 </span>
                 {renderMetricDiff(overview?.kpis?.leads?.change ?? 0, overview?.kpis?.leads?.growth_pct ?? null)}
               </div>
@@ -755,7 +757,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   <span>{(overview.kpis.leads.sub_metric.cy ?? 0).toLocaleString()}</span>
                   {overview.kpis.leads.sub_metric.py != null && (
                     <span className="text-[10px] font-normal text-slate-400">
-                      (PY: {(overview.kpis.leads.sub_metric.py ?? 0).toLocaleString()})
+                      ({pyShort}: {(overview.kpis.leads.sub_metric.py ?? 0).toLocaleString()})
                     </span>
                   )}
                 </div>
@@ -802,7 +804,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 </div>
                 <div className="flex items-center justify-between text-xs pt-1">
                   <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                    {overview.kpis.cucet.py != null ? `PY: ${(overview.kpis.cucet.py ?? 0).toLocaleString()}` : "Single Year Scope"}
+                    {overview.kpis.cucet.py != null ? `${pyShort}: ${(overview.kpis.cucet.py ?? 0).toLocaleString()}` : "Single Year Scope"}
                   </span>
                   {renderMetricDiff(overview.kpis.cucet.change ?? 0, overview.kpis.cucet.growth_pct ?? null)}
                 </div>
@@ -822,7 +824,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                     <span>{(overview.kpis.cucet.sub_metric.cy ?? 0).toLocaleString()}</span>
                     {overview.kpis.cucet.sub_metric.py != null && (
                       <span className="text-[10px] font-normal text-slate-400">
-                        (PY: {(overview.kpis.cucet.sub_metric.py ?? 0).toLocaleString()})
+                        ({pyShort}: {(overview.kpis.cucet.sub_metric.py ?? 0).toLocaleString()})
                       </span>
                     )}
                   </div>
@@ -869,7 +871,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview?.kpis?.admissions?.py != null ? `PY: ${(overview.kpis.admissions.py ?? 0).toLocaleString()}` : "Single Year Scope"}
+                  {overview?.kpis?.admissions?.py != null ? `${pyShort}: ${(overview.kpis.admissions.py ?? 0).toLocaleString()}` : "Single Year Scope"}
                 </span>
                 {renderMetricDiff(overview?.kpis?.admissions?.change ?? 0, overview?.kpis?.admissions?.growth_pct ?? null)}
               </div>
@@ -889,7 +891,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   <span>{(overview.kpis.admissions.sub_metric.cy ?? 0).toLocaleString()}</span>
                   {overview.kpis.admissions.sub_metric.py != null && (
                     <span className="text-[10px] font-normal text-slate-400">
-                      (PY: {(overview.kpis.admissions.sub_metric.py ?? 0).toLocaleString()})
+                      ({pyShort}: {(overview.kpis.admissions.sub_metric.py ?? 0).toLocaleString()})
                     </span>
                   )}
                 </div>
@@ -919,7 +921,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
                 <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview.kpis.conversion_rate.py != null ? `PY: ${overview.kpis.conversion_rate.py}%` : "Single Year Scope"}
+                  {overview.kpis.conversion_rate.py != null ? `${pyShort}: ${overview.kpis.conversion_rate.py}%` : "Single Year Scope"}
                 </span>
                 {renderMetricDiff(overview.kpis.conversion_rate.change, overview.kpis.conversion_rate.growth_pct, true)}
               </div>
@@ -949,7 +951,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
               Monthly Performance & Trajectory Analysis
             </h3>
             <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-600"}`}>
-              {pyYear ? `Comparing CY ${cyYear} vs PY ${pyYear} & Targets across monthly intake periods` : `Monthly trajectory for ${cyYear}`} {selectedCampus !== "all" ? `(Filtered: ${selectedCampus})` : ""}
+              {pyYear ? `Comparing ${cyYear} vs ${pyYear} & Targets across monthly intake periods` : `Monthly trajectory for ${cyYear}`} {selectedCampus !== "all" ? `(Filtered: ${selectedCampus})` : ""}
             </p>
           </div>
 
@@ -993,7 +995,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   Target Performance Trajectory
                 </h4>
                 <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                  Target vs CY {cyYear} Actual ({mainMetric === "admissions" ? "Admissions" : mainMetric === "leads" ? "Leads" : "CUCET"})
+                  Target vs {cyYear} Actual ({mainMetric === "admissions" ? "Admissions" : mainMetric === "leads" ? "Leads" : "CUCET"})
                 </p>
               </div>
               <div className="flex items-center gap-3 text-xs font-semibold">
@@ -1001,7 +1003,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 inline-block" /> Target
                 </span>
                 <span className="flex items-center gap-1.5 text-teal-600 dark:text-teal-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" /> CY {cyYear} Actual
+                  <span className="w-2.5 h-2.5 rounded-full bg-teal-600 inline-block" /> {cyYear} Actual
                 </span>
               </div>
             </div>
@@ -1019,7 +1021,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   <Bar
                     dataKey={mainMetric === "admissions" ? "target_admission" : mainMetric === "leads" ? "target_leads" : "target_cucet"}
                     name="Target"
-                    fill="#6EE7B7"
+                    fill="#34D399"
                     radius={[4, 4, 0, 0]}
                   >
                     <LabelList
@@ -1034,7 +1036,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                           <text
                             x={centerX}
                             y={posY}
-                            fill={isDark ? "#A7F3D0" : "#047857"}
+                            fill={isDark ? "#6EE7B7" : "#059669"}
                             fontSize={10}
                             fontWeight={800}
                             textAnchor="start"
@@ -1048,7 +1050,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   </Bar>
                   <Bar
                     dataKey={mainMetric === "admissions" ? "cy_admission" : mainMetric === "leads" ? "cy_leads" : "cy_cucet"}
-                    name={`CY ${cyYear}`}
+                    name={`${cyYear}`}
                     fill="#0D9488"
                     radius={[4, 4, 0, 0]}
                   >
@@ -1094,15 +1096,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   Historic Trajectory Comparison
                 </h4>
                 <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                  Comparing CY {cyYear} vs {pyYear ? `PY ${pyYear}` : "Previous Year"} ({mainMetric === "admissions" ? "Admissions" : mainMetric === "leads" ? "Leads" : "CUCET"})
+                  Comparing {cyYear} vs {pyYear ? `${pyYear}` : "Previous Year"} ({mainMetric === "admissions" ? "Admissions" : mainMetric === "leads" ? "Leads" : "CUCET"})
                 </p>
               </div>
               <div className="flex items-center gap-3 text-xs font-semibold">
                 <span className="flex items-center gap-1.5 text-emerald-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 inline-block" /> PY {pyYear || ""}
+                  <span className="w-2.5 h-2.5 rounded-full bg-emerald-300 inline-block" /> {pyYear || ""}
                 </span>
                 <span className="flex items-center gap-1.5 text-indigo-500 dark:text-indigo-400">
-                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" /> CY {cyYear}
+                  <span className="w-2.5 h-2.5 rounded-full bg-indigo-500 inline-block" /> {cyYear}
                 </span>
               </div>
             </div>
@@ -1119,7 +1121,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   />
                   <Bar
                     dataKey={mainMetric === "admissions" ? "py_admission" : mainMetric === "leads" ? "py_leads" : "py_cucet"}
-                    name={`PY ${pyYear || ""}`}
+                    name={`${pyYear || ""}`}
                     fill="#6EE7B7"
                     radius={[4, 4, 0, 0]}
                   >
@@ -1149,7 +1151,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   </Bar>
                   <Bar
                     dataKey={mainMetric === "admissions" ? "cy_admission" : mainMetric === "leads" ? "cy_leads" : "cy_cucet"}
-                    name={`CY ${cyYear}`}
+                    name={`${cyYear}`}
                     fill="#6366F1"
                     radius={[4, 4, 0, 0]}
                   >
@@ -1306,7 +1308,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                     {activeMetric === "leads" ? "India Leads by State" : activeMetric === "cucet" ? "India CUCET by State" : "India Admissions by State"}
                   </h4>
                   <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    State-wise {activeMetric === "leads" ? "leads: CY Leads" : activeMetric === "cucet" ? "CUCET: CY CUCET" : "admissions: CY Admissions (more adms)"}
+                    State-wise {activeMetric === "leads" ? `leads: ${cyYear} Leads` : activeMetric === "cucet" ? `CUCET: ${cyYear} CUCET` : `admissions: ${cyYear} Admissions (more adms)`}
                   </p>
                 </div>
                 <div className="text-right">
@@ -1399,14 +1401,14 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                             {item.entity}
                           </div>
                           <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            CY: {(item.cy_admission ?? 0).toLocaleString()}
-                            {item.py_admission != null ? ` | PY: ${(item.py_admission ?? 0).toLocaleString()}` : ""}
+                            {cyShort}: {(item.cy_admission ?? 0).toLocaleString()}
+                            {item.py_admission != null ? ` | ${pyShort}: ${(item.py_admission ?? 0).toLocaleString()}` : ""}
                           </div>
                         </div>
                         <span className="text-xs font-bold text-emerald-500 flex items-center gap-1">
                           {item.admission_change != null
                             ? `${item.admission_change >= 0 ? "+" : ""}${(item.admission_change ?? 0).toLocaleString()}`
-                            : `CY: ${(item.cy_admission ?? 0).toLocaleString()}`}
+                            : `${cyShort}: ${(item.cy_admission ?? 0).toLocaleString()}`}
                           <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </span>
                       </div>
@@ -1441,14 +1443,14 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                             {item.entity}
                           </div>
                           <div className={`text-[10px] ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                            CY: {(item.cy_admission ?? 0).toLocaleString()}
-                            {item.py_admission != null ? ` | PY: ${(item.py_admission ?? 0).toLocaleString()}` : ""}
+                            {cyShort}: {(item.cy_admission ?? 0).toLocaleString()}
+                            {item.py_admission != null ? ` | ${pyShort}: ${(item.py_admission ?? 0).toLocaleString()}` : ""}
                           </div>
                         </div>
                         <span className="text-xs font-bold text-rose-500 flex items-center gap-1">
                           {item.admission_change != null
                             ? (item.admission_change ?? 0).toLocaleString()
-                            : `CY: ${(item.cy_admission ?? 0).toLocaleString()}`}
+                            : `${cyShort}: ${(item.cy_admission ?? 0).toLocaleString()}`}
                           <ChevronRight className="w-3.5 h-3.5 opacity-0 group-hover:opacity-100 transition-opacity" />
                         </span>
                       </div>
@@ -1559,13 +1561,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   {/* Overview Stats */}
                   <div className="grid grid-cols-3 gap-3">
                     <div className={`p-3 rounded-xl border ${isDark ? "bg-[#1E293B]/50 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
-                      <div className={`text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>CY Admissions</div>
+                      <div className={`text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>{cyShort} Admissions</div>
                       <div className="text-base font-extrabold text-blue-500">
                         {(entityDetail?.overview?.admissions?.cy ?? 0).toLocaleString()}
                       </div>
                     </div>
                     <div className={`p-3 rounded-xl border ${isDark ? "bg-[#1E293B]/50 border-slate-800" : "bg-slate-50 border-slate-200"}`}>
-                      <div className={`text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>CY Leads</div>
+                      <div className={`text-[10px] font-bold ${isDark ? "text-slate-400" : "text-slate-500"}`}>{cyShort} Leads</div>
                       <div className="text-base font-extrabold text-indigo-500">
                         {(entityDetail?.overview?.leads?.cy ?? 0).toLocaleString()}
                       </div>

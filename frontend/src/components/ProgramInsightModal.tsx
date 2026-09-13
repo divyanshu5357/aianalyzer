@@ -1,6 +1,7 @@
 'use client';
 
 import React, { useEffect, useState } from 'react';
+import { useAppContext } from '@/context/AppContext';
 import { getProgramInsights } from '@/lib/api/programs';
 import type { ProgramInsightData } from '@/lib/api/types';
 
@@ -22,6 +23,14 @@ export default function ProgramInsightModal({
   isDark = true,
   onClose,
 }: ProgramInsightModalProps) {
+  const { year: contextYear, periods } = useAppContext();
+  const activeYear = scopeParams.academic_year || contextYear || 2026;
+  const activePeriod = periods?.find((p) => (p.period_end_year || p.period_start_year) === activeYear);
+  const cyYear = activePeriod?.period_end_year || activeYear;
+  const pyYear = activePeriod?.period_start_year || (cyYear - 1);
+  const cyShort = `'${String(cyYear).slice(-2)}`;
+  const pyShort = `'${String(pyYear).slice(-2)}`;
+
   const [data, setData] = useState<ProgramInsightData | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -163,14 +172,14 @@ export default function ProgramInsightModal({
                   }`}
                 >
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    CY Admissions
+                    {cyShort} Admissions
                   </span>
                   <div className="text-xl font-bold mt-1 text-emerald-400">
                     {data.metrics.cy_admissions.toLocaleString()}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 text-[11px]">
                     <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                      PY: {data.metrics.py_admissions.toLocaleString()}
+                      {pyShort}: {data.metrics.py_admissions.toLocaleString()}
                     </span>
                     <span
                       className={`font-semibold ${
@@ -190,14 +199,14 @@ export default function ProgramInsightModal({
                   }`}
                 >
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    CY Leads
+                    {cyShort} Leads
                   </span>
                   <div className="text-xl font-bold mt-1 text-indigo-400">
                     {data.metrics.cy_leads.toLocaleString()}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 text-[11px]">
                     <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                      PY: {data.metrics.py_leads.toLocaleString()}
+                      {pyShort}: {data.metrics.py_leads.toLocaleString()}
                     </span>
                     <span
                       className={`font-semibold ${
@@ -217,14 +226,14 @@ export default function ProgramInsightModal({
                   }`}
                 >
                   <span className={`text-[10px] font-semibold uppercase tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-                    CY CUCET
+                    {cyShort} CUCET
                   </span>
                   <div className="text-xl font-bold mt-1 text-amber-400">
                     {data.metrics.cy_cucet.toLocaleString()}
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 text-[11px]">
                     <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                      PY: {data.metrics.py_cucet.toLocaleString()}
+                      {pyShort}: {data.metrics.py_cucet.toLocaleString()}
                     </span>
                     <span
                       className={`font-semibold ${
@@ -251,7 +260,7 @@ export default function ProgramInsightModal({
                   </div>
                   <div className="flex items-center gap-1.5 mt-1 text-[11px]">
                     <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>
-                      PY: {data.metrics.conversion_rate_py.toFixed(2)}%
+                      {pyShort}: {data.metrics.conversion_rate_py.toFixed(2)}%
                     </span>
                     <span
                       className={`font-semibold ${

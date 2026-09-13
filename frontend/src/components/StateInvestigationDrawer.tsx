@@ -41,6 +41,11 @@ export default function StateInvestigationDrawer({
   isDark = true,
   onSelectState,
 }: StateInvestigationDrawerProps) {
+  const cyYear = scopeParams?.academic_year || 2026;
+  const pyYear = cyYear - 1;
+  const cyShort = `'${String(cyYear).slice(-2)}`;
+  const pyShort = `'${String(pyYear).slice(-2)}`;
+
   // Current active state
   const [selectedState, setSelectedState] = useState<string>(() => {
     return initialState || availableStates[0]?.state || availableStates[0]?.name || 'Punjab';
@@ -196,7 +201,7 @@ export default function StateInvestigationDrawer({
       return {
         status: 'attention',
         label: 'Needs Attention',
-        reason: `Admissions contracted by ${Math.abs(varAdm).toLocaleString()} (${varAdmPct.toFixed(1)}%) vs PY`,
+        reason: `Admissions contracted by ${Math.abs(varAdm).toLocaleString()} (${varAdmPct.toFixed(1)}%) vs ${pyShort}`,
         color: '#ef4444',
         badge: 'Critical',
       };
@@ -205,7 +210,7 @@ export default function StateInvestigationDrawer({
       return {
         status: 'watch',
         label: 'Watchlist',
-        reason: `Mild contraction of ${Math.abs(varAdm).toLocaleString()} admissions vs PY`,
+        reason: `Mild contraction of ${Math.abs(varAdm).toLocaleString()} admissions vs ${pyShort}`,
         color: '#f59e0b',
         badge: 'Watch',
       };
@@ -217,7 +222,7 @@ export default function StateInvestigationDrawer({
       color: '#10b981',
       badge: 'Healthy',
     };
-  }, []);
+  }, [pyShort]);
 
   // States for selector
   const stateOptions = useMemo(() => {
@@ -714,7 +719,7 @@ export default function StateInvestigationDrawer({
                             {metrics.var_admissions >= 0 ? '+' : ''}{metrics.var_admissions} ({metrics.var_admissions_pct >= 0 ? '+' : ''}{metrics.var_admissions_pct}%)
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs PY {metrics.py_admissions.toLocaleString()}</span>
+                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs {pyShort} {metrics.py_admissions.toLocaleString()}</span>
                       </div>
 
                       <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
@@ -725,7 +730,7 @@ export default function StateInvestigationDrawer({
                             {metrics.var_leads >= 0 ? '+' : ''}{metrics.var_leads_pct}%
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs PY {metrics.py_leads.toLocaleString()}</span>
+                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs {pyShort} {metrics.py_leads.toLocaleString()}</span>
                       </div>
 
                       <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
@@ -736,7 +741,7 @@ export default function StateInvestigationDrawer({
                             {metrics.var_conversion_rate >= 0 ? '+' : ''}{metrics.var_conversion_rate.toFixed(2)}%
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PY {metrics.conversion_rate_py.toFixed(2)}%</span>
+                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort} {metrics.conversion_rate_py.toFixed(2)}%</span>
                       </div>
 
                       <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
@@ -747,7 +752,7 @@ export default function StateInvestigationDrawer({
                             {metrics.var_cucet >= 0 ? '+' : ''}{metrics.var_cucet_pct}%
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs PY {metrics.py_cucet.toLocaleString()}</span>
+                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs {pyShort} {metrics.py_cucet.toLocaleString()}</span>
                       </div>
                     </div>
                   )}
@@ -1029,7 +1034,7 @@ export default function StateInvestigationDrawer({
                                 onClick={() => handleCourseSort('cy_leads')}
                                 className="px-3 py-2.5 text-right cursor-pointer hover:text-indigo-400 select-none whitespace-nowrap"
                               >
-                                Leads (CY / Var) {courseSortCol === 'cy_leads' && (courseSortDir === 'asc' ? '↑' : '↓')}
+                                Leads ({cyShort} / Var) {courseSortCol === 'cy_leads' && (courseSortDir === 'asc' ? '↑' : '↓')}
                               </th>
                               <th
                                 onClick={() => handleCourseSort('cy_cucet')}
@@ -1041,7 +1046,7 @@ export default function StateInvestigationDrawer({
                                 onClick={() => handleCourseSort('cy_admissions')}
                                 className="px-3 py-2.5 text-right cursor-pointer hover:text-indigo-400 select-none whitespace-nowrap"
                               >
-                                Admissions (CY / Var) {courseSortCol === 'cy_admissions' && (courseSortDir === 'asc' ? '↑' : '↓')}
+                                Admissions ({cyShort} / Var) {courseSortCol === 'cy_admissions' && (courseSortDir === 'asc' ? '↑' : '↓')}
                               </th>
                               <th
                                 onClick={() => handleCourseSort('conversion_rate_cy')}
@@ -1199,7 +1204,7 @@ export default function StateInvestigationDrawer({
                                     ({sp.var_admissions >= 0 ? '+' : ''}{sp.var_admissions}, {sp.var_admissions_pct >= 0 ? '+' : ''}{sp.var_admissions_pct.toFixed(1)}%)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PY: {sp.py_admissions}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_admissions}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
@@ -1210,7 +1215,7 @@ export default function StateInvestigationDrawer({
                                     ({sp.var_leads_pct >= 0 ? '+' : ''}{sp.var_leads_pct.toFixed(1)}%)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PY: {sp.py_leads.toLocaleString()}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_leads.toLocaleString()}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
@@ -1221,7 +1226,7 @@ export default function StateInvestigationDrawer({
                                     ({sp.var_conversion_rate >= 0 ? '+' : ''}{sp.var_conversion_rate.toFixed(2)}% pts)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PY: {sp.conversion_rate_py.toFixed(2)}%</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.conversion_rate_py.toFixed(2)}%</div>
                               </div>
                             </div>
                           </div>
@@ -1276,7 +1281,7 @@ export default function StateInvestigationDrawer({
                                     (+{sp.var_admissions})
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PY: {sp.py_admissions}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_admissions}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
@@ -1287,7 +1292,7 @@ export default function StateInvestigationDrawer({
                                     ({sp.var_leads_pct >= 0 ? '+' : ''}{sp.var_leads_pct.toFixed(1)}%)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PY: {sp.py_leads.toLocaleString()}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_leads.toLocaleString()}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
@@ -1298,7 +1303,7 @@ export default function StateInvestigationDrawer({
                                     ({sp.var_conversion_rate >= 0 ? '+' : ''}{sp.var_conversion_rate.toFixed(2)}% pts)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>PY: {sp.conversion_rate_py.toFixed(2)}%</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.conversion_rate_py.toFixed(2)}%</div>
                               </div>
                             </div>
                           </div>

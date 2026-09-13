@@ -222,8 +222,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
         setDateRangeLimits(range);
 
-        // Ground date inputs directly to the selected session's dataset extent
-        setFromDate(range.min_date);
+        // Ground date inputs to the session's active academic period (1 Nov to dataset max)
+        setFromDate(range.default_from || range.min_date);
         setToDate(range.max_date);
 
         // Reset applied dates so new session loads its full, authentic scope
@@ -278,7 +278,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const resetDateRange = useCallback(() => {
     if (dateRangeLimits) {
-      setFromDate(dateRangeLimits.min_date);
+      setFromDate(dateRangeLimits.default_from || dateRangeLimits.min_date);
       setToDate(dateRangeLimits.max_date);
     } else {
       setFromDate("");
@@ -407,3 +407,5 @@ export const useApp = () => {
   }
   return context;
 };
+
+export const useAppContext = useApp;

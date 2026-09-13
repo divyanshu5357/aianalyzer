@@ -2,10 +2,12 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { getStateHierarchyChildren } from '@/lib/api/states';
+import { useAppContext } from '@/context/AppContext';
 import dashboardCache from '@/lib/cache/dashboardCache';
 import type {
   StateReportRow,
   StateHierarchyParams,
+  PeriodSummary,
 } from '@/lib/api/types';
 
 // ── Sparkline Component ──────────────────────────────────────────────────────
@@ -45,7 +47,7 @@ function Sparkline({ data, color = '#6366f1' }: { data: number[]; color?: string
 function StatusDot({ status }: { status?: 'positive' | 'negative' | 'neutral' }) {
   if (status === 'positive') {
     return (
-      <span className="relative flex h-2.5 w-2.5 shrink-0" title="Performance increased vs PY">
+      <span className="relative flex h-2.5 w-2.5 shrink-0" title="Performance increased YoY">
         <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-emerald-500 shadow-xs shadow-emerald-500/50"></span>
       </span>
@@ -53,7 +55,7 @@ function StatusDot({ status }: { status?: 'positive' | 'negative' | 'neutral' })
   }
   if (status === 'negative') {
     return (
-      <span className="relative flex h-2.5 w-2.5 shrink-0" title="Performance decreased vs PY">
+      <span className="relative flex h-2.5 w-2.5 shrink-0" title="Performance decreased YoY">
         <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-rose-500 shadow-xs shadow-rose-500/50"></span>
       </span>
     );
@@ -146,6 +148,14 @@ export default function StateReportTable({
   loading = false,
   isDark = true,
 }: StateReportTableProps) {
+  const { year: contextYear, periods } = useAppContext();
+  const activeYear = filters.academic_year || contextYear || 2026;
+  const activePeriod = periods?.find((p: PeriodSummary) => (p.period_end_year || p.period_start_year) === activeYear);
+  const cyYear = activePeriod?.period_end_year || activeYear;
+  const pyYear = activePeriod?.period_start_year || (cyYear - 1);
+  const cyShort = `'${String(cyYear).slice(-2)}`;
+  const pyShort = `'${String(pyYear).slice(-2)}`;
+
   // Scope-aware child cache: Map<nodeId, StateReportRow[]>
   const childCache = useRef<Map<string, StateReportRow[]>>(new Map());
   const prevScopeKey = useRef<string>('');
@@ -389,19 +399,19 @@ export default function StateReportTable({
               </th>
 
               <th onClick={() => handleHeaderClick('py_leads')} className={`${thBase} text-right`}>
-                <div className="flex items-center justify-end">PY LEADS {renderSortIndicator('py_leads')}</div>
+                <div className="flex items-center justify-end">{pyShort} LEADS {renderSortIndicator('py_leads')}</div>
               </th>
               <th onClick={() => handleHeaderClick('cy_leads')} className={`${thBase} text-right`}>
-                <div className="flex items-center justify-end">CY LEADS {renderSortIndicator('cy_leads')}</div>
+                <div className="flex items-center justify-end">{cyShort} LEADS {renderSortIndicator('cy_leads')}</div>
               </th>
               <th onClick={() => handleHeaderClick('var_leads')} className={`${thBase} text-right`}>
                 <div className="flex items-center justify-end">VAR (LEADS) {renderSortIndicator('var_leads')}</div>
               </th>
               <th onClick={() => handleHeaderClick('py_cucet')} className={`${thBase} text-right`}>
-                <div className="flex items-center justify-end">PY CUCET {renderSortIndicator('py_cucet')}</div>
+                <div className="flex items-center justify-end">{pyShort} CUCET {renderSortIndicator('py_cucet')}</div>
               </th>
               <th onClick={() => handleHeaderClick('cy_cucet')} className={`${thBase} text-right`}>
-                <div className="flex items-center justify-end">CY CUCET {renderSortIndicator('cy_cucet')}</div>
+                <div className="flex items-center justify-end">{cyShort} CUCET {renderSortIndicator('cy_cucet')}</div>
               </th>
               <th onClick={() => handleHeaderClick('var_cucet')} className={`${thBase} text-right`}>
                 <div className="flex items-center justify-end">VAR (CUCET) {renderSortIndicator('var_cucet')}</div>
@@ -410,10 +420,10 @@ export default function StateReportTable({
                 <div className="flex items-center justify-end">LEAD-CUCET % {renderSortIndicator('lead_cucet_pct')}</div>
               </th>
               <th onClick={() => handleHeaderClick('py_adm')} className={`${thBase} text-right`}>
-                <div className="flex items-center justify-end">PY ADM {renderSortIndicator('py_adm')}</div>
+                <div className="flex items-center justify-end">{pyShort} ADM {renderSortIndicator('py_adm')}</div>
               </th>
               <th onClick={() => handleHeaderClick('cy_adm')} className={`${thBase} text-right`}>
-                <div className="flex items-center justify-end">CY ADM {renderSortIndicator('cy_adm')}</div>
+                <div className="flex items-center justify-end">{cyShort} ADM {renderSortIndicator('cy_adm')}</div>
               </th>
               <th onClick={() => handleHeaderClick('var_adm')} className={`${thBase} text-right`}>
                 <div className="flex items-center justify-end">VAR (ADM) {renderSortIndicator('var_adm')}</div>
@@ -428,8 +438,8 @@ export default function StateReportTable({
               <th onClick={() => handleHeaderClick('net_admissions')} className={`${thBase} text-right`}>
                 <div className="flex items-center justify-end">NET ADMISSIONS {renderSortIndicator('net_admissions')}</div>
               </th>
-              <th className={`${thBase} text-right`}>REFUND PY VS CY</th>
-              <th className={`${thBase} text-right`}>REFUND % PY VS CY</th>
+              <th className={`${thBase} text-right`}>REFUND {pyShort} VS {cyShort}</th>
+              <th className={`${thBase} text-right`}>REFUND % {pyShort} VS {cyShort}</th>
               <th className={`${thBase} text-center`}>FEE PAID</th>
               <th className={`${thBase} text-center`}>NET - FEE PAID %</th>
             </tr>

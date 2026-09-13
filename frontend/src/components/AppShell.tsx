@@ -376,7 +376,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                     min={dateRangeLimits?.min_date}
                     max={dateRangeLimits?.max_date}
                     onChange={(e) => setFromDate(e.target.value)}
-                    className={`px-0.5 py-0.5 text-[11px] font-semibold rounded bg-transparent focus:outline-none cursor-pointer w-[98px] sm:w-[104px] ${
+                    className={`px-1 py-0.5 text-[11px] font-semibold rounded bg-transparent focus:outline-none cursor-pointer w-[116px] sm:w-[124px] ${
                       isDark ? "text-slate-200" : "text-slate-800"
                     }`}
                     title={dateRangeLimits?.min_date ? `Available from ${dateRangeLimits.min_date}` : "From Date"}
@@ -397,7 +397,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                     min={dateRangeLimits?.min_date}
                     max={dateRangeLimits?.max_date}
                     onChange={(e) => setToDate(e.target.value)}
-                    className={`px-0.5 py-0.5 text-[11px] font-semibold rounded bg-transparent focus:outline-none cursor-pointer w-[98px] sm:w-[104px] ${
+                    className={`px-1 py-0.5 text-[11px] font-semibold rounded bg-transparent focus:outline-none cursor-pointer w-[116px] sm:w-[124px] ${
                       isDark ? "text-slate-200" : "text-slate-800"
                     }`}
                     title={dateRangeLimits?.max_date ? `Available up to ${dateRangeLimits.max_date}` : "To Date"}
