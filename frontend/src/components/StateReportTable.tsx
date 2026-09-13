@@ -98,6 +98,48 @@ function RefundCell({ py, cy, diff }: { py: number; cy: number; diff: number }) 
   );
 }
 
+// ── Rate Transition Badge ─────────────────────────────────────────────────────
+
+function RateTransitionBadge({
+  py,
+  cy,
+  isDark = true,
+}: {
+  py: number;
+  cy: number;
+  isDark?: boolean;
+}) {
+  const diff = cy - py;
+  const isNeg = diff < -0.05;
+  const isPos = diff > 0.05;
+  const sign = diff >= 0 ? '+' : '';
+
+  if (isNeg) {
+    return (
+      <span
+        className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-nums ${
+          isDark
+            ? 'bg-rose-950/70 text-rose-300 border border-rose-800/40'
+            : 'bg-[#ffdcd0] text-[#991b1b] border border-[#fca5a5]'
+        }`}
+      >
+        {py.toFixed(1)}% → {cy.toFixed(1)}% ({sign}{diff.toFixed(1)}%)
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-[11px] tabular-nums whitespace-nowrap">
+      <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{py.toFixed(1)}%</span>
+      <span className="mx-1 text-slate-400">→</span>
+      <span className={`font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{cy.toFixed(1)}%</span>{' '}
+      <span className={isPos ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-600 font-semibold') : 'text-slate-400'}>
+        ({sign}{diff.toFixed(1)}%)
+      </span>
+    </span>
+  );
+}
+
 // ── Row expand/collapse helpers ───────────────────────────────────────────────
 
 type ExpandState = 'collapsed' | 'loading' | 'expanded';
@@ -574,8 +616,14 @@ export default function StateReportTable({
                     <td className={`${tdBase} text-right`}>
                       <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} />
                     </td>
-                    <td className={`${tdBase} text-right font-semibold ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>
-                      {row.lead_cucet_pct.toFixed(1)}%
+                    <td className={`${tdBase} text-right whitespace-nowrap ${
+                      activeMetric === 'lead_cucet_pct' ? (isDark ? 'bg-amber-950/30' : 'bg-amber-50/80') : ''
+                    }`}>
+                      <RateTransitionBadge
+                        py={row.py_leads > 0 ? (row.py_cucet / row.py_leads) * 100 : 0}
+                        cy={row.cy_leads > 0 ? (row.cy_cucet / row.cy_leads) * 100 : row.lead_cucet_pct}
+                        isDark={isDark}
+                      />
                     </td>
                     <td className={`${tdBase} text-right font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
                       {row.py_adm > 0 ? row.py_adm.toLocaleString() : '—'}
@@ -586,11 +634,23 @@ export default function StateReportTable({
                     <td className={`${tdBase} text-right`}>
                       <VarBadge value={row.var_adm} pct={row.var_adm_pct} />
                     </td>
-                    <td className={`${tdBase} text-right font-semibold ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`}>
-                      {row.lead_adm_pct.toFixed(1)}%
+                    <td className={`${tdBase} text-right whitespace-nowrap ${
+                      activeMetric === 'lead_adm_pct' ? (isDark ? 'bg-indigo-950/30' : 'bg-indigo-50/80') : ''
+                    }`}>
+                      <RateTransitionBadge
+                        py={row.py_leads > 0 ? (row.py_adm / row.py_leads) * 100 : 0}
+                        cy={row.cy_leads > 0 ? (row.cy_adm / row.cy_leads) * 100 : row.lead_adm_pct}
+                        isDark={isDark}
+                      />
                     </td>
-                    <td className={`${tdBase} text-right font-semibold ${isDark ? 'text-purple-400' : 'text-purple-600'}`}>
-                      {row.cucet_adm_pct.toFixed(1)}%
+                    <td className={`${tdBase} text-right whitespace-nowrap ${
+                      activeMetric === 'cucet_adm_pct' ? (isDark ? 'bg-purple-950/30' : 'bg-purple-50/80') : ''
+                    }`}>
+                      <RateTransitionBadge
+                        py={row.py_cucet > 0 ? (row.py_adm / row.py_cucet) * 100 : 0}
+                        cy={row.cy_cucet > 0 ? (row.cy_adm / row.cy_cucet) * 100 : row.cucet_adm_pct}
+                        isDark={isDark}
+                      />
                     </td>
                     <td className={`${tdBase} text-center`}>
                       <Sparkline
@@ -658,8 +718,14 @@ export default function StateReportTable({
                 <td className="px-3 py-3 text-right">
                   <VarBadge value={totalRow.var_cucet} pct={totalRow.var_cucet_pct} />
                 </td>
-                <td className="px-3 py-3 text-right text-xs text-amber-400 font-bold">
-                  {totalRow.lead_cucet_pct.toFixed(1)}%
+                <td className={`px-3 py-3 text-right text-xs whitespace-nowrap ${
+                  activeMetric === 'lead_cucet_pct' ? (isDark ? 'bg-amber-950/30' : 'bg-amber-50/80') : ''
+                }`}>
+                  <RateTransitionBadge
+                    py={totalRow.py_leads > 0 ? (totalRow.py_cucet / totalRow.py_leads) * 100 : 0}
+                    cy={totalRow.cy_leads > 0 ? (totalRow.cy_cucet / totalRow.cy_leads) * 100 : totalRow.lead_cucet_pct}
+                    isDark={isDark}
+                  />
                 </td>
                 <td className="px-3 py-3 text-right font-mono text-xs opacity-75">
                   {totalRow.py_adm.toLocaleString()}
@@ -670,11 +736,23 @@ export default function StateReportTable({
                 <td className="px-3 py-3 text-right">
                   <VarBadge value={totalRow.var_adm} pct={totalRow.var_adm_pct} />
                 </td>
-                <td className="px-3 py-3 text-right text-xs text-indigo-400 font-bold">
-                  {totalRow.lead_adm_pct.toFixed(1)}%
+                <td className={`px-3 py-3 text-right text-xs whitespace-nowrap ${
+                  activeMetric === 'lead_adm_pct' ? (isDark ? 'bg-indigo-950/30' : 'bg-indigo-50/80') : ''
+                }`}>
+                  <RateTransitionBadge
+                    py={totalRow.py_leads > 0 ? (totalRow.py_adm / totalRow.py_leads) * 100 : 0}
+                    cy={totalRow.cy_leads > 0 ? (totalRow.cy_adm / totalRow.cy_leads) * 100 : totalRow.lead_adm_pct}
+                    isDark={isDark}
+                  />
                 </td>
-                <td className="px-3 py-3 text-right text-xs text-purple-400 font-bold">
-                  {totalRow.cucet_adm_pct.toFixed(1)}%
+                <td className={`px-3 py-3 text-right text-xs whitespace-nowrap ${
+                  activeMetric === 'cucet_adm_pct' ? (isDark ? 'bg-purple-950/30' : 'bg-purple-50/80') : ''
+                }`}>
+                  <RateTransitionBadge
+                    py={totalRow.py_cucet > 0 ? (totalRow.py_adm / totalRow.py_cucet) * 100 : 0}
+                    cy={totalRow.cy_cucet > 0 ? (totalRow.cy_adm / totalRow.cy_cucet) * 100 : totalRow.cucet_adm_pct}
+                    isDark={isDark}
+                  />
                 </td>
                 <td className="px-3 py-3 text-center">
                   <Sparkline data={totalRow.lead_trend} color="#818cf8" />
