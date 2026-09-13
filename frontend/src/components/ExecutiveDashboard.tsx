@@ -116,12 +116,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
 
   const [rankingsDimension, setRankingsDimension] = useState<string>("program");
   const [mainMetric, setMainMetric] = useState<"admissions" | "leads" | "cucet" | "conversion_rate">("leads");
+  const activeMetric: "admissions" | "leads" | "cucet" = mainMetric === "conversion_rate" ? "admissions" : mainMetric;
 
   // Synchronous peek keys for instant render on navigation (<5ms)
   const initialOverviewKey = useMemo(() => buildDashKey("overview", currentFilters), [currentFilters]);
   const initialInsightsKey = useMemo(() => buildDashKey("insights", currentFilters), [currentFilters]);
-  const initialGenderKey = useMemo(() => buildDashKey("gender", currentFilters), [currentFilters]);
-  const initialStateKey = useMemo(() => buildDashKey("indiaStates", currentFilters), [currentFilters]);
+  const initialGenderKey = useMemo(() => buildDashKey("gender", currentFilters, activeMetric), [currentFilters, activeMetric]);
+  const initialStateKey = useMemo(() => buildDashKey("indiaStates", currentFilters, activeMetric), [currentFilters, activeMetric]);
   const initialRankingsKey = useMemo(() => buildDashKey("rankings", currentFilters, rankingsDimension), [currentFilters, rankingsDimension]);
   const initialTrendKey = useMemo(() => buildDashKey("monthlyTrend", currentFilters, mainMetric), [currentFilters, mainMetric]);
 
@@ -152,11 +153,17 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   // Phase 11.7B: Gender and Geographic Analytics State
   const [genderMonths, setGenderMonths] = useState<GenderMonthItem[]>(() => dashboardCache.peekMemory<GenderAdmissionsResponse>(initialGenderKey)?.months || []);
   const [genderCategories, setGenderCategories] = useState<string[]>(() => dashboardCache.peekMemory<GenderAdmissionsResponse>(initialGenderKey)?.gender_categories || []);
-  const [totalGenderAdmissions, setTotalGenderAdmissions] = useState<number>(() => dashboardCache.peekMemory<GenderAdmissionsResponse>(initialGenderKey)?.total_admissions || 0);
+  const [totalGenderAdmissions, setTotalGenderAdmissions] = useState<number>(() => {
+    const cached = dashboardCache.peekMemory<GenderAdmissionsResponse>(initialGenderKey);
+    return cached?.total_count ?? cached?.total_admissions ?? 0;
+  });
   const [genderLoading, setGenderLoading] = useState<boolean>(() => !dashboardCache.peekMemory(initialGenderKey));
 
   const [indiaStatesData, setIndiaStatesData] = useState<StateAdmissionItem[]>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.states || []);
-  const [totalIndiaAdmissions, setTotalIndiaAdmissions] = useState<number>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.total_india_admissions || 0);
+  const [totalIndiaAdmissions, setTotalIndiaAdmissions] = useState<number>(() => {
+    const cached = dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey);
+    return cached?.total_metric_count ?? cached?.total_india_admissions ?? 0;
+  });
   const [hasPyStateData, setHasPyStateData] = useState<boolean>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.has_py_data ?? true);
   const [stateComparisonYear, setStateComparisonYear] = useState<number | null>(() => dashboardCache.peekMemory<StateAdmissionsResponse>(initialStateKey)?.comparison_year ?? null);
   const [indiaStatesLoading, setIndiaStatesLoading] = useState<boolean>(() => !dashboardCache.peekMemory(initialStateKey));
@@ -219,8 +226,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
   useEffect(() => {
     const ovKey = buildDashKey("overview", currentFilters);
     const inKey = buildDashKey("insights", currentFilters);
-    const genKey = buildDashKey("gender", currentFilters);
-    const stKey = buildDashKey("indiaStates", currentFilters);
 
     const cachedOv = dashboardCache.peek<OverviewResponse>(ovKey);
     if (cachedOv) {
@@ -239,27 +244,6 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
     const cachedIn = dashboardCache.peek<InsightItem[]>(inKey);
     if (cachedIn) {
       setInsights(cachedIn);
-    }
-
-    const cachedGen = dashboardCache.peek<GenderAdmissionsResponse>(genKey);
-    if (cachedGen) {
-      setGenderMonths(cachedGen.months || []);
-      setGenderCategories(cachedGen.gender_categories || []);
-      setTotalGenderAdmissions(cachedGen.total_admissions || 0);
-      setGenderLoading(false);
-    } else {
-      setGenderLoading(true);
-    }
-
-    const cachedSt = dashboardCache.peek<StateAdmissionsResponse>(stKey);
-    if (cachedSt) {
-      setIndiaStatesData(cachedSt.states || []);
-      setTotalIndiaAdmissions(cachedSt.total_india_admissions || 0);
-      setHasPyStateData(cachedSt.has_py_data ?? true);
-      setStateComparisonYear(cachedSt.comparison_year ?? null);
-      setIndiaStatesLoading(false);
-    } else {
-      setIndiaStatesLoading(true);
     }
 
     setError(null);
@@ -297,13 +281,42 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           console.error("Failed to load dashboard insights:", err);
         }
       });
+  }, [loadVersion, currentFilters, loadFilterOptions]);
+
+  // Refetch gender breakdown and state-wise map when metric or filters change
+  useEffect(() => {
+    const genKey = buildDashKey("gender", currentFilters, activeMetric);
+    const stKey = buildDashKey("indiaStates", currentFilters, activeMetric);
+
+    const cachedGen = dashboardCache.peek<GenderAdmissionsResponse>(genKey);
+    if (cachedGen) {
+      setGenderMonths(cachedGen.months || []);
+      setGenderCategories(cachedGen.gender_categories || []);
+      setTotalGenderAdmissions(cachedGen.total_count ?? cachedGen.total_admissions ?? 0);
+      setGenderLoading(false);
+    } else {
+      setGenderLoading(true);
+    }
+
+    const cachedSt = dashboardCache.peek<StateAdmissionsResponse>(stKey);
+    if (cachedSt) {
+      setIndiaStatesData(cachedSt.states || []);
+      setTotalIndiaAdmissions(cachedSt.total_metric_count ?? cachedSt.total_india_admissions ?? 0);
+      setHasPyStateData(cachedSt.has_py_data ?? true);
+      setStateComparisonYear(cachedSt.comparison_year ?? null);
+      setIndiaStatesLoading(false);
+    } else {
+      setIndiaStatesLoading(true);
+    }
+
+    const force = loadVersion > 0;
 
     dashboardCache
-      .fetchWithCache(genKey, () => getAdmissionsByGender(currentFilters), { forceRefresh: force })
+      .fetchWithCache(genKey, () => getAdmissionsByGender({ ...currentFilters, metric: activeMetric }), { forceRefresh: force })
       .then((genderRes) => {
         setGenderMonths(genderRes?.months || []);
         setGenderCategories(genderRes?.gender_categories || []);
-        setTotalGenderAdmissions(genderRes?.total_admissions || 0);
+        setTotalGenderAdmissions(genderRes?.total_count ?? genderRes?.total_admissions ?? 0);
         setGenderLoading(false);
       })
       .catch((err) => {
@@ -314,10 +327,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
       });
 
     dashboardCache
-      .fetchWithCache(stKey, () => getAdmissionsByState(currentFilters), { forceRefresh: force })
+      .fetchWithCache(stKey, () => getAdmissionsByState({ ...currentFilters, metric: activeMetric }), { forceRefresh: force })
       .then((stateRes) => {
         setIndiaStatesData(stateRes?.states || []);
-        setTotalIndiaAdmissions(stateRes?.total_india_admissions || 0);
+        setTotalIndiaAdmissions(stateRes?.total_metric_count ?? stateRes?.total_india_admissions ?? 0);
         setHasPyStateData(stateRes?.has_py_data ?? true);
         setStateComparisonYear(stateRes?.comparison_year ?? null);
         setIndiaStatesLoading(false);
@@ -328,7 +341,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
           setIndiaStatesLoading(false);
         }
       });
-  }, [loadVersion, currentFilters, loadFilterOptions]);
+  }, [activeMetric, currentFilters, loadVersion]);
 
   // Refetch performance rankings independently when rankings dimension tab or filters change
   useEffect(() => {
@@ -1082,15 +1095,15 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 <div>
                   <h4 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
                     <Users className="w-5 h-5 text-blue-500" />
-                    Admissions by Gender
+                    {activeMetric === "leads" ? "Leads by Gender" : activeMetric === "cucet" ? "CUCET by Gender" : "Admissions by Gender"}
                   </h4>
                   <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    Monthly admission mix by gender ({cyYear})
+                    Monthly {activeMetric === "leads" ? "lead" : activeMetric === "cucet" ? "CUCET" : "admission"} mix by gender ({cyYear})
                   </p>
                 </div>
                 <div className="text-right">
                   <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-blue-50 dark:bg-blue-950/60 border border-blue-200 dark:border-blue-800 text-blue-800 dark:text-blue-300">
-                    {(totalGenderAdmissions ?? 0).toLocaleString()} Total Admitted
+                    {(totalGenderAdmissions ?? 0).toLocaleString()} Total {activeMetric === "leads" ? "Leads" : activeMetric === "cucet" ? "CUCET" : "Admitted"}
                   </span>
                 </div>
               </div>
@@ -1131,7 +1144,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                           boxShadow: "0 10px 15px -3px rgba(0, 0, 0, 0.1)",
                         }}
                         formatter={(val: any, name: any) => [
-                          `${Number(val ?? 0).toLocaleString()} admissions`,
+                          `${Number(val ?? 0).toLocaleString()} ${activeMetric === "leads" ? "leads" : activeMetric === "cucet" ? "CUCET" : "admissions"}`,
                           name,
                         ]}
                         labelFormatter={(label: any, payload: any) => {
@@ -1184,10 +1197,10 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 <div>
                   <h4 className={`text-base font-extrabold flex items-center gap-2 ${isDark ? "text-white" : "text-slate-900"}`}>
                     <MapPin className="w-5 h-5 text-indigo-600" />
-                    India Admissions by State
+                    {activeMetric === "leads" ? "India Leads by State" : activeMetric === "cucet" ? "India CUCET by State" : "India Admissions by State"}
                   </h4>
                   <p className={`text-xs ${isDark ? "text-slate-400" : "text-slate-500"}`}>
-                    State-wise admissions: CY Admissions (more adms)
+                    State-wise {activeMetric === "leads" ? "leads: CY Leads" : activeMetric === "cucet" ? "CUCET: CY CUCET" : "admissions: CY Admissions (more adms)"}
                   </p>
                 </div>
                 <div className="text-right">
@@ -1206,6 +1219,7 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 <IndiaStateMap
                   statesData={indiaStatesData}
                   totalAdmissions={totalIndiaAdmissions}
+                  metric={activeMetric}
                   hasPyData={hasPyStateData}
                   comparisonYear={stateComparisonYear}
                   currentYear={cyYear}

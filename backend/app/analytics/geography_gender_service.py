@@ -135,21 +135,31 @@ def get_admissions_by_gender(
     state: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    metric: Optional[str] = "admissions",
 ) -> Dict[str, Any]:
-    """Calculate admissions breakdown by canonical gender, month by month.
+    """Calculate admissions, leads, or cucet breakdown by canonical gender, month by month.
     
-    Admissions = COUNT(DISTINCT ProspectID)
-    WHERE mx_AdmissionDate is valid and not null
-      AND dataset is active RAW dataset for selected academic_year/campus.
-    
-    Supports dynamic from_date and to_date range filtering.
-    Returns chronological month-by-month grouped bars and dynamic gender categories.
+    Supports dynamic metric switching:
+    - admissions: strictly enrolled prospects (ProspectStage = 'enrolled')
+    - leads: all prospective inquiries/leads
+    - cucet: CUCET registrations / payments
     """
     from app.analytics.period_helper import get_active_or_max_academic_year
+    from app.analytics.aggregate_refresh import refresh_gender_agg_scoped
     year = academic_year or get_active_or_max_academic_year(db)
 
     canon_campus = (campus or "all").strip().lower()
-    cache_key = f"gender:{year}:{canon_campus}:{month}:{lead_type}:{program}:{source}:{state}:{from_date}:{to_date}"
+    raw_metric = (metric or "admissions").strip().lower()
+    if raw_metric in ("admission", "admissions"):
+        norm_metric = "admissions"
+    elif raw_metric in ("lead", "leads"):
+        norm_metric = "leads"
+    elif raw_metric in ("cucet", "cucets"):
+        norm_metric = "cucet"
+    else:
+        norm_metric = "admissions"
+
+    cache_key = f"gender:{year}:{canon_campus}:{norm_metric}:{month}:{lead_type}:{program}:{source}:{state}:{from_date}:{to_date}"
     now_ts = time.time()
     if cache_key in _GEO_CACHE:
         c_time, c_data = _GEO_CACHE[cache_key]
@@ -162,6 +172,8 @@ def get_admissions_by_gender(
             "status": "success",
             "academic_year": year,
             "campus": campus or "All",
+            "metric": norm_metric,
+            "total_count": 0,
             "total_admissions": 0,
             "gender_categories": [],
             "months": [],
@@ -170,8 +182,38 @@ def get_admissions_by_gender(
             "to_date": to_date,
         }
 
-    conds = ["academic_year = :academic_year"]
-    params: Dict[str, Any] = {"academic_year": year}
+    # Self-healing check:
+    # 1. Check if analytics.gender_monthly_agg has rows for this metric_type and year
+    # 2. For admissions, check if it contains the legacy flawed 31397 sum and fix it
+    try:
+        metric_check = db.execute(
+            text("""
+                SELECT 
+                    COUNT(*) AS cnt,
+                    COALESCE(SUM(COALESCE(metric_count, admissions)), 0) AS total_val
+                FROM analytics.gender_monthly_agg
+                WHERE academic_year = :yr
+                  AND metric_type = :m_type
+            """),
+            {"yr": year, "m_type": norm_metric},
+        ).mappings().first()
+
+        row_cnt = metric_check["cnt"] if metric_check else 0
+        tot_val = metric_check["total_val"] if metric_check else 0
+
+        needs_refresh = (row_cnt == 0) or (norm_metric == "admissions" and tot_val == 31397)
+        if needs_refresh:
+            logger.info("[GENDER REFRESH] Triggering auto-refresh for metric=%s year=%s (row_cnt=%d, tot_val=%d)", norm_metric, year, row_cnt, tot_val)
+            refresh_gender_agg_scoped(db, str(ds_id))
+    except Exception as heal_err:
+        logger.debug("Gender preagg self-healing notice: %s", heal_err)
+        try:
+            refresh_gender_agg_scoped(db, str(ds_id))
+        except Exception:
+            pass
+
+    conds = ["academic_year = :academic_year", "metric_type = :metric_type"]
+    params: Dict[str, Any] = {"academic_year": year, "metric_type": norm_metric}
 
     if campus and campus.lower() != "all":
         conds.append("LOWER(campus_name) = LOWER(:campus)")
@@ -194,7 +236,7 @@ def get_admissions_by_gender(
         SELECT 
             admission_month AS month_key,
             gender,
-            SUM(admissions) AS admissions
+            SUM(COALESCE(metric_count, admissions)) AS admissions
         FROM analytics.gender_monthly_agg
         WHERE {where_clause}
         GROUP BY 1, 2
@@ -219,6 +261,8 @@ def get_admissions_by_gender(
                 "status": "aggregating" if ds_status == "AGGREGATING" else "success",
                 "academic_year": year,
                 "campus": campus or "All",
+                "metric": norm_metric,
+                "total_count": 0,
                 "total_admissions": 0,
                 "gender_categories": ["Male", "Female"],
                 "months": [],
@@ -289,10 +333,12 @@ def get_admissions_by_gender(
                 "share_pct": share,
             })
 
-        return {
+        resp = {
             "status": "success",
             "academic_year": year,
             "campus": campus or "All",
+            "metric": norm_metric,
+            "total_count": total_admissions,
             "total_admissions": total_admissions,
             "gender_categories": ordered_genders,
             "months": sorted_months,
@@ -308,6 +354,8 @@ def get_admissions_by_gender(
             "status": "success",
             "academic_year": year,
             "campus": campus or "All",
+            "metric": norm_metric,
+            "total_count": 0,
             "total_admissions": 0,
             "gender_categories": [],
             "months": [],
@@ -327,21 +375,31 @@ def get_admissions_by_india_state(
     source: Optional[str] = None,
     from_date: Optional[str] = None,
     to_date: Optional[str] = None,
+    metric: Optional[str] = "admissions",
 ) -> Dict[str, Any]:
-    """Calculate admissions by Indian state from analytics.dashboard_agg with CY vs PY comparison.
+    """Calculate admissions, leads, or cucet by Indian state from analytics.dashboard_agg with CY vs PY comparison.
     
     Includes all Indian states and union territories.
     Strictly excludes 'INTERNATIONAL' and 'UNMAPPED_STATE' from state list.
-    Computes CY admissions, PY admissions, variance, variance %, and performance direction.
+    Computes CY, PY, variance, variance %, and performance direction for the active metric.
     Supports dynamic from_date and to_date range filtering.
     """
     from app.analytics.aggregate_service import get_py_date
-
     from app.analytics.period_helper import get_active_or_max_academic_year
     year = academic_year or get_active_or_max_academic_year(db)
 
     canon_campus = (campus or "all").strip().lower()
-    cache_key = f"state:{year}:{canon_campus}:{month}:{lead_type}:{program}:{source}:{from_date}:{to_date}"
+    raw_metric = (metric or "admissions").strip().lower()
+    if raw_metric in ("admission", "admissions"):
+        norm_metric = "admissions"
+    elif raw_metric in ("lead", "leads"):
+        norm_metric = "leads"
+    elif raw_metric in ("cucet", "cucets"):
+        norm_metric = "cucet"
+    else:
+        norm_metric = "admissions"
+
+    cache_key = f"state:{year}:{canon_campus}:{norm_metric}:{month}:{lead_type}:{program}:{source}:{from_date}:{to_date}"
     now_ts = time.time()
     if cache_key in _GEO_CACHE:
         c_time, c_data = _GEO_CACHE[cache_key]
@@ -388,7 +446,7 @@ def get_admissions_by_india_state(
                 filter_params["source"] = source
             return (" AND " + " AND ".join(f_conds)) if f_conds else ""
 
-        # 1. Consolidated CY and PY state aggregation query
+        # 1. Consolidated CY and PY state aggregation query (admissions, leads, cucet)
         state_params: Dict[str, Any] = {"cy_year": cy_year, "comp_year": comp_year}
         state_filter_str = _build_agg_filters(state_params)
         if has_date_filter:
@@ -409,7 +467,12 @@ def get_admissions_by_india_state(
                         WHEN academic_year = :cy_year AND created_month >= :from_m AND created_month <= :to_m THEN leads_cy
                         WHEN academic_year = :comp_year AND created_month >= :py_from_m AND created_month <= :py_to_m THEN leads_cy
                         ELSE 0 
-                    END) AS leads
+                    END) AS leads,
+                    SUM(CASE 
+                        WHEN academic_year = :cy_year AND created_month >= :from_m AND created_month <= :to_m THEN cucet_cy
+                        WHEN academic_year = :comp_year AND created_month >= :py_from_m AND created_month <= :py_to_m THEN cucet_cy
+                        ELSE 0 
+                    END) AS cucet
                 FROM analytics.dashboard_agg
                 WHERE academic_year IN (:cy_year, :comp_year)
                   AND state IS NOT NULL
@@ -423,7 +486,8 @@ def get_admissions_by_india_state(
                     academic_year,
                     state,
                     SUM(admission_cy) AS admissions,
-                    SUM(leads_cy) AS leads
+                    SUM(leads_cy) AS leads,
+                    SUM(cucet_cy) AS cucet
                 FROM analytics.dashboard_agg
                 WHERE academic_year IN (:cy_year, :comp_year)
                   AND state IS NOT NULL
@@ -435,13 +499,23 @@ def get_admissions_by_india_state(
         cy_state_map = {}
         py_state_map = {}
         for r in rows:
-            ay, st, adm, ld = int(r[0]), str(r[1]), int(r[2] or 0), int(r[3] or 0)
+            ay = int(r[0])
+            st = str(r[1])
+            adm = int(r[2] or 0)
+            ld = int(r[3] or 0)
+            cu = int(r[4] or 0) if len(r) > 4 else 0
             if ay == cy_year:
-                cy_state_map[st] = {"admissions": adm, "leads": ld}
+                cy_state_map[st] = {"admissions": adm, "leads": ld, "cucet": cu}
             elif ay == comp_year:
-                py_state_map[st] = {"admissions": adm, "leads": ld}
+                py_state_map[st] = {"admissions": adm, "leads": ld, "cucet": cu}
 
-        has_py_data = len(py_state_map) > 0 and sum(v["admissions"] for v in py_state_map.values()) > 0
+        # Check if PY data exists for the selected metric
+        if norm_metric == "leads":
+            has_py_data = len(py_state_map) > 0 and sum(v["leads"] for v in py_state_map.values()) > 0
+        elif norm_metric == "cucet":
+            has_py_data = len(py_state_map) > 0 and sum(v["cucet"] for v in py_state_map.values()) > 0
+        else:
+            has_py_data = len(py_state_map) > 0 and sum(v["admissions"] for v in py_state_map.values()) > 0
 
         # 2. Query unmapped and international metadata for reconciliation
         meta_params: Dict[str, Any] = {"cy_year": cy_year}
@@ -485,6 +559,14 @@ def get_admissions_by_india_state(
         all_state_names = set(cy_state_map.keys()) | set(py_state_map.keys())
         total_india_admissions = sum(item["admissions"] for item in cy_state_map.values())
         total_india_leads = sum(item["leads"] for item in cy_state_map.values())
+        total_india_cucet = sum(item.get("cucet", 0) for item in cy_state_map.values())
+
+        if norm_metric == "leads":
+            total_metric_count = total_india_leads
+        elif norm_metric == "cucet":
+            total_metric_count = total_india_cucet
+        else:
+            total_metric_count = total_india_admissions
 
         # Dynamic state code resolution from organization.state_master
         master_state_codes = {}
@@ -499,21 +581,34 @@ def get_admissions_by_india_state(
 
         states_list = []
         for st_name in all_state_names:
-            cy_info = cy_state_map.get(st_name, {"admissions": 0, "leads": 0})
+            cy_info = cy_state_map.get(st_name, {"admissions": 0, "leads": 0, "cucet": 0})
             cy_adm = cy_info["admissions"]
             cy_ld = cy_info["leads"]
+            cy_cu = cy_info.get("cucet", 0)
             st_code = master_state_codes.get(st_name) or master_state_codes.get(st_name.lower().strip()) or STATE_CODES.get(st_name, "")
-            share = round((cy_adm / total_india_admissions * 100), 2) if total_india_admissions > 0 else 0.0
+
+            # Active metric CY & PY values
+            if norm_metric == "leads":
+                active_cy = cy_ld
+            elif norm_metric == "cucet":
+                active_cy = cy_cu
+            else:
+                active_cy = cy_adm
+
+            share = round((active_cy / total_metric_count * 100), 2) if total_metric_count > 0 else 0.0
 
             if has_py_data:
-                py_info = py_state_map.get(st_name, {"admissions": 0, "leads": 0})
+                py_info = py_state_map.get(st_name, {"admissions": 0, "leads": 0, "cucet": 0})
                 py_adm = py_info["admissions"]
                 py_ld = py_info["leads"]
-                diff = cy_adm - py_adm
+                py_cu = py_info.get("cucet", 0)
 
-                if py_adm > 0:
-                    diff_pct = round((diff / py_adm) * 100, 2)
-                elif cy_adm > 0:
+                active_py = py_ld if norm_metric == "leads" else (py_cu if norm_metric == "cucet" else py_adm)
+                diff = active_cy - active_py
+
+                if active_py > 0:
+                    diff_pct = round((diff / active_py) * 100, 2)
+                elif active_cy > 0:
                     diff_pct = 100.0
                 else:
                     diff_pct = 0.0
@@ -527,6 +622,7 @@ def get_admissions_by_india_state(
             else:
                 py_adm = None
                 py_ld = None
+                py_cu = None
                 diff = None
                 diff_pct = None
                 direction = "no_comparison"
@@ -536,18 +632,28 @@ def get_admissions_by_india_state(
                 "state_name": st_name,
                 "admissions": cy_adm,
                 "leads": cy_ld,
+                "cucet": cy_cu,
                 "cy_admissions": cy_adm,
                 "cy_leads": cy_ld,
+                "cy_cucet": cy_cu,
                 "py_admissions": py_adm,
                 "py_leads": py_ld,
+                "py_cucet": py_cu,
+                "metric_value": active_cy,
+                "py_metric_value": (py_ld if norm_metric == "leads" else (py_cu if norm_metric == "cucet" else py_adm)) if has_py_data else None,
                 "variance": diff,
                 "variance_pct": diff_pct,
                 "direction": direction,
                 "share_pct": share,
             })
 
-        # Sort by CY admissions descending, then CY leads descending
-        states_list.sort(key=lambda x: (x["cy_admissions"], x["cy_leads"]), reverse=True)
+        # Sort by active metric volume descending
+        if norm_metric == "leads":
+            states_list.sort(key=lambda x: (x["cy_leads"], x["cy_admissions"]), reverse=True)
+        elif norm_metric == "cucet":
+            states_list.sort(key=lambda x: (x.get("cy_cucet", 0), x["cy_admissions"]), reverse=True)
+        else:
+            states_list.sort(key=lambda x: (x["cy_admissions"], x["cy_leads"]), reverse=True)
 
         resp = {
             "status": "success",
@@ -555,12 +661,15 @@ def get_admissions_by_india_state(
             "comparison_year": comp_year if has_py_data else None,
             "has_py_data": has_py_data,
             "campus": campus or "All",
+            "metric": norm_metric,
+            "total_metric_count": total_metric_count,
             "from_date": from_date,
             "to_date": to_date,
             "py_from_date": py_from_date,
             "py_to_date": py_to_date,
             "total_india_admissions": total_india_admissions,
             "total_india_leads": total_india_leads,
+            "total_india_cucet": total_india_cucet,
             "unmapped_admissions": unmapped_admissions,
             "international_admissions": international_admissions,
             "states": states_list,

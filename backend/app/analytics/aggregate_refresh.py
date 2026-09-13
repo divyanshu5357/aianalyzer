@@ -378,6 +378,19 @@ def refresh_gender_agg_scoped(
 
     ds_id_str = str(dataset_id)
 
+    # Ensure columns and unique index exist
+    try:
+        db.execute(text("""
+            ALTER TABLE analytics.gender_monthly_agg ADD COLUMN IF NOT EXISTS metric_type VARCHAR(50) NOT NULL DEFAULT 'admissions';
+            ALTER TABLE analytics.gender_monthly_agg ADD COLUMN IF NOT EXISTS metric_count BIGINT NOT NULL DEFAULT 0;
+            ALTER TABLE analytics.gender_monthly_agg DROP CONSTRAINT IF EXISTS uq_gender_monthly_agg;
+            CREATE UNIQUE INDEX IF NOT EXISTS uq_gender_monthly_agg_metric ON analytics.gender_monthly_agg (dataset_id, academic_year, campus_name, metric_type, admission_month, gender);
+        """))
+        db.commit()
+    except Exception as ddl_err:
+        db.rollback()
+        logger.debug("DDL check for gender_monthly_agg notice: %s", ddl_err)
+
     # Step 1: Delete existing aggregates for this dataset
     del_res = db.execute(
         text("DELETE FROM analytics.gender_monthly_agg WHERE dataset_id = CAST(:ds_id AS uuid)"),
@@ -393,14 +406,17 @@ def refresh_gender_agg_scoped(
 
     inserted_rows = 0
     if ds_row:
-        insert_sql = text("""
+        # 1. Admissions: strictly enrolled prospects (ProspectStage = 'enrolled')
+        insert_admissions_sql = text("""
             INSERT INTO analytics.gender_monthly_agg (
                 dataset_id,
                 academic_year,
                 campus_name,
+                metric_type,
                 admission_month,
                 gender,
                 admissions,
+                metric_count,
                 created_at,
                 updated_at
             )
@@ -408,26 +424,108 @@ def refresh_gender_agg_scoped(
                 r.dataset_id,
                 COALESCE(d.academic_year, d.period_end_year, EXTRACT(YEAR FROM CURRENT_DATE)::int) AS academic_year,
                 COALESCE(NULLIF(TRIM(r.raw_data->>'mx_Campus'), ''), d.campus_name, 'All') AS campus_name,
-                system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) AS admission_month,
+                'admissions' AS metric_type,
+                system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), ''), NULLIF(TRIM(COALESCE(r.raw_data->>'CreatedOn', r.raw_data->>'Created_On', r.raw_data->>'enquiry_date')), '')) AS admission_month,
                 COALESCE(NULLIF(INITCAP(TRIM(r.raw_data->>'mx_Gender_New')), ''), 'Unspecified') AS gender,
                 COUNT(DISTINCT r.raw_data->>'ProspectID') AS admissions,
+                COUNT(DISTINCT r.raw_data->>'ProspectID') AS metric_count,
                 NOW(),
                 NOW()
             FROM staging.records r
             INNER JOIN system.datasets d ON d.id = r.dataset_id
             WHERE r.dataset_id = CAST(:ds_id AS uuid)
-              AND NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '') IS NOT NULL
-              AND LOWER(TRIM(r.raw_data->>'mx_AdmissionDate')) != 'null'
-              AND TRIM(r.raw_data->>'mx_AdmissionDate') != ''
-              AND system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), '')) IS NOT NULL
-            GROUP BY 1, 2, 3, 4, 5
-            ON CONFLICT (dataset_id, academic_year, campus_name, admission_month, gender)
+              AND LOWER(TRIM(COALESCE(r.raw_data->>'ProspectStage', ''))) = 'enrolled'
+              AND system.parse_month(NULLIF(TRIM(r.raw_data->>'mx_AdmissionDate'), ''), NULLIF(TRIM(COALESCE(r.raw_data->>'CreatedOn', r.raw_data->>'Created_On', r.raw_data->>'enquiry_date')), '')) IS NOT NULL
+            GROUP BY 1, 2, 3, 4, 5, 6
+            ON CONFLICT (dataset_id, academic_year, campus_name, metric_type, admission_month, gender)
             DO UPDATE SET 
                 admissions = EXCLUDED.admissions,
+                metric_count = EXCLUDED.metric_count,
                 updated_at = NOW();
         """)
-        ins_res = db.execute(insert_sql, {"ds_id": ds_id_str})
-        inserted_rows = ins_res.rowcount or 0
+        ins_adm = db.execute(insert_admissions_sql, {"ds_id": ds_id_str})
+        inserted_rows += (ins_adm.rowcount or 0)
+
+        # 2. Leads: all prospective leads
+        insert_leads_sql = text("""
+            INSERT INTO analytics.gender_monthly_agg (
+                dataset_id,
+                academic_year,
+                campus_name,
+                metric_type,
+                admission_month,
+                gender,
+                admissions,
+                metric_count,
+                created_at,
+                updated_at
+            )
+            SELECT 
+                r.dataset_id,
+                COALESCE(d.academic_year, d.period_end_year, EXTRACT(YEAR FROM CURRENT_DATE)::int) AS academic_year,
+                COALESCE(NULLIF(TRIM(r.raw_data->>'mx_Campus'), ''), d.campus_name, 'All') AS campus_name,
+                'leads' AS metric_type,
+                system.parse_month(COALESCE(NULLIF(TRIM(r.raw_data->>'CreatedOn'), ''), NULLIF(TRIM(r.raw_data->>'Created_On'), ''), NULLIF(TRIM(r.raw_data->>'enquiry_date'), ''))) AS admission_month,
+                COALESCE(NULLIF(INITCAP(TRIM(r.raw_data->>'mx_Gender_New')), ''), 'Unspecified') AS gender,
+                COUNT(DISTINCT r.raw_data->>'ProspectID') AS admissions,
+                COUNT(DISTINCT r.raw_data->>'ProspectID') AS metric_count,
+                NOW(),
+                NOW()
+            FROM staging.records r
+            INNER JOIN system.datasets d ON d.id = r.dataset_id
+            WHERE r.dataset_id = CAST(:ds_id AS uuid)
+              AND (r.raw_data->>'ProspectID' IS NOT NULL OR r.raw_data->>'FirstName' IS NOT NULL)
+              AND system.parse_month(COALESCE(NULLIF(TRIM(r.raw_data->>'CreatedOn'), ''), NULLIF(TRIM(r.raw_data->>'Created_On'), ''), NULLIF(TRIM(r.raw_data->>'enquiry_date'), ''))) IS NOT NULL
+            GROUP BY 1, 2, 3, 4, 5, 6
+            ON CONFLICT (dataset_id, academic_year, campus_name, metric_type, admission_month, gender)
+            DO UPDATE SET 
+                admissions = EXCLUDED.admissions,
+                metric_count = EXCLUDED.metric_count,
+                updated_at = NOW();
+        """)
+        ins_leads = db.execute(insert_leads_sql, {"ds_id": ds_id_str})
+        inserted_rows += (ins_leads.rowcount or 0)
+
+        # 3. CUCET: CUCET first payment or date present
+        insert_cucet_sql = text("""
+            INSERT INTO analytics.gender_monthly_agg (
+                dataset_id,
+                academic_year,
+                campus_name,
+                metric_type,
+                admission_month,
+                gender,
+                admissions,
+                metric_count,
+                created_at,
+                updated_at
+            )
+            SELECT 
+                r.dataset_id,
+                COALESCE(d.academic_year, d.period_end_year, EXTRACT(YEAR FROM CURRENT_DATE)::int) AS academic_year,
+                COALESCE(NULLIF(TRIM(r.raw_data->>'mx_Campus'), ''), d.campus_name, 'All') AS campus_name,
+                'cucet' AS metric_type,
+                system.parse_month(COALESCE(NULLIF(TRIM(r.raw_data->>'mx_CUCET_First_Payment_Date'), ''), NULLIF(TRIM(r.raw_data->>'CreatedOn'), ''))) AS admission_month,
+                COALESCE(NULLIF(INITCAP(TRIM(r.raw_data->>'mx_Gender_New')), ''), 'Unspecified') AS gender,
+                COUNT(DISTINCT r.raw_data->>'ProspectID') AS admissions,
+                COUNT(DISTINCT r.raw_data->>'ProspectID') AS metric_count,
+                NOW(),
+                NOW()
+            FROM staging.records r
+            INNER JOIN system.datasets d ON d.id = r.dataset_id
+            WHERE r.dataset_id = CAST(:ds_id AS uuid)
+              AND NULLIF(TRIM(COALESCE(r.raw_data->>'mx_CUCET_First_Payment_Date', r.raw_data->>'CUCET_Date')), '') IS NOT NULL 
+              AND LOWER(TRIM(COALESCE(r.raw_data->>'mx_CUCET_First_Payment_Date', r.raw_data->>'CUCET_Date'))) != 'null'
+              AND system.parse_month(COALESCE(NULLIF(TRIM(r.raw_data->>'mx_CUCET_First_Payment_Date'), ''), NULLIF(TRIM(r.raw_data->>'CreatedOn'), ''))) IS NOT NULL
+            GROUP BY 1, 2, 3, 4, 5, 6
+            ON CONFLICT (dataset_id, academic_year, campus_name, metric_type, admission_month, gender)
+            DO UPDATE SET 
+                admissions = EXCLUDED.admissions,
+                metric_count = EXCLUDED.metric_count,
+                updated_at = NOW();
+        """)
+        ins_cucet = db.execute(insert_cucet_sql, {"ds_id": ds_id_str})
+        inserted_rows += (ins_cucet.rowcount or 0)
 
     db.commit()
     t_total = time.perf_counter()

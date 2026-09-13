@@ -328,6 +328,7 @@ export interface DashboardFilters {
   years?: number[];
   from_date?: string;
   to_date?: string;
+  metric?: string;
 }
 
 export interface DashboardDateRangeOption {
@@ -507,6 +508,8 @@ export interface GenderAdmissionsResponse {
   status: string;
   academic_year: number;
   campus: string;
+  metric?: string;
+  total_count?: number;
   total_admissions: number;
   gender_categories: string[];
   months: GenderMonthItem[];
@@ -518,10 +521,15 @@ export interface StateAdmissionItem {
   state_name: string;
   admissions: number;
   leads: number;
+  cucet?: number;
   cy_admissions: number;
   cy_leads: number;
+  cy_cucet?: number;
   py_admissions: number | null;
   py_leads: number | null;
+  py_cucet?: number | null;
+  metric_value?: number;
+  py_metric_value?: number | null;
   variance: number | null;
   variance_pct: number | null;
   direction: "increase" | "decline" | "no_change" | "no_comparison";
@@ -534,8 +542,11 @@ export interface StateAdmissionsResponse {
   comparison_year: number | null;
   has_py_data: boolean;
   campus: string;
+  metric?: string;
+  total_metric_count?: number;
   total_india_admissions: number;
   total_india_leads: number;
+  total_india_cucet?: number;
   unmapped_admissions: number;
   international_admissions: number;
   states: StateAdmissionItem[];

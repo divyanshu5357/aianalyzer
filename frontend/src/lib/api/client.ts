@@ -78,6 +78,7 @@ export function buildDashboardQuery(filters?: DashboardFilters): string {
   }
   if (filters.from_date && filters.from_date.trim()) params.set("from_date", filters.from_date.trim());
   if (filters.to_date && filters.to_date.trim()) params.set("to_date", filters.to_date.trim());
+  if (filters.metric && filters.metric.trim()) params.set("metric", filters.metric.trim());
   const str = params.toString();
   return str ? `?${str}` : "";
 }

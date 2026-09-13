@@ -6,6 +6,7 @@ import { StateAdmissionItem } from "@/lib/api";
 interface IndiaStateMapProps {
   statesData: StateAdmissionItem[];
   totalAdmissions: number;
+  metric?: "admissions" | "leads" | "cucet";
   hasPyData?: boolean;
   comparisonYear?: number | null;
   currentYear?: number;
@@ -27,6 +28,7 @@ interface GeoFeature {
 export default function IndiaStateMap({
   statesData,
   totalAdmissions,
+  metric = "admissions",
   hasPyData = true,
   comparisonYear = null,
   currentYear = new Date().getFullYear(),
@@ -34,12 +36,11 @@ export default function IndiaStateMap({
   const [geoFeatures, setGeoFeatures] = useState<GeoFeature[]>([]);
   const [hoveredState, setHoveredState] = useState<{
     name: string;
-    cy_admissions: number;
-    py_admissions: number | null;
+    cy_val: number;
+    py_val: number | null;
     variance: number | null;
     variance_pct: number | null;
     direction: "increase" | "decline" | "no_change" | "no_comparison";
-    cy_leads: number;
     share_pct: number;
     x: number;
     y: number;
@@ -79,31 +80,41 @@ export default function IndiaStateMap({
     return map;
   }, [statesData]);
 
-  // Calculate maximum admissions to normalize shades
-  const maxAdmissions = useMemo(() => {
+  // Calculate maximum value to normalize shades based on active metric
+  const maxMetricVal = useMemo(() => {
     let max = 0;
     statesData.forEach((st) => {
-      const val = st.cy_admissions ?? st.admissions ?? 0;
+      const val =
+        metric === "leads"
+          ? (st.cy_leads ?? st.leads ?? 0)
+          : metric === "cucet"
+          ? (st.cy_cucet ?? st.cucet ?? 0)
+          : (st.cy_admissions ?? st.admissions ?? 0);
       if (val > max) max = val;
     });
     return max > 0 ? max : 1;
-  }, [statesData]);
+  }, [statesData, metric]);
 
-  // Color generator: Blue gradient shades based on CY admission volume
+  // Color generator: Blue gradient shades based on active metric volume
   const getStateColor = (st?: StateAdmissionItem) => {
     if (!st) return "#f1f5f9";
-    const val = st.cy_admissions ?? st.admissions ?? 0;
+    const val =
+      metric === "leads"
+        ? (st.cy_leads ?? st.leads ?? 0)
+        : metric === "cucet"
+        ? (st.cy_cucet ?? st.cucet ?? 0)
+        : (st.cy_admissions ?? st.admissions ?? 0);
     if (val === 0) return "#f1f5f9";
 
-    const ratio = Math.pow(val / maxAdmissions, 0.42);
+    const ratio = Math.pow(val / maxMetricVal, 0.42);
 
-    if (ratio >= 0.85) return "#0f3b75"; // Deep navy blue (Punjab, highest)
-    if (ratio >= 0.70) return "#1d4ed8"; // Dark royal blue (Haryana)
-    if (ratio >= 0.55) return "#2563eb"; // Bold blue (UP)
-    if (ratio >= 0.42) return "#3b82f6"; // Medium blue (Bihar, HP)
-    if (ratio >= 0.30) return "#60a5fa"; // Medium-light blue (Rajasthan, Delhi)
-    if (ratio >= 0.18) return "#93c5fd"; // Soft blue (MP, WB)
-    if (ratio >= 0.08) return "#bfdbfe"; // Light blue (Maharashtra, Odisha)
+    if (ratio >= 0.85) return "#0f3b75"; // Deep navy blue
+    if (ratio >= 0.70) return "#1d4ed8"; // Dark royal blue
+    if (ratio >= 0.55) return "#2563eb"; // Bold blue
+    if (ratio >= 0.42) return "#3b82f6"; // Medium blue
+    if (ratio >= 0.30) return "#60a5fa"; // Medium-light blue
+    if (ratio >= 0.18) return "#93c5fd"; // Soft blue
+    if (ratio >= 0.08) return "#bfdbfe"; // Light blue
     return "#dbeafe"; // Very light blue (<100)
   };
 
@@ -169,10 +180,30 @@ export default function IndiaStateMap({
               {geoFeatures.map((feat, idx) => {
                 const rawName = feat.properties.state_name || feat.properties.NAME_1 || "";
                 const matched = stateStatsMap.get(rawName.toLowerCase().trim());
-                const cyAdmissions = matched ? (matched.cy_admissions ?? matched.admissions ?? 0) : 0;
-                const pyAdmissions = matched ? (matched.py_admissions ?? null) : null;
-                const variance = matched ? (matched.variance ?? null) : null;
-                const variancePct = matched ? (matched.variance_pct ?? null) : null;
+                const cyVal =
+                  metric === "leads"
+                    ? (matched?.cy_leads ?? matched?.leads ?? 0)
+                    : metric === "cucet"
+                    ? (matched?.cy_cucet ?? matched?.cucet ?? 0)
+                    : (matched?.cy_admissions ?? matched?.admissions ?? 0);
+                const pyVal =
+                  metric === "leads"
+                    ? (matched?.py_leads ?? null)
+                    : metric === "cucet"
+                    ? (matched?.py_cucet ?? null)
+                    : (matched?.py_admissions ?? null);
+                const variance =
+                  matched?.variance !== undefined && matched?.variance !== null
+                    ? matched.variance
+                    : pyVal !== null
+                    ? cyVal - pyVal
+                    : null;
+                const variancePct =
+                  matched?.variance_pct !== undefined && matched?.variance_pct !== null
+                    ? matched.variance_pct
+                    : pyVal && pyVal > 0
+                    ? Number((((cyVal - pyVal) / pyVal) * 100).toFixed(2))
+                    : null;
                 const direction = matched ? matched.direction : "no_comparison";
                 const cyLeads = matched ? (matched.cy_leads ?? matched.leads ?? 0) : 0;
                 const share = matched ? matched.share_pct : 0.0;
@@ -191,12 +222,11 @@ export default function IndiaStateMap({
                       const rect = e.currentTarget.getBoundingClientRect();
                       setHoveredState({
                         name: rawName,
-                        cy_admissions: cyAdmissions,
-                        py_admissions: pyAdmissions,
+                        cy_val: cyVal,
+                        py_val: pyVal,
                         variance: variance,
                         variance_pct: variancePct,
                         direction: direction,
-                        cy_leads: cyLeads,
                         share_pct: share,
                         x: rect.left + rect.width / 2,
                         y: rect.top - 10,
@@ -259,25 +289,29 @@ export default function IndiaStateMap({
                 )}
               </div>
 
-              {/* Clean 2-Column Grid Data Representation (Not all data vertically) */}
+              {/* Clean 2-Column Grid Data Representation */}
               <div className="rounded-lg border border-slate-200 dark:border-slate-700/80 overflow-hidden text-xs">
-                {/* Header Row: CY vs PY Admissions with subtle background tint */}
+                {/* Header Row: CY vs PY for Active Metric */}
                 <div className="grid grid-cols-2 bg-slate-100/90 dark:bg-slate-800/90 border-b border-slate-200 dark:border-slate-700/80 divide-x divide-slate-200 dark:divide-slate-700/80">
                   <div className="px-2.5 py-1.5 flex items-center justify-between gap-2">
-                    <span className="text-slate-600 dark:text-slate-400 font-medium">CY Adms:</span>
+                    <span className="text-slate-600 dark:text-slate-400 font-medium">
+                      CY {metric === "leads" ? "Leads" : metric === "cucet" ? "CUCET" : "Adms"}:
+                    </span>
                     <span className="font-bold text-slate-900 dark:text-white text-sm">
-                      {hoveredState.cy_admissions.toLocaleString()}
+                      {hoveredState.cy_val.toLocaleString()}
                     </span>
                   </div>
                   <div className="px-2.5 py-1.5 flex items-center justify-between gap-2">
-                    <span className="text-slate-600 dark:text-slate-400 font-medium">PY Adms:</span>
+                    <span className="text-slate-600 dark:text-slate-400 font-medium">
+                      PY {metric === "leads" ? "Leads" : metric === "cucet" ? "CUCET" : "Adms"}:
+                    </span>
                     <span className="font-bold text-slate-800 dark:text-slate-200 text-sm">
-                      {hoveredState.py_admissions !== null ? hoveredState.py_admissions.toLocaleString() : "N/A"}
+                      {hoveredState.py_val !== null ? hoveredState.py_val.toLocaleString() : "N/A"}
                     </span>
                   </div>
                 </div>
 
-                {/* Middle Row: Abs Change vs CY Leads */}
+                {/* Middle Row: Abs Change vs % Change */}
                 <div className="grid grid-cols-2 bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-700/80 divide-x divide-slate-200 dark:divide-slate-700/80">
                   <div className="px-2.5 py-1.5 flex items-center justify-between gap-2">
                     <span className="text-slate-500 dark:text-slate-400">Abs. Change:</span>
@@ -300,16 +334,6 @@ export default function IndiaStateMap({
                     </span>
                   </div>
                   <div className="px-2.5 py-1.5 flex items-center justify-between gap-2">
-                    <span className="text-slate-500 dark:text-slate-400">CY Leads:</span>
-                    <span className="font-semibold text-sky-600 dark:text-sky-400">
-                      {hoveredState.cy_leads.toLocaleString()}
-                    </span>
-                  </div>
-                </div>
-
-                {/* Bottom Row: % Change vs India Share */}
-                <div className="grid grid-cols-2 bg-slate-50/70 dark:bg-slate-900/60 divide-x divide-slate-200 dark:divide-slate-700/80">
-                  <div className="px-2.5 py-1.5 flex items-center justify-between gap-2">
                     <span className="text-slate-500 dark:text-slate-400">% Change:</span>
                     <span
                       className={`font-bold ${
@@ -329,7 +353,11 @@ export default function IndiaStateMap({
                         : "N/A"}
                     </span>
                   </div>
-                  <div className="px-2.5 py-1.5 flex items-center justify-between gap-2">
+                </div>
+
+                {/* Bottom Row: India Share */}
+                <div className="grid grid-cols-2 bg-slate-50/70 dark:bg-slate-900/60 divide-x divide-slate-200 dark:divide-slate-700/80">
+                  <div className="px-2.5 py-1.5 flex items-center justify-between gap-2 col-span-2">
                     <span className="text-slate-500 dark:text-slate-400">India Share:</span>
                     <span className="font-medium text-slate-700 dark:text-slate-300">
                       {hoveredState.share_pct}%
@@ -342,16 +370,21 @@ export default function IndiaStateMap({
 
           {/* Blue Volume Gradient Legend */}
           <div className="mt-4 flex items-center justify-center gap-3 text-xs font-semibold text-slate-600 dark:text-slate-300">
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">Low Volume (Light Blue)</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">Low Volume</span>
             <div className="h-2.5 w-40 rounded-full bg-gradient-to-r from-[#dbeafe] via-[#3b82f6] to-[#0f3b75] shadow-inner border border-slate-200 dark:border-slate-700"></div>
-            <span className="text-[11px] text-slate-500 dark:text-slate-400">High Volume (Dark Blue)</span>
+            <span className="text-[11px] text-slate-500 dark:text-slate-400">High Volume</span>
           </div>
 
           {/* Top 5 States Leaderboard Badges */}
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-600 dark:text-slate-300 mr-1">Top States:</span>
             {statesData.slice(0, 5).map((st, i) => {
-              const adm = st.cy_admissions ?? st.admissions ?? 0;
+              const val =
+                metric === "leads"
+                  ? (st.cy_leads ?? st.leads ?? 0)
+                  : metric === "cucet"
+                  ? (st.cy_cucet ?? st.cucet ?? 0)
+                  : (st.cy_admissions ?? st.admissions ?? 0);
               const isInc = st.direction === "increase";
               const isDec = st.direction === "decline";
 
@@ -365,7 +398,7 @@ export default function IndiaStateMap({
                   </span>
                   <span>{st.state_name}</span>
                   <span className="font-bold text-slate-900 dark:text-white ml-0.5">
-                    {adm.toLocaleString()}
+                    {val.toLocaleString()}
                   </span>
                   {hasPyData && st.variance_pct !== null && (
                     <span

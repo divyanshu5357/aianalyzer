@@ -668,13 +668,14 @@ def get_gender_admissions(
     years: Optional[str] = Query(None),
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
+    metric: Optional[str] = Query("admissions"),
     db: Session = Depends(get_db),
 ):
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
     selected_year = year_list[0] if year_list else (academic_year or get_active_or_max_academic_year(db))
 
-    cache_key = f"gender:{selected_year}:{campus}:{month}:{lead_type}:{program}:{source}:{state}:{valid_from}:{valid_to}"
+    cache_key = f"gender:{selected_year}:{campus}:{metric}:{month}:{lead_type}:{program}:{source}:{state}:{valid_from}:{valid_to}"
     cached = _get_dash_cache(cache_key)
     if cached is not None:
         return cached
@@ -690,6 +691,7 @@ def get_gender_admissions(
         state=state,
         from_date=valid_from,
         to_date=valid_to,
+        metric=metric,
     )
     _set_dash_cache(cache_key, res)
     return res
@@ -708,13 +710,14 @@ def get_india_state_admissions(
     years: Optional[str] = Query(None),
     from_date: Optional[str] = Query(None),
     to_date: Optional[str] = Query(None),
+    metric: Optional[str] = Query("admissions"),
     db: Session = Depends(get_db),
 ):
     valid_from, valid_to = _validate_date_range(from_date, to_date)
     year_list = _parse_years_param(years, academic_year, academic_session)
     selected_year = year_list[0] if year_list else (academic_year or get_active_or_max_academic_year(db))
 
-    cache_key = f"state:{selected_year}:{campus}:{month}:{lead_type}:{program}:{source}:{valid_from}:{valid_to}"
+    cache_key = f"state:{selected_year}:{campus}:{metric}:{month}:{lead_type}:{program}:{source}:{valid_from}:{valid_to}"
     cached = _get_dash_cache(cache_key)
     if cached is not None:
         return cached
@@ -729,6 +732,7 @@ def get_india_state_admissions(
         source=source,
         from_date=valid_from,
         to_date=valid_to,
+        metric=metric,
     )
     _set_dash_cache(cache_key, res)
     return res

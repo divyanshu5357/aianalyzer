@@ -613,14 +613,20 @@ def ensure_all_database_tables(db: Session) -> None:
                         dataset_id UUID NOT NULL REFERENCES system.datasets(id) ON DELETE CASCADE,
                         academic_year INT NOT NULL,
                         campus_name VARCHAR(255) NOT NULL DEFAULT 'All',
+                        metric_type VARCHAR(50) NOT NULL DEFAULT 'admissions',
                         admission_month VARCHAR(7) NOT NULL,
                         gender VARCHAR(50) NOT NULL,
                         admissions BIGINT NOT NULL DEFAULT 0,
+                        metric_count BIGINT NOT NULL DEFAULT 0,
                         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                        CONSTRAINT uq_gender_monthly_agg UNIQUE (dataset_id, academic_year, campus_name, admission_month, gender)
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                     );
+                    ALTER TABLE analytics.gender_monthly_agg ADD COLUMN IF NOT EXISTS metric_type VARCHAR(50) NOT NULL DEFAULT 'admissions';
+                    ALTER TABLE analytics.gender_monthly_agg ADD COLUMN IF NOT EXISTS metric_count BIGINT NOT NULL DEFAULT 0;
+                    ALTER TABLE analytics.gender_monthly_agg DROP CONSTRAINT IF EXISTS uq_gender_monthly_agg;
+                    CREATE UNIQUE INDEX IF NOT EXISTS uq_gender_monthly_agg_metric ON analytics.gender_monthly_agg (dataset_id, academic_year, campus_name, metric_type, admission_month, gender);
                     CREATE INDEX IF NOT EXISTS idx_gender_monthly_agg_lookup ON analytics.gender_monthly_agg (academic_year, LOWER(campus_name), admission_month);
+                    CREATE INDEX IF NOT EXISTS idx_gender_monthly_metric ON analytics.gender_monthly_agg (academic_year, metric_type, LOWER(campus_name), admission_month);
                     CREATE INDEX IF NOT EXISTS idx_gender_monthly_agg_dataset ON analytics.gender_monthly_agg (dataset_id);
                     """
                 )
