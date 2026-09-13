@@ -124,6 +124,48 @@ function RefundCell({ py, cy, diff, isDark = true }: { py: number; cy: number; d
   );
 }
 
+// ── Rate Transition Badge (Matching Image 1) ───────────────────────────────────
+
+function RateTransitionBadge({
+  py,
+  cy,
+  isDark = true,
+}: {
+  py: number;
+  cy: number;
+  isDark?: boolean;
+}) {
+  const diff = cy - py;
+  const isNeg = diff < -0.05;
+  const isPos = diff > 0.05;
+  const sign = diff >= 0 ? '+' : '';
+
+  if (isNeg) {
+    return (
+      <span
+        className={`inline-block px-1.5 py-0.5 rounded text-[11px] font-semibold tabular-nums ${
+          isDark
+            ? 'bg-rose-950/70 text-rose-300 border border-rose-800/40'
+            : 'bg-[#ffdcd0] text-[#991b1b] border border-[#fca5a5]'
+        }`}
+      >
+        {py.toFixed(1)}% → {cy.toFixed(1)}% ({sign}{diff.toFixed(1)}%)
+      </span>
+    );
+  }
+
+  return (
+    <span className="text-[11px] tabular-nums whitespace-nowrap">
+      <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{py.toFixed(1)}%</span>
+      <span className="mx-1 text-slate-400">→</span>
+      <span className={`font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{cy.toFixed(1)}%</span>{' '}
+      <span className={isPos ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-600 font-semibold') : 'text-slate-400'}>
+        ({sign}{diff.toFixed(1)}%)
+      </span>
+    </span>
+  );
+}
+
 // ── Mobile Program Card ───────────────────────────────────────────────────────
 
 function MobileProgramCard({
@@ -737,7 +779,13 @@ export default function ProgramReportTable({
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} /></td>
 
         {/* Col 8: Lead-CUCET % */}
-        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-amber-400' : 'text-amber-600'}`}>{row.lead_cucet_pct.toFixed(1)}%</td>
+        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+          <RateTransitionBadge
+            py={row.py_leads > 0 ? (row.py_cucet / row.py_leads) * 100 : 0}
+            cy={row.cy_leads > 0 ? (row.cy_cucet / row.cy_leads) * 100 : row.lead_cucet_pct}
+            isDark={isDark}
+          />
+        </td>
 
         {/* Col 9-11: PY/CY Adm + Var */}
         <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{row.py_adm.toLocaleString()}</td>
@@ -745,10 +793,22 @@ export default function ProgramReportTable({
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} /></td>
 
         {/* Col 12: Lead-Adm % */}
-        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-sky-400' : 'text-sky-600'}`}>{row.lead_adm_pct.toFixed(1)}%</td>
+        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+          <RateTransitionBadge
+            py={row.py_leads > 0 ? (row.py_adm / row.py_leads) * 100 : 0}
+            cy={row.cy_leads > 0 ? (row.cy_adm / row.cy_leads) * 100 : row.lead_adm_pct}
+            isDark={isDark}
+          />
+        </td>
 
         {/* Col 13: Cucet-Adm % */}
-        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-violet-400' : 'text-violet-600'}`}>{row.cucet_adm_pct.toFixed(1)}%</td>
+        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+          <RateTransitionBadge
+            py={row.py_cucet > 0 ? (row.py_adm / row.py_cucet) * 100 : 0}
+            cy={row.cy_cucet > 0 ? (row.cy_adm / row.cy_cucet) * 100 : row.cucet_adm_pct}
+            isDark={isDark}
+          />
+        </td>
 
         {/* Col 14: Lead Trend sparkline */}
         <td className="px-3 py-2">
@@ -804,12 +864,30 @@ export default function ProgramReportTable({
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_cucet.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_cucet.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} /></td>
-        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-amber-300' : 'text-amber-600'}`}>{row.lead_cucet_pct.toFixed(1)}%</td>
+        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+          <RateTransitionBadge
+            py={row.py_leads > 0 ? (row.py_cucet / row.py_leads) * 100 : 0}
+            cy={row.cy_leads > 0 ? (row.cy_cucet / row.cy_leads) * 100 : row.lead_cucet_pct}
+            isDark={isDark}
+          />
+        </td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_adm.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-600'}`}>{row.cy_adm.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} /></td>
-        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-sky-300' : 'text-sky-600'}`}>{row.lead_adm_pct.toFixed(1)}%</td>
-        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-violet-300' : 'text-violet-600'}`}>{row.cucet_adm_pct.toFixed(1)}%</td>
+        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+          <RateTransitionBadge
+            py={row.py_leads > 0 ? (row.py_adm / row.py_leads) * 100 : 0}
+            cy={row.cy_leads > 0 ? (row.cy_adm / row.cy_leads) * 100 : row.lead_adm_pct}
+            isDark={isDark}
+          />
+        </td>
+        <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
+          <RateTransitionBadge
+            py={row.py_cucet > 0 ? (row.py_adm / row.py_cucet) * 100 : 0}
+            cy={row.cy_cucet > 0 ? (row.cy_adm / row.cy_cucet) * 100 : row.cucet_adm_pct}
+            isDark={isDark}
+          />
+        </td>
         <td className="px-3 py-2">
           <Sparkline data={row.lead_trend} color="#818cf8" />
         </td>
@@ -839,16 +917,16 @@ export default function ProgramReportTable({
     { label: 'Program', frozen: true, sortKey: 'program' },
     { label: `${pyShort} Leads` },
     { label: `${cyShort} Leads`, sortKey: 'cy_leads' },
-    { label: 'VAR (Leads)', sortKey: 'var_leads' },
+    { label: 'VAR', sortKey: 'var_leads' },
     { label: `${pyShort} CUCET` },
     { label: `${cyShort} CUCET`, sortKey: 'cy_cucet' },
-    { label: 'VAR (CUCET)', sortKey: 'var_cucet' },
-    { label: 'Lead–CUCET %', sortKey: 'lead_cucet_pct' },
+    { label: 'VAR', sortKey: 'var_cucet' },
+    { label: 'Cucet %', sortKey: 'lead_cucet_pct' },
     { label: `${pyShort} Adm` },
     { label: `${cyShort} Adm`, sortKey: 'cy_adm' },
-    { label: 'VAR (Adm)', sortKey: 'var_adm' },
-    { label: 'Lead–Adm %', sortKey: 'lead_adm_pct' },
-    { label: 'CUCET–Adm %', sortKey: 'cucet_adm_pct' },
+    { label: 'VAR', sortKey: 'var_adm' },
+    { label: 'Lead - Adm %', sortKey: 'lead_adm_pct' },
+    { label: 'Cucet - Adm %', sortKey: 'cucet_adm_pct' },
     { label: 'Lead Trend' },
     { label: 'Net Adm.', sortKey: 'net_admissions' },
     { label: `Refund ${pyShort}→${cyShort}` },
