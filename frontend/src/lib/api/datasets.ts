@@ -6,16 +6,10 @@ import dashboardCache from "../cache/dashboardCache";
 import type {
   ActiveDatasetInfo,
   PeriodSummary,
-  PeriodCompareResponse,
-  PeriodComparisonResult,
   AdminConfigResponse,
   AdminDatasetItem,
   AdminDatasetsResponse,
   BenchmarkSummaryResponse,
-  AnalyticsWorkspaceRequest,
-  AnalyticsWorkspaceResponse,
-  AnalyticsWorkspaceOptionsResponse,
-  AnalyticsWorkspaceKind,
   MastersStatusResponse,
 } from "./types";
 
@@ -63,133 +57,6 @@ export async function getAllPeriods(): Promise<{ total: number; periods: PeriodS
   });
 }
 
-export async function getPeriodsCompare(
-  periodA: string,
-  periodB: string,
-  metric: string,
-  dimension: string,
-  limit: number = 20
-): Promise<PeriodCompareResponse> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/periods/compare?period_a=${encodeURIComponent(
-      periodA
-    )}&period_b=${encodeURIComponent(periodB)}&metric=${encodeURIComponent(
-      metric
-    )}&dimension=${encodeURIComponent(dimension)}&limit=${limit}`
-  );
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to fetch period comparison");
-  }
-  return response.json();
-}
-
-export async function getAnalyticsWorkspace(
-  request: AnalyticsWorkspaceRequest
-): Promise<AnalyticsWorkspaceResponse> {
-  const params = new URLSearchParams({
-    workspace: request.workspace,
-    period_a: request.periodA,
-    period_b: request.periodB,
-    metric: request.metric,
-    performance: request.performance,
-    sort_field: request.sortField,
-    sort_direction: request.sortDirection,
-    display: request.display,
-    limit: String(request.limit),
-    offset: String(request.offset),
-  });
-
-  (Object.keys(request) as (keyof AnalyticsWorkspaceRequest)[]).forEach((key) => {
-    if (["state", "source", "campus", "owner", "program", "specialization"].includes(key)) {
-      const value = request[key];
-      if (typeof value === "string" && value) params.set(key, value);
-    }
-  });
-
-  const response = await fetch(`${API_BASE_URL}/api/periods/workspace?${params.toString()}`);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(parseApiError(errorText, "Failed to load analytics workspace"));
-  }
-  return response.json();
-}
-
-export async function getAnalyticsWorkspaceOptions(
-  workspace: AnalyticsWorkspaceKind,
-  periodA: string,
-  periodB: string
-): Promise<AnalyticsWorkspaceOptionsResponse> {
-  const params = new URLSearchParams({
-    workspace,
-    period_a: periodA,
-    period_b: periodB,
-  });
-  const response = await fetch(`${API_BASE_URL}/api/periods/workspace/options?${params.toString()}`);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(parseApiError(errorText, "Failed to load analytics filter options"));
-  }
-  return response.json();
-}
-
-export async function confirmUpload(
-  datasetId: string,
-  action: "confirm" | "replace" | "new_version",
-  academicLabel: string
-): Promise<{ status: string; dataset_id: string; academic_label: string; action_applied: string }> {
-  const response = await fetch(`${API_BASE_URL}/api/data/upload/confirm`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      dataset_id: datasetId,
-      action,
-      academic_label: academicLabel,
-    }),
-  });
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { detail?: string }).detail || "Failed to confirm upload");
-  }
-  return response.json();
-}
-
-export async function activatePeriodVersion(
-  label: string,
-  datasetId: string
-): Promise<{ status: string; academic_label: string; active_dataset_id: string }> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/periods/${encodeURIComponent(label)}/activate/${datasetId}`,
-    { method: "POST" }
-  );
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { detail?: string }).detail || "Failed to activate period");
-  }
-  return response.json();
-}
-
-export async function comparePeriods(
-  periodA: string,
-  periodB: string,
-  metric: string = "admissions",
-  dimension: string = "program_name",
-  limit: number = 20
-): Promise<PeriodComparisonResult> {
-  const params = new URLSearchParams({
-    period_a: periodA,
-    period_b: periodB,
-    metric,
-    dimension,
-    limit: String(limit),
-  });
-  const response = await fetch(`${API_BASE_URL}/api/periods/compare?${params}`);
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { detail?: string }).detail || "Failed to compare periods");
-  }
-  return response.json();
-}
 
 export async function enableDatasetAnalytics(
   datasetId: string,
@@ -262,19 +129,6 @@ export async function listAllDatasets(): Promise<AdminDatasetsResponse> {
   return response.json();
 }
 
-export async function activateDataset(
-  datasetId: string
-): Promise<{ status: string; dataset_id: string; dataset_name: string; academic_label: string | null }> {
-  const response = await fetch(
-    `${API_BASE_URL}/api/admin/datasets/${datasetId}/activate`,
-    { method: "POST" }
-  );
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { detail?: string }).detail || "Failed to activate dataset");
-  }
-  return response.json();
-}
 
 export async function deleteDataset(
   datasetId: string

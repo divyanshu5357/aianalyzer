@@ -18,7 +18,10 @@ from sklearn.compose import ColumnTransformer
 from sklearn.pipeline import Pipeline
 from sklearn.calibration import CalibratedClassifierCV, FrozenEstimator
 from sklearn.metrics import brier_score_loss, average_precision_score, roc_auc_score
-from lightgbm import LGBMClassifier
+try:
+    from lightgbm import LGBMClassifier
+except ImportError:
+    LGBMClassifier = None
 
 from app.ml.ml_temporal_split import (
     load_temporal_splits,

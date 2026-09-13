@@ -83,25 +83,6 @@ export function buildDashboardQuery(filters?: DashboardFilters): string {
   return str ? `?${str}` : "";
 }
 
-/**
- * Generic query parameter builder.
- */
-export function buildQueryParams(params: Record<string, any>): string {
-  const searchParams = new URLSearchParams();
-  for (const [key, value] of Object.entries(params)) {
-    if (value !== undefined && value !== null && value !== "" && value !== "all") {
-      if (Array.isArray(value)) {
-        if (value.length > 0) {
-          searchParams.set(key, value.join(","));
-        }
-      } else {
-        searchParams.set(key, String(value));
-      }
-    }
-  }
-  const str = searchParams.toString();
-  return str ? `?${str}` : "";
-}
 
 /**
  * Shared HTTP request wrapper with standardized JSON handling and error extraction.

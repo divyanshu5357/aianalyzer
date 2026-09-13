@@ -33,6 +33,7 @@ class MetricDefinition(dict):
     ):
         dict_data = {
             "metric_key": metric_key,
+            "canonical_name": metric_key,
             "name": display_name,
             "display_name": display_name,
             "synonyms": synonyms,
@@ -44,6 +45,8 @@ class MetricDefinition(dict):
             "column": column,
             "sql_expression": sql_expression,
             "is_ratio": is_ratio,
+            "is_additive": not is_ratio,
+            "can_sum": not is_ratio,
             "numerator": numerator,
             "denominator": denominator,
             "status": status,
@@ -56,8 +59,8 @@ class MetricDefinition(dict):
 
 # Central Metric Registry
 METRIC_REGISTRY: Dict[str, MetricDefinition] = {
-    "admissions": MetricDefinition(
-        metric_key="admissions",
+    "admission": MetricDefinition(
+        metric_key="admission",
         display_name="Admissions",
         synonyms=["admission", "admissions", "enrolled", "enrollment", "total enrolled", "admission count"],
         source_workbook_type="RAW",
@@ -69,8 +72,8 @@ METRIC_REGISTRY: Dict[str, MetricDefinition] = {
         sql_expression="SUM(cy_admission)",
         is_ratio=False,
     ),
-    "admission": MetricDefinition(
-        metric_key="admissions",
+    "admissions": MetricDefinition(
+        metric_key="admission",
         display_name="Admissions",
         synonyms=["admission", "admissions", "enrolled"],
         source_workbook_type="RAW",
@@ -80,6 +83,32 @@ METRIC_REGISTRY: Dict[str, MetricDefinition] = {
         description="Confirmed admissions alias.",
         column="cy_admission",
         sql_expression="SUM(cy_admission)",
+        is_ratio=False,
+    ),
+    "gross_admission": MetricDefinition(
+        metric_key="gross_admission",
+        display_name="Gross Admissions",
+        synonyms=["gross admission", "gross admissions"],
+        source_workbook_type="RAW",
+        source_fields=["mx_AdmissionDate"],
+        date_field="mx_AdmissionDate",
+        aggregation="DISTINCT ProspectID",
+        description="Total gross admissions prior to refunds.",
+        column="gross_admission",
+        sql_expression="SUM(cy_admission)",
+        is_ratio=False,
+    ),
+    "refunded": MetricDefinition(
+        metric_key="refunded",
+        display_name="Refunded Admissions",
+        synonyms=["refunded", "refunds", "refund"],
+        source_workbook_type="RAW",
+        source_fields=["mx_AdmissionDate", "ProspectStage"],
+        date_field="mx_AdmissionDate",
+        aggregation="DISTINCT ProspectID",
+        description="Cancelled or refunded admissions.",
+        column="refunds",
+        sql_expression="SUM(refunds)",
         is_ratio=False,
     ),
     "leads": MetricDefinition(
@@ -98,7 +127,7 @@ METRIC_REGISTRY: Dict[str, MetricDefinition] = {
     "cucet": MetricDefinition(
         metric_key="cucet",
         display_name="CUCET Applicants",
-        synonyms=["cucet", "cucet exam", "cucet score", "cucet attempt"],
+        synonyms=["cucet", "cucet registration", "cucet exam", "cucet score", "cucet attempt"],
         source_workbook_type="RAW",
         source_fields=["mx_CUCET_Score", "mx_CUCET_Exam_Status"],
         date_field="CreatedOn",
@@ -107,6 +136,51 @@ METRIC_REGISTRY: Dict[str, MetricDefinition] = {
         column="cy_cucet",
         sql_expression="SUM(cy_cucet)",
         is_ratio=False,
+    ),
+    "lead_cucet_rate": MetricDefinition(
+        metric_key="lead_cucet_rate",
+        display_name="Lead to CUCET Rate",
+        synonyms=["lead to cucet", "lead cucet rate", "lead-cucet"],
+        source_workbook_type="RAW",
+        source_fields=["ProspectID", "mx_CUCET_Exam_Status"],
+        date_field="CreatedOn",
+        aggregation="SUM(cucet) / SUM(leads) * 100",
+        description="Percentage of leads who registered for CUCET.",
+        column="lead_cucet_rate",
+        sql_expression="SUM(cy_cucet) / NULLIF(SUM(cy_leads), 0) * 100",
+        is_ratio=True,
+        numerator="cucet",
+        denominator="leads",
+    ),
+    "lead_admission_rate": MetricDefinition(
+        metric_key="lead_admission_rate",
+        display_name="Lead Admission Rate",
+        synonyms=["lead admission", "lead admission rate", "lead-admission"],
+        source_workbook_type="RAW",
+        source_fields=["mx_AdmissionDate", "ProspectID"],
+        date_field="CreatedOn",
+        aggregation="SUM(admissions) / SUM(leads) * 100",
+        description="Percentage of leads who enrolled.",
+        column="lead_admission_rate",
+        sql_expression="SUM(cy_admission) / NULLIF(SUM(cy_leads), 0) * 100",
+        is_ratio=True,
+        numerator="admissions",
+        denominator="leads",
+    ),
+    "cucet_admission_rate": MetricDefinition(
+        metric_key="cucet_admission_rate",
+        display_name="CUCET Admission Rate",
+        synonyms=["cucet admission", "cucet admission rate"],
+        source_workbook_type="RAW",
+        source_fields=["mx_AdmissionDate", "mx_CUCET_Score"],
+        date_field="CreatedOn",
+        aggregation="SUM(admissions) / SUM(cucet) * 100",
+        description="Percentage of CUCET applicants who enrolled.",
+        column="cucet_admission_rate",
+        sql_expression="SUM(cy_admission) / NULLIF(SUM(cy_cucet), 0) * 100",
+        is_ratio=True,
+        numerator="admissions",
+        denominator="cucet",
     ),
     "conversion_rate": MetricDefinition(
         metric_key="conversion_rate",
@@ -167,7 +241,7 @@ def get_metric(term: str) -> Optional[MetricDefinition]:
 
 
 def resolve_metric_name(term: str) -> str:
-    """Resolve natural-language string to canonical metric string name e.g. 'admission' -> 'admissions'."""
+    """Resolve natural-language string to canonical metric string name e.g. 'admissions' -> 'admission'."""
     defn = resolve_metric(term)
     if defn:
         return defn["metric_key"]
@@ -178,4 +252,4 @@ def calculate_ratio(num: float, den: float) -> float:
     """Safely calculate percentage ratio."""
     if not den:
         return 0.0
-    return round((num / den) * 100.0, 2)
+    return (num / den) * 100.0

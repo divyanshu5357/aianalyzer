@@ -30,16 +30,6 @@ export async function executeMappingForDataset(
   return response.json();
 }
 
-export async function getMappingPreviewQuality(datasetId: string): Promise<DataQualityReport> {
-  const response = await fetch(`${API_BASE_URL}/api/mapping/preview-quality?dataset_id=${encodeURIComponent(datasetId)}`, {
-    method: "POST",
-  });
-  if (!response.ok) {
-    const err = await response.json();
-    throw new Error(err.detail || "Failed to fetch data quality preview.");
-  }
-  return response.json();
-}
 
 export async function approveBatchMappings(mappings: any[], workbookType: string = "raw_data"): Promise<any> {
   const response = await fetch(`${API_BASE_URL}/api/mapping/approve-batch`, {

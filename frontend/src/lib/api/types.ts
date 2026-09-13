@@ -189,40 +189,6 @@ export interface IngestionJobStatus {
   updated_at: string;
 }
 
-export interface UploadProgressEvent {
-  filename: string;
-  loaded: number;
-  total: number;
-}
-
-export interface TargetItem {
-  dimension_type: string;
-  dimension_value: string;
-  month?: number | null;
-  target_leads: number;
-  actual_leads?: number | null;
-  leads_achievement_pct?: number | null;
-  target_admissions: number;
-  actual_admissions?: number | null;
-  admissions_achievement_pct?: number | null;
-  status: string;
-}
-
-export interface TargetPerformanceResponse {
-  academic_year: number;
-  campus: string;
-  has_actual_data: boolean;
-  max_actual_month?: number | null;
-  summary: {
-    target_leads: number;
-    actual_leads?: number | null;
-    leads_achievement_pct?: number | null;
-    target_admissions: number;
-    actual_admissions?: number | null;
-    admissions_achievement_pct?: number | null;
-  };
-  items: TargetItem[];
-}
 
 export interface KPISubMetric {
   label: string;
@@ -277,20 +243,6 @@ export interface InsightItem {
   value: string;
 }
 
-export interface PerformerItem {
-  entity: string;
-  value: number;
-  count?: number;
-  leads?: number;
-}
-
-export interface TopPerformersResponse {
-  program_name?: PerformerItem[];
-  source?: PerformerItem[];
-  campus_name?: PerformerItem[];
-  state?: PerformerItem[];
-  owner?: PerformerItem[];
-}
 
 export interface EntityOverview {
   leads: KPIItem;
@@ -348,28 +300,6 @@ export interface DashboardFilterOptionsResponse {
   date_range?: DashboardDateRangeOption;
 }
 
-export interface ResolvedScopeDatasetItem {
-  id: string;
-  dataset_name: string;
-  campus: string;
-  academic_year: number;
-  row_count: number;
-  is_analytics_enabled: boolean;
-}
-
-export interface ResolvedScopeResponse {
-  scope: {
-    campus: string;
-    years: number[];
-  };
-  datasets: ResolvedScopeDatasetItem[];
-  dataset_ids: string[];
-  cy_year: number;
-  py_year: number | null;
-  cy_dataset_ids: string[];
-  py_dataset_ids: string[];
-  total_rows: number;
-}
 
 export interface MonthlyTrendItem {
   month: string;
@@ -410,92 +340,6 @@ export interface PerformanceRankingsResponse {
   declines: PerformanceRankingsRow[];
 }
 
-export interface ExploreItem {
-  entity: string;
-  py_leads: number;
-  cy_leads: number;
-  py_admission: number;
-  cy_admission: number;
-  py_rate: number;
-  cy_rate: number;
-  change: number;
-  growth_pct: number | null;
-}
-
-export interface ExploreResponse {
-  positive: ExploreItem[];
-  negative: ExploreItem[];
-}
-
-export interface CompareValueData {
-  entity: string;
-  py_leads?: number;
-  cy_leads?: number;
-  py_admission?: number;
-  cy_admission?: number;
-  py_rate?: number;
-  cy_rate?: number;
-  is_top_performer?: boolean;
-}
-
-export interface ClusterItem {
-  cluster_name: string;
-  cy_leads: number;
-  cy_admission: number;
-  cy_rate: number;
-  py_leads: number;
-  py_admission: number;
-  py_rate: number;
-  item_count: number;
-  share_pct: number;
-}
-
-export interface HierarchyClusterResponse {
-  dimension: string;
-  level: number;
-  clusters: ClusterItem[];
-  total_clusters: number;
-}
-
-export interface DrilldownItem {
-  item_name: string;
-  cy_leads: number;
-  cy_admission: number;
-  cy_rate: number;
-  py_leads: number;
-  py_admission: number;
-  py_rate: number;
-  share_of_cluster_pct: number;
-}
-
-export interface HierarchyDrilldownResponse {
-  dimension: string;
-  level: number;
-  cluster_name: string;
-  items: DrilldownItem[];
-  total_items: number;
-}
-
-export interface CompareResponse {
-  dimension: string;
-  metric: string;
-  entities?: CompareValueData[];
-  top_performer?: {
-    entity: string;
-    cy_rate: number;
-  };
-  value_a: CompareValueData;
-  value_b: CompareValueData;
-  value_c?: CompareValueData;
-  differences: {
-    cy_leads?: number;
-    py_leads?: number;
-    cy_admission?: number;
-    py_admission?: number;
-    cy_rate?: number;
-    py_rate?: number;
-  };
-}
 
 export interface GenderAdmissionItem {
   gender: string;
@@ -560,24 +404,6 @@ export interface StateAdmissionsResponse {
   top_states?: StateAdmissionItem[];
 }
 
-export interface InternationalCountryItem {
-  country_code: string;
-  country_name: string;
-  admissions: number;
-  leads: number;
-  share_pct: number;
-}
-
-export interface InternationalAdmissionsResponse {
-  status: string;
-  academic_year: number;
-  campus: string;
-  total_international_admissions: number;
-  total_international_leads: number;
-  countries: InternationalCountryItem[];
-  top_countries: InternationalCountryItem[];
-  limitation_note?: string;
-}
 
 export interface PeriodSummary {
   academic_label: string;
@@ -612,128 +438,6 @@ export interface PeriodConflictInfo {
   allowed_actions: string[];
 }
 
-export interface UploadedFileItemExtended extends UploadedFileItem {
-  upload_status?: "confirmed" | "pending_confirmation" | "period_unknown" | "conflict";
-  period_detection?: PeriodDetection;
-  conflict?: PeriodConflictInfo;
-  available_periods?: string[];
-  error_detail?: string | null;
-}
-
-export interface FileUploadResponseExtended {
-  status: string;
-  file_count: number;
-  files: UploadedFileItemExtended[];
-}
-
-export interface PeriodCompareItem {
-  name: string;
-  period_a_value: number;
-  period_b_value: number;
-  absolute_change: number;
-  growth_percent: number | null;
-  period_a_rate?: number;
-  period_b_rate?: number;
-  rate_change_percentage_points?: number;
-}
-
-export interface PeriodCompareResponse {
-  period_a: string;
-  period_b: string;
-  dimension: string;
-  metric: string;
-  columns: string[];
-  data: PeriodCompareItem[];
-}
-
-export type AnalyticsWorkspaceKind = "source" | "program";
-export type AnalyticsMetric = "leads" | "admissions" | "conversion_rate";
-export type AnalyticsPerformance = "all" | "increased" | "decreased";
-export type AnalyticsDisplay = "exact" | "percentage" | "both";
-export interface AnalyticsWorkspaceRow {
-  source?: string;
-  state?: string | null;
-  program?: string;
-  specialization?: string | null;
-  period_a_leads: number;
-  period_b_leads: number;
-  lead_change: number;
-  lead_change_percent: number | null;
-  period_a_admissions: number;
-  period_b_admissions: number;
-  admission_change: number;
-  admission_change_percent: number | null;
-  period_a_conversion: number;
-  period_b_conversion: number;
-  conversion_change_percentage_points: number;
-  period_a_value: number;
-  period_b_value: number;
-  absolute_change: number;
-  growth_percent: number | null;
-}
-
-export interface AnalyticsWorkspaceFilters {
-  state?: string;
-  source?: string;
-  campus?: string;
-  owner?: string;
-  program?: string;
-  specialization?: string;
-}
-
-export interface AnalyticsWorkspaceRequest extends AnalyticsWorkspaceFilters {
-  workspace: AnalyticsWorkspaceKind;
-  periodA: string;
-  periodB: string;
-  metric: AnalyticsMetric;
-  performance: AnalyticsPerformance;
-  sortField: string;
-  sortDirection: "asc" | "desc";
-  display: AnalyticsDisplay;
-  limit: number;
-  offset: number;
-}
-
-export interface AnalyticsWorkspaceResponse {
-  workspace: AnalyticsWorkspaceKind;
-  dimension: string;
-  period_a: string;
-  period_b: string;
-  metric: AnalyticsMetric;
-  display: AnalyticsDisplay;
-  performance: AnalyticsPerformance;
-  filters: AnalyticsWorkspaceFilters;
-  has_specialization: boolean;
-  rows: AnalyticsWorkspaceRow[];
-  pagination: {
-    limit: number;
-    offset: number;
-    has_more: boolean;
-  };
-}
-
-export interface AnalyticsWorkspaceOptionsResponse {
-  workspace: AnalyticsWorkspaceKind;
-  period_a: string;
-  period_b: string;
-  options: Record<keyof AnalyticsWorkspaceFilters, string[]>;
-}
-
-export interface PeriodComparisonRow {
-  name: string;
-  period_a_value: number;
-  period_b_value: number;
-  change: number;
-  pct_change: number | null;
-}
-
-export interface PeriodComparisonResult {
-  period_a: { label: string; dataset_id: string | null; year: number | null };
-  period_b: { label: string; dataset_id: string | null; year: number | null };
-  dimension: string;
-  metric: string;
-  data: PeriodComparisonRow[];
-}
 
 export interface AdminConfigResponse {
   allow_data_reset: boolean;

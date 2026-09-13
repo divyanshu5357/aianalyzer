@@ -10,7 +10,6 @@ export * from "./datasets";
 export * from "./ingestion";
 export * from "./mappings";
 export * from "./counsellors";
-export * from "./targets";
 export * from "./ai";
 export * from "./programs";
 export * from "./states";

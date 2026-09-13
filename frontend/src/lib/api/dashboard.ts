@@ -14,26 +14,8 @@ import type {
   PerformanceRankingsResponse,
   GenderAdmissionsResponse,
   StateAdmissionsResponse,
-  InternationalAdmissionsResponse,
-  ResolvedScopeResponse,
-  TopPerformersResponse,
-  ExploreResponse,
-  HierarchyClusterResponse,
-  HierarchyDrilldownResponse,
-  CompareResponse,
 } from "./types";
 
-export async function getDashboardScope(campus?: string, years?: number[]): Promise<ResolvedScopeResponse> {
-  const params = new URLSearchParams();
-  if (campus && campus !== "all") params.set("campus", campus);
-  if (years && years.length > 0) params.set("years", years.join(","));
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/scope?${params.toString()}`);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to fetch resolved dataset scope");
-  }
-  return response.json();
-}
 
 export async function getDashboardFilterOptions(session?: string, campus?: string, years?: number[], options?: RequestInit): Promise<DashboardFilterOptionsResponse> {
   const cacheKey = dashboardCache.buildKey("dashboard:options", {
@@ -73,16 +55,6 @@ export async function getDashboardInsights(filters?: DashboardFilters, options?:
   return response.json();
 }
 
-export async function getDashboardTopPerformers(metric: string, filters?: DashboardFilters, options?: RequestInit): Promise<TopPerformersResponse> {
-  const query = buildDashboardQuery(filters);
-  const prefix = query ? `${query}&` : "?";
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/top-performers${prefix}metric=${metric}`, options);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to fetch top performers");
-  }
-  return response.json();
-}
 
 export async function getDashboardMonthlyTrend(
   arg1?: string | DashboardFilters,
@@ -155,101 +127,6 @@ export async function getEntityDetail(dimension: string, value: string, filters?
   return response.json();
 }
 
-export async function getDashboardExplore(
-  dimension: string,
-  metric: string,
-  limit: number = 10,
-  filters?: DashboardFilters
-): Promise<ExploreResponse> {
-  let query = `?dimension=${encodeURIComponent(dimension)}&metric=${encodeURIComponent(metric)}&limit=${limit}`;
-  const fQuery = buildDashboardQuery(filters);
-  if (fQuery) {
-    query += `&${fQuery.substring(1)}`;
-  }
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/explore${query}`);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to fetch exploration data");
-  }
-  return response.json();
-}
-
-export async function getHierarchyClusters(
-  dimension: string = "source",
-  filters?: DashboardFilters
-): Promise<HierarchyClusterResponse> {
-  let query = `?dimension=${encodeURIComponent(dimension)}`;
-  const fQuery = buildDashboardQuery(filters);
-  if (fQuery) {
-    query += `&${fQuery.substring(1)}`;
-  }
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/hierarchy/clusters${query}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch hierarchy clusters");
-  }
-  return response.json();
-}
-
-export async function getHierarchyDrilldown(
-  dimension: string = "source",
-  clusterName: string = "IN HOUSE",
-  filters?: DashboardFilters
-): Promise<HierarchyDrilldownResponse> {
-  let query = `?dimension=${encodeURIComponent(dimension)}&cluster_name=${encodeURIComponent(clusterName)}`;
-  const fQuery = buildDashboardQuery(filters);
-  if (fQuery) {
-    query += `&${fQuery.substring(1)}`;
-  }
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/hierarchy/drilldown${query}`);
-  if (!response.ok) {
-    throw new Error("Failed to fetch hierarchy drilldown");
-  }
-  return response.json();
-}
-
-export async function getDashboardCompare(
-  dimension: string,
-  valueA: string,
-  valueB: string,
-  metric: string,
-  filters?: DashboardFilters,
-  valueC?: string,
-  entities?: string[]
-): Promise<CompareResponse> {
-  let query = `?dimension=${encodeURIComponent(dimension)}&metric=${encodeURIComponent(metric)}`;
-  if (entities && entities.length > 0) {
-    query += `&entities=${encodeURIComponent(entities.join(","))}`;
-  } else {
-    query += `&value_a=${encodeURIComponent(valueA)}&value_b=${encodeURIComponent(valueB)}`;
-    if (valueC) {
-      query += `&value_c=${encodeURIComponent(valueC)}`;
-    }
-  }
-  const fQuery = buildDashboardQuery(filters);
-  if (fQuery) {
-    query += `&${fQuery.substring(1)}`;
-  }
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/compare${query}`);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to execute comparison");
-  }
-  return response.json();
-}
-
-export async function getDimensionValues(dimension: string, filters?: DashboardFilters): Promise<string[]> {
-  let query = `?dimension=${encodeURIComponent(dimension)}`;
-  const fQuery = buildDashboardQuery(filters);
-  if (fQuery) {
-    query += `&${fQuery.substring(1)}`;
-  }
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/dimension-values${query}`);
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(errorText || "Failed to fetch dimension values");
-  }
-  return response.json();
-}
 
 export async function getAdmissionsByGender(
   filters?: DashboardFilters,
@@ -509,15 +386,3 @@ export async function getAdmissionsByState(
   return data;
 }
 
-export async function getInternationalAdmissions(
-  filters?: DashboardFilters,
-  options?: RequestInit
-): Promise<InternationalAdmissionsResponse> {
-  const query = buildDashboardQuery(filters);
-  const response = await fetch(`${API_BASE_URL}/api/dashboard/international-admissions${query}`, options);
-  if (!response.ok) {
-    const err = await readApiError(response, "Failed to fetch international admissions");
-    throw new Error(err);
-  }
-  return response.json();
-}

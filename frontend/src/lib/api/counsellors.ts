@@ -162,26 +162,6 @@ export async function getCounsellorReport(
   return response.json();
 }
 
-export async function getCounsellorSummary(filters: {
-  academic_year?: string;
-  campus?: string;
-  counsellor?: string;
-  program?: string;
-} = {}): Promise<any> {
-  const queryParts: string[] = [];
-  if (filters.academic_year && filters.academic_year !== "all") queryParts.push(`academic_year=${encodeURIComponent(filters.academic_year)}`);
-  if (filters.campus && filters.campus !== "all") queryParts.push(`campus=${encodeURIComponent(filters.campus)}`);
-  if (filters.counsellor && filters.counsellor !== "all") queryParts.push(`counsellor=${encodeURIComponent(filters.counsellor)}`);
-  if (filters.program && filters.program !== "all") queryParts.push(`program=${encodeURIComponent(filters.program)}`);
-  
-  const query = queryParts.length > 0 ? `?${queryParts.join("&")}` : "";
-  const response = await fetch(`${API_BASE_URL}/api/counsellor/summary${query}`);
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error((err as { detail?: string }).detail || "Failed to fetch counsellor summary");
-  }
-  return response.json();
-}
 
 export async function getLeadActivityReport(params: {
   academic_year?: string;
