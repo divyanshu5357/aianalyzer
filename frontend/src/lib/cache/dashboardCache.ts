@@ -1,16 +1,4 @@
-/**
- * Client-Side In-Memory Cache for AI Analytics
- * 
- * Provides:
- * - Query-key-based caching (academic_year, campus, date range, etc.)
- * - In-flight Promise deduplication (prevents duplicate simultaneous API calls)
- * - Stale-While-Revalidate (SWR) pattern for instant 0ms renders with background refresh
- * - AbortController management to cancel obsolete in-flight requests on rapid filter changes
- * - Persistent hierarchical tree node caching across page unmounts
- * - Configurable TTL (default 5 minutes)
- * - Instant (<5ms) synchronous cache reads via peek()
- * - Targeted cache invalidation and global flush
- */
+
 
 interface CacheEntry<T> {
   data: T;
@@ -19,11 +7,18 @@ interface CacheEntry<T> {
 }
 
 const DEFAULT_TTL_MS = 24 * 60 * 60 * 1000; // 24 hours
-const STORAGE_PREFIX = "ai_dash_cache:";
+const STORAGE_PREFIX = "ai_dash_cache_v5:";
 
 function safeSessionGet(key: string): any {
   if (typeof window === "undefined" || !window.sessionStorage) return null;
   try {
+    // Purge legacy cache keys from previous versions
+    for (let i = sessionStorage.length - 1; i >= 0; i--) {
+      const k = sessionStorage.key(i);
+      if (k && k.startsWith("ai_dash_cache") && !k.startsWith(STORAGE_PREFIX)) {
+        sessionStorage.removeItem(k);
+      }
+    }
     const raw = sessionStorage.getItem(STORAGE_PREFIX + key);
     if (!raw) return null;
     const parsed = JSON.parse(raw);
@@ -366,6 +361,26 @@ class MemoryCache {
       ...this.programUiState,
       ...updates,
       expandedNodeIds: updates.expandedNodeIds ? new Set(updates.expandedNodeIds) : this.programUiState.expandedNodeIds,
+    };
+  }
+
+  // ── State Analysis UI State Persistence ────────────────────────────────────
+  private stateUiState = {
+    selectedState: null as string | null,
+    isDrawerOpen: false,
+    sortBy: 'cy_leads',
+    sortOrder: 'desc' as 'asc' | 'desc',
+    issuesOnly: false,
+  };
+
+  public getStateUiState() {
+    return this.stateUiState;
+  }
+
+  public setStateUiState(updates: Partial<typeof this.stateUiState>) {
+    this.stateUiState = {
+      ...this.stateUiState,
+      ...updates,
     };
   }
 }

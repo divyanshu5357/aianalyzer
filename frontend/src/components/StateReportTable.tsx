@@ -126,6 +126,8 @@ interface StateReportTableProps {
   sortBy: string;
   sortOrder: 'asc' | 'desc';
   onSortChange: (col: string, order: 'asc' | 'desc') => void;
+  selectedState?: string | null;
+  onSelectState?: (state: string) => void;
   loading?: boolean;
   isDark?: boolean;
 }
@@ -139,6 +141,8 @@ export default function StateReportTable({
   sortBy,
   sortOrder,
   onSortChange,
+  selectedState = null,
+  onSelectState,
   loading = false,
   isDark = true,
 }: StateReportTableProps) {
@@ -460,28 +464,51 @@ export default function StateReportTable({
                 const isExpanded = nodeState === 'expanded';
                 const isLoading = nodeState === 'loading';
                 const indentPx = (row.level - 1) * INDENT;
+                const stateKey = row.state_key || (row as any).state || row.name;
+                const isSelected = row.level === 1 && selectedState === stateKey;
+
+                const selectedCls = isSelected
+                  ? isDark
+                    ? 'bg-indigo-950/40 border-l-2 border-l-indigo-500'
+                    : 'bg-indigo-50/70 border-l-2 border-l-indigo-600'
+                  : '';
+                const frozenBg = isSelected
+                  ? isDark
+                    ? '#141A33'
+                    : '#EEF2FF'
+                  : isDark
+                  ? '#0f1117'
+                  : '#ffffff';
+
+                const handleRowClick = () => {
+                  if (row.level === 1 && onSelectState) {
+                    onSelectState(stateKey);
+                  }
+                };
 
                 return (
                   <tr
                     key={row.id}
+                    onClick={handleRowClick}
                     className={`transition-colors border-b ${
                       isDark ? 'border-white/[0.04]' : 'border-slate-100'
-                    } ${getRowBg(row)}`}
+                    } ${selectedCls || getRowBg(row)} ${row.level === 1 ? 'cursor-pointer' : ''}`}
                   >
                     {/* Frozen State Column */}
                     <td
-                      style={{ paddingLeft: `${indentPx + 12}px` }}
-                      className={`sticky left-0 z-10 ${tdBase} ${
-                        isDark ? 'bg-[#0f1117]' : 'bg-white'
-                      }`}
+                      style={{ paddingLeft: `${indentPx + 12}px`, background: frozenBg }}
+                      className={`sticky left-0 z-10 ${tdBase}`}
                     >
                       <div className="flex items-center gap-2">
                         {/* Expand / Collapse Button */}
                         {row.has_children ? (
                           <button
-                            onClick={() => handleToggle(row)}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleToggle(row);
+                            }}
                             disabled={isLoading}
-                            className={`w-4 h-4 flex items-center justify-center rounded text-[10px] transition-colors ${
+                            className={`w-4 h-4 flex items-center justify-center rounded text-[10px] transition-colors cursor-pointer ${
                               isDark ? 'text-gray-400 hover:text-white' : 'text-slate-400 hover:text-slate-900'
                             }`}
                             title={isExpanded ? 'Collapse' : 'Expand'}
@@ -501,7 +528,7 @@ export default function StateReportTable({
                         {getLevelBadge(row)}
 
                         <span
-                          className={`truncate max-w-[210px] text-xs ${getTextColor(row)}`}
+                          className={`truncate max-w-[240px] text-xs ${getTextColor(row)}`}
                           title={row.name}
                         >
                           {row.name}

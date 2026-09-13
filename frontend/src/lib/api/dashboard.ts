@@ -378,18 +378,57 @@ export async function getAdmissionsByState(
     }, options);
 
     if (report && report.rows) {
-      const cucetMap = new Map<string, { cy: number; py: number; var: number; var_pct: number }>();
+      const rowByEntity = new Map<string, any>();
+      const groupLeadsTotal = new Map<string, number>();
+
       for (const r of report.rows) {
-        const item = {
-          cy: Number(r.cy_cucet || 0),
-          py: Number(r.py_cucet || 0),
-          var: Number(r.var_cucet || 0),
-          var_pct: Number(r.var_cucet_pct || 0),
-        };
-        if (r.state_code) cucetMap.set(String(r.state_code).trim().toUpperCase(), item);
+        if (r.state_code) {
+          rowByEntity.set(String(r.state_code).trim().toUpperCase(), r);
+        }
         if (r.name) {
-          cucetMap.set(String(r.name).trim().toUpperCase(), item);
-          cucetMap.set(String(r.name).trim().toLowerCase(), item);
+          rowByEntity.set(String(r.name).trim().toUpperCase(), r);
+          rowByEntity.set(String(r.name).trim().toLowerCase(), r);
+        }
+        if (Array.isArray(r.constituent_states)) {
+          for (const c of r.constituent_states) {
+            rowByEntity.set(String(c).trim().toLowerCase(), r);
+            rowByEntity.set(String(c).trim().toUpperCase(), r);
+          }
+        }
+      }
+
+      // Add common aliases for robust lookup
+      const jkRow = rowByEntity.get("JAMMU AND KASHMIR") || rowByEntity.get("J&K");
+      if (jkRow) {
+        rowByEntity.set("JAMMU & KASHMIR", jkRow);
+        rowByEntity.set("jammu & kashmir", jkRow);
+        rowByEntity.set("JK", jkRow);
+        rowByEntity.set("jk", jkRow);
+      }
+      const chdRow = rowByEntity.get("CHANDIGARH") || rowByEntity.get("CHD");
+      if (chdRow) {
+        rowByEntity.set("CHANDIGARH", chdRow);
+        rowByEntity.set("chandigarh", chdRow);
+        rowByEntity.set("CHD", chdRow);
+        rowByEntity.set("chd", chdRow);
+      }
+      const dlRow = rowByEntity.get("DELHI") || rowByEntity.get("DL");
+      if (dlRow) {
+        rowByEntity.set("DELHI", dlRow);
+        rowByEntity.set("delhi", dlRow);
+        rowByEntity.set("DL", dlRow);
+        rowByEntity.set("dl", dlRow);
+        rowByEntity.set("nct of delhi", dlRow);
+      }
+
+      // Sum leads for each group across data.states to compute proportional ratios
+      for (const st of data.states) {
+        const codeKey = (st.state_code || "").trim().toUpperCase();
+        const nameKey = (st.state_name || "").trim().toLowerCase();
+        const r = rowByEntity.get(codeKey) || rowByEntity.get(nameKey);
+        if (r) {
+          const prev = groupLeadsTotal.get(r.name) || 0;
+          groupLeadsTotal.set(r.name, prev + (st.cy_leads ?? st.leads ?? 0));
         }
       }
 
@@ -397,18 +436,35 @@ export async function getAdmissionsByState(
       data.total_india_cucet = totalCucet;
       if (metric === "cucet") {
         data.total_metric_count = totalCucet;
+        data.total_india_admissions = totalCucet;
       }
 
       data.states = data.states.map((st) => {
         const codeKey = (st.state_code || "").trim().toUpperCase();
-        const nameKey = (st.state_name || "").trim().toUpperCase();
         const nameKeyLower = (st.state_name || "").trim().toLowerCase();
-        const cData = cucetMap.get(codeKey) || cucetMap.get(nameKey) || cucetMap.get(nameKeyLower);
+        const nameKeyUpper = (st.state_name || "").trim().toUpperCase();
+        const r = rowByEntity.get(codeKey) || rowByEntity.get(nameKeyLower) || rowByEntity.get(nameKeyUpper);
 
-        const cyCucet = cData?.cy ?? st.cy_cucet ?? st.cucet ?? 0;
-        const pyCucet = cData?.py ?? st.py_cucet ?? null;
-        const varCucet = cData?.var ?? (pyCucet !== null ? cyCucet - pyCucet : null);
-        const varPctCucet = cData?.var_pct ?? (pyCucet && pyCucet > 0 ? Number(((varCucet! / pyCucet) * 100).toFixed(2)) : null);
+        let cyCucet = st.cy_cucet ?? st.cucet ?? 0;
+        let pyCucet = st.py_cucet ?? null;
+        let varCucet = null;
+        let varPctCucet = null;
+
+        if (r) {
+          const isGroup = Array.isArray(r.constituent_states) && r.constituent_states.length > 1;
+          if (isGroup) {
+            const gLeads = groupLeadsTotal.get(r.name) || 1;
+            const stLeads = st.cy_leads ?? st.leads ?? 0;
+            const ratio = gLeads > 0 ? stLeads / gLeads : 1 / r.constituent_states.length;
+            cyCucet = Math.round(Number(r.cy_cucet || 0) * ratio);
+            pyCucet = r.py_cucet != null ? Math.round(Number(r.py_cucet) * ratio) : null;
+          } else {
+            cyCucet = Number(r.cy_cucet || 0);
+            pyCucet = r.py_cucet != null ? Number(r.py_cucet) : null;
+          }
+          varCucet = pyCucet !== null ? cyCucet - pyCucet : (r.var_cucet ?? null);
+          varPctCucet = (pyCucet && pyCucet > 0) ? Number((((cyCucet - pyCucet) / pyCucet) * 100).toFixed(2)) : (r.var_cucet_pct ?? null);
+        }
 
         if (metric === "cucet") {
           const dir = varCucet === null ? "no_comparison" : varCucet > 0 ? "increase" : varCucet < 0 ? "decline" : "no_change";
@@ -438,6 +494,12 @@ export async function getAdmissionsByState(
 
       if (metric === "cucet") {
         data.states.sort((a, b) => (b.cy_cucet ?? 0) - (a.cy_cucet ?? 0));
+      } else if (metric === "leads") {
+        data.states.sort((a, b) => (b.cy_leads ?? b.leads ?? 0) - (a.cy_leads ?? a.leads ?? 0));
+        const totalLeads = data.states.reduce((acc, s) => acc + (s.cy_leads ?? s.leads ?? 0), 0);
+        data.total_metric_count = totalLeads;
+      } else {
+        data.states.sort((a, b) => (b.cy_admissions ?? b.admissions ?? 0) - (a.cy_admissions ?? a.admissions ?? 0));
       }
     }
   } catch (e) {

@@ -9,7 +9,7 @@ from app.analytics.scope_resolver import resolve_dataset_scope
 logger = logging.getLogger(__name__)
 
 _FILTER_OPTIONS_CACHE: dict[str, tuple[float, dict]] = {}
-_FILTER_CACHE_TTL = 86400.0  # 24 hours (invalidated on dataset upload/reset)
+_FILTER_CACHE_TTL = 300.0  # 5 minutes (invalidated on dataset upload/reset)
 
 
 def clear_filter_options_cache():
@@ -74,7 +74,7 @@ def get_dashboard_filter_options(
     years: list[int] | str | None = None,
 ) -> dict[str, list[str]]:
     """Query dynamic, distinct non-null filter options available in resolved scope."""
-    canonical_campus = (campus or 'all').strip().lower()
+    canonical_campus = (campus or 'all').strip()
     canonical_years = str(sorted(years) if isinstance(years, list) else (years or 'all'))
     cache_key = f"{canonical_campus}:{canonical_years}"
     now = time.time()
@@ -83,8 +83,8 @@ def get_dashboard_filter_options(
         if now - ts < _FILTER_CACHE_TTL:
             return cached_val
 
-    # Also check if 'all:all' cache can serve if present
-    if "all:all" in _FILTER_OPTIONS_CACHE and canonical_campus == "all" and canonical_years in ("all", "None", "[2026]"):
+    # Also check if 'all:all' cache can serve if present (only when default un-scoped query)
+    if "all:all" in _FILTER_OPTIONS_CACHE and canonical_campus == "all" and canonical_years in ("all", "None"):
         ts, cached_val = _FILTER_OPTIONS_CACHE["all:all"]
         if now - ts < _FILTER_CACHE_TTL:
             return cached_val
@@ -164,6 +164,21 @@ def get_dashboard_filter_options(
     except Exception:
         max_date = f"{max_m}-28"
 
+    # Restrict max_date if dataset was uploaded before the month's end,
+    # preventing future dates without raw data from being selected or defaulted
+    try:
+        ds_created_row = db.execute(text("""
+            SELECT MAX(created_at) FROM system.datasets
+            WHERE academic_year = :cy_year AND is_analytics_enabled = TRUE AND workbook_type = 'RAW'
+        """), {"cy_year": cy_year}).fetchone()
+        if ds_created_row and ds_created_row[0]:
+            ds_created_dt = ds_created_row[0]
+            ds_created_str = ds_created_dt.strftime("%Y-%m-%d")
+            if ds_created_str[:7] == max_m and ds_created_str < max_date:
+                max_date = ds_created_str
+    except Exception as exc:
+        logger.debug("Dataset created_at cap notice: %s", exc)
+
     date_range = {
         "min_date": min_date,
         "max_date": max_date,
@@ -181,8 +196,8 @@ def get_dashboard_filter_options(
         "date_range": date_range,
     }
     _FILTER_OPTIONS_CACHE[cache_key] = (now, result)
-    # Also save as fallback for all:all if default scope
-    if canonical_campus == "all":
+    # Also save as fallback for all:all only if truly default un-scoped query
+    if canonical_campus == "all" and canonical_years in ("all", "None"):
         _FILTER_OPTIONS_CACHE["all:all"] = (now, result)
     return result
 

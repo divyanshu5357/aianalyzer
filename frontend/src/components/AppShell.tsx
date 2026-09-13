@@ -357,67 +357,78 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
             {/* Global Date Range Filter */}
             <div className="relative flex items-center">
               <div
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-xl border transition-all ${
+                className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border transition-all ${
                   dateRangeError
                     ? "border-rose-500/80 bg-rose-500/10 text-rose-300"
                     : (appliedFromDate || appliedToDate)
                     ? isDark
-                      ? "bg-indigo-950/40 border-indigo-500/50 shadow-xs shadow-indigo-500/10"
-                      : "bg-indigo-50/80 border-indigo-200 shadow-xs shadow-indigo-500/10"
+                      ? "bg-indigo-950/50 border-indigo-500/60 shadow-xs shadow-indigo-500/15"
+                      : "bg-indigo-50/90 border-indigo-300 shadow-xs shadow-indigo-500/10"
                     : isDark
                     ? "bg-[#131B2E] border-[#1E293B] hover:border-slate-700"
                     : "bg-white border-slate-200 hover:border-slate-300 shadow-xs"
                 }`}
+                title={dateRangeLimits ? `Dataset data range: ${dateRangeLimits.min_date} to ${dateRangeLimits.max_date}` : "Select date range"}
               >
                 <Calendar className={`w-3.5 h-3.5 shrink-0 ${(appliedFromDate || appliedToDate) ? "text-indigo-500" : "text-slate-400"}`} />
                 
-                {/* From Date Input */}
-                <input
-                  type="date"
-                  id="global-from-date"
-                  value={fromDate}
-                  min={dateRangeLimits?.min_date}
-                  max={dateRangeLimits?.max_date}
-                  onChange={(e) => setFromDate(e.target.value)}
-                  className={`px-1 py-0.5 text-xs font-semibold rounded bg-transparent focus:outline-none cursor-pointer ${
-                    isDark ? "text-slate-200" : "text-slate-800"
-                  }`}
-                  title="From Date"
-                />
+                {/* From Date Input with label */}
+                <div className="flex items-center gap-1">
+                  <span className={`text-[9px] font-bold uppercase tracking-wider select-none ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                    From
+                  </span>
+                  <input
+                    type="date"
+                    id="global-from-date"
+                    value={fromDate}
+                    min={dateRangeLimits?.min_date}
+                    max={dateRangeLimits?.max_date}
+                    onChange={(e) => setFromDate(e.target.value)}
+                    className={`px-1 py-0.5 text-xs font-semibold rounded bg-transparent focus:outline-none cursor-pointer ${
+                      isDark ? "text-slate-200" : "text-slate-800"
+                    }`}
+                    title={dateRangeLimits?.min_date ? `Available from ${dateRangeLimits.min_date}` : "From Date"}
+                  />
+                </div>
                 
-                <span className="text-slate-400 text-xs font-bold select-none">→</span>
+                <span className="text-slate-400 text-xs font-bold select-none px-0.5">→</span>
                 
-                {/* To Date Input */}
-                <input
-                  type="date"
-                  id="global-to-date"
-                  value={toDate}
-                  min={dateRangeLimits?.min_date}
-                  max={dateRangeLimits?.max_date}
-                  onChange={(e) => setToDate(e.target.value)}
-                  className={`px-1 py-0.5 text-xs font-semibold rounded bg-transparent focus:outline-none cursor-pointer ${
-                    isDark ? "text-slate-200" : "text-slate-800"
-                  }`}
-                  title="To Date"
-                />
+                {/* To Date Input with label */}
+                <div className="flex items-center gap-1">
+                  <span className={`text-[9px] font-bold uppercase tracking-wider select-none ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                    To
+                  </span>
+                  <input
+                    type="date"
+                    id="global-to-date"
+                    value={toDate}
+                    min={dateRangeLimits?.min_date}
+                    max={dateRangeLimits?.max_date}
+                    onChange={(e) => setToDate(e.target.value)}
+                    className={`px-1 py-0.5 text-xs font-semibold rounded bg-transparent focus:outline-none cursor-pointer ${
+                      isDark ? "text-slate-200" : "text-slate-800"
+                    }`}
+                    title={dateRangeLimits?.max_date ? `Available up to ${dateRangeLimits.max_date}` : "To Date"}
+                  />
+                </div>
 
                 {/* Apply Button */}
                 <button
                   id="global-date-apply-btn"
                   onClick={() => applyDateRange()}
-                  className="px-3 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                  className="px-2.5 py-1 text-xs font-bold rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow-xs transition-all cursor-pointer flex items-center gap-1 active:scale-95 shrink-0"
                   title="Apply date range filter"
                 >
                   Apply
                 </button>
 
                 {/* Reset / Clear Button */}
-                {(appliedFromDate || appliedToDate || fromDate || toDate) && (
+                {(appliedFromDate || appliedToDate) && (
                   <button
                     id="global-date-reset-btn"
                     onClick={() => resetDateRange()}
-                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer"
-                    title="Reset to full period"
+                    className="p-1 text-slate-400 hover:text-rose-400 hover:bg-rose-500/10 rounded-lg transition-colors cursor-pointer shrink-0"
+                    title="Reset to full dataset period"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
                   </button>

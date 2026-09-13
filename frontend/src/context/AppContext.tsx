@@ -58,6 +58,7 @@ interface AppContextType {
   dateRangeError: string | null;
   applyDateRange: () => boolean;
   resetDateRange: () => void;
+  fetchFilterOptions: (targetYear?: number, targetCampus?: string, targetSession?: string) => Promise<any>;
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
@@ -172,9 +173,16 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   }, []);
 
-  const fetchFilterOptions = useCallback(async () => {
+  const fetchFilterOptions = useCallback(async (targetYear?: number, targetCampus?: string, targetSession?: string) => {
     try {
-      const opts = await getDashboardFilterOptions();
+      const yr = targetYear !== undefined ? targetYear : year;
+      const cmp = targetCampus !== undefined ? targetCampus : selectedCampus;
+      const sess = targetSession !== undefined ? targetSession : (activePeriodLabel || (yr ? String(yr) : undefined));
+      const opts = await getDashboardFilterOptions(
+        sess !== "all" ? sess : undefined,
+        cmp !== "all" ? cmp : undefined,
+        yr ? [yr] : undefined
+      );
       if (opts?.campuses && opts.campuses.length > 0) {
         const normalized = Array.from(
           new Set(
@@ -186,12 +194,42 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setAvailableCampuses(normalized);
       }
       if (opts?.date_range) {
-        setDateRangeLimits(opts.date_range);
+        const range = opts.date_range;
+        setDateRangeLimits(range);
+
+        // Ground dates strictly to the active dataset's raw extent
+        setFromDate((prev) => {
+          if (!prev || prev < range.min_date || prev > range.max_date) {
+            return range.min_date;
+          }
+          return prev;
+        });
+        setToDate((prev) => {
+          if (!prev || prev > range.max_date || prev < range.min_date) {
+            return range.max_date;
+          }
+          return prev;
+        });
+
+        // Automatically clamp or reset applied dates if outside active dataset bounds
+        setAppliedFromDate((prev) => {
+          if (prev && (prev < range.min_date || prev > range.max_date)) {
+            return null;
+          }
+          return prev;
+        });
+        setAppliedToDate((prev) => {
+          if (prev && (prev > range.max_date || prev < range.min_date)) {
+            return null;
+          }
+          return prev;
+        });
       }
+      return opts;
     } catch {
       // Keep defaults
     }
-  }, []);
+  }, [year, selectedCampus, activePeriodLabel]);
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -218,23 +256,38 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDateRangeError("From Date cannot be later than To Date.");
       return false;
     }
+    // Strict enforcement: cannot query outside dataset bounds
+    if (dateRangeLimits?.min_date && fromDate < dateRangeLimits.min_date) {
+      setDateRangeError(`Dataset starts on ${dateRangeLimits.min_date}. Please select a date on or after this.`);
+      return false;
+    }
+    if (dateRangeLimits?.max_date && toDate > dateRangeLimits.max_date) {
+      setDateRangeError(`Dataset ends on ${dateRangeLimits.max_date}. Please select a date on or before this.`);
+      return false;
+    }
     setDateRangeError(null);
     setAppliedFromDate(fromDate);
     setAppliedToDate(toDate);
     return true;
-  }, [fromDate, toDate]);
+  }, [fromDate, toDate, dateRangeLimits]);
 
   const resetDateRange = useCallback(() => {
-    setFromDate("");
-    setToDate("");
+    if (dateRangeLimits) {
+      setFromDate(dateRangeLimits.min_date);
+      setToDate(dateRangeLimits.max_date);
+    } else {
+      setFromDate("");
+      setToDate("");
+    }
     setAppliedFromDate(null);
     setAppliedToDate(null);
     setDateRangeError(null);
-  }, []);
+  }, [dateRangeLimits]);
 
   const setSelectedCampus = (c: string) => {
     setSelectedCampusState(c);
     fetchActiveDataset(year, c);
+    fetchFilterOptions(year, c);
   };
 
   const setYear = (y: number) => {
@@ -243,8 +296,12 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     if (matchingPeriod) {
       setActivePeriodLabel(matchingPeriod.academic_label);
     }
-    resetDateRange();
+    // Cleanly reset applied date range so switching sessions queries full data for the new session
+    setAppliedFromDate(null);
+    setAppliedToDate(null);
+    setDateRangeError(null);
     fetchActiveDataset(y, selectedCampus);
+    fetchFilterOptions(y, selectedCampus, matchingPeriod?.academic_label || String(y));
   };
 
   const triggerRefresh = () => {
@@ -330,6 +387,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         dateRangeError,
         applyDateRange,
         resetDateRange,
+        fetchFilterOptions,
       }}
     >
       {children}

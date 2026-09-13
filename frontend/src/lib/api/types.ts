@@ -1148,6 +1148,8 @@ export interface StateReportRow {
   state_key?: string;
   canonical_name?: string;
   state_code?: string | null;
+  state_group?: string;
+  constituent_states?: string[];
   source_category?: string;
   sub_source?: string;
 }
@@ -1217,3 +1219,89 @@ export interface MastersStatusResponse {
   dimension_master: MasterInfo | null;
   target_master: MasterInfo | null;
 }
+
+export interface StateCourseGroupItem {
+  course_group: string;
+  cy_admissions: number;
+  py_admissions: number;
+  var_admissions: number;
+  var_admissions_pct: number;
+  cy_leads: number;
+  py_leads: number;
+  var_leads: number;
+  var_leads_pct: number;
+  cy_cucet: number;
+  py_cucet: number;
+  var_cucet: number;
+  var_cucet_pct: number;
+  lead_to_cucet_pct: number;
+  cucet_to_adm_pct: number;
+  conversion_rate_cy: number;
+  conversion_rate_py: number;
+  var_conversion_rate: number;
+  share_pct: number;
+  status: 'positive' | 'negative' | 'neutral';
+  programs_count: number;
+  dropping_count: number;
+  expanding_count: number;
+}
+
+export interface StateCourseGroupHighlights {
+  highest_admissions: { name: string; value: number; change: number; pct: number } | null;
+  lowest_admissions: { name: string; value: number; change: number; pct: number } | null;
+  highest_leads: { name: string; value: number; change: number; pct: number } | null;
+  lowest_leads: { name: string; value: number; change: number; pct: number } | null;
+  highest_cucet: { name: string; value: number; change: number; pct: number } | null;
+  lowest_cucet: { name: string; value: number; change: number; pct: number } | null;
+  highest_conversion: { name: string; value: number; rate: number; admissions: number } | null;
+  lowest_conversion: { name: string; value: number; rate: number; admissions: number } | null;
+}
+
+export interface StateInvestigationParams {
+  state: string;
+  academic_year?: number;
+  campus?: string;
+  from_date?: string;
+  to_date?: string;
+  dimension?: string;
+  parent_value?: string;
+}
+
+export interface StateInvestigationNode {
+  success: boolean;
+  state: string;
+  academic_year: number;
+  campus?: string;
+  health: ProgramHealth;
+  summary_digest: string;
+  metrics: {
+    cy_admissions: number;
+    py_admissions: number;
+    var_admissions: number;
+    var_admissions_pct: number;
+    cy_leads: number;
+    py_leads: number;
+    var_leads: number;
+    var_leads_pct: number;
+    cy_cucet: number;
+    py_cucet: number;
+    var_cucet: number;
+    var_cucet_pct: number;
+    conversion_rate_cy: number;
+    conversion_rate_py: number;
+    var_conversion_rate: number;
+  };
+  issues: InvestigationDriver[];
+  positive_drivers: InvestigationDriver[];
+  course_groups: StateCourseGroupItem[];
+  course_highlights: StateCourseGroupHighlights;
+  sub_programs_analysis: {
+    total_count: number;
+    dropping_count: number;
+    expanding_count: number;
+    dropping_programs: any[];
+    expanding_programs: any[];
+  };
+  next_dimensions?: string[];
+}
+

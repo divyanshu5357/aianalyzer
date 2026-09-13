@@ -74,36 +74,50 @@ export default function IndiaStateMap({
       // Also map aliases
       if (key === "odisha") map.set("orissa", st);
       if (key === "uttarakhand") map.set("uttaranchal", st);
-      if (key === "jammu & kashmir") map.set("jammu and kashmir", st);
-      if (key === "delhi") map.set("nct of delhi", st);
+      if (key === "jammu & kashmir" || key === "jammu and kashmir") {
+        map.set("jammu & kashmir", st);
+        map.set("jammu and kashmir", st);
+      }
+      if (key === "delhi" || key === "nct of delhi") {
+        map.set("delhi", st);
+        map.set("nct of delhi", st);
+      }
+      if (st.state_code) {
+        map.set(st.state_code.toLowerCase().trim(), st);
+      }
     });
     return map;
   }, [statesData]);
+
+  // Helper to extract active metric value
+  const getMetricVal = (st?: StateAdmissionItem | null): number => {
+    if (!st) return 0;
+    if (metric === "leads") return st.cy_leads ?? st.leads ?? 0;
+    if (metric === "cucet") return st.cy_cucet ?? st.cucet ?? 0;
+    return st.cy_admissions ?? st.admissions ?? 0;
+  };
 
   // Calculate maximum value to normalize shades based on active metric
   const maxMetricVal = useMemo(() => {
     let max = 0;
     statesData.forEach((st) => {
-      const val =
-        metric === "leads"
-          ? (st.cy_leads ?? st.leads ?? 0)
-          : metric === "cucet"
-          ? (st.cy_cucet ?? st.cucet ?? 0)
-          : (st.cy_admissions ?? st.admissions ?? 0);
+      const val = getMetricVal(st);
       if (val > max) max = val;
     });
     return max > 0 ? max : 1;
   }, [statesData, metric]);
 
+  // Top 5 States dynamically sorted by active metric volume
+  const topStates = useMemo(() => {
+    return [...statesData]
+      .sort((a, b) => getMetricVal(b) - getMetricVal(a))
+      .slice(0, 5);
+  }, [statesData, metric]);
+
   // Color generator: Blue gradient shades based on active metric volume
   const getStateColor = (st?: StateAdmissionItem) => {
     if (!st) return "#f1f5f9";
-    const val =
-      metric === "leads"
-        ? (st.cy_leads ?? st.leads ?? 0)
-        : metric === "cucet"
-        ? (st.cy_cucet ?? st.cucet ?? 0)
-        : (st.cy_admissions ?? st.admissions ?? 0);
+    const val = getMetricVal(st);
     if (val === 0) return "#f1f5f9";
 
     const ratio = Math.pow(val / maxMetricVal, 0.42);
@@ -180,12 +194,7 @@ export default function IndiaStateMap({
               {geoFeatures.map((feat, idx) => {
                 const rawName = feat.properties.state_name || feat.properties.NAME_1 || "";
                 const matched = stateStatsMap.get(rawName.toLowerCase().trim());
-                const cyVal =
-                  metric === "leads"
-                    ? (matched?.cy_leads ?? matched?.leads ?? 0)
-                    : metric === "cucet"
-                    ? (matched?.cy_cucet ?? matched?.cucet ?? 0)
-                    : (matched?.cy_admissions ?? matched?.admissions ?? 0);
+                const cyVal = getMetricVal(matched);
                 const pyVal =
                   metric === "leads"
                     ? (matched?.py_leads ?? null)
@@ -204,9 +213,17 @@ export default function IndiaStateMap({
                     : pyVal && pyVal > 0
                     ? Number((((cyVal - pyVal) / pyVal) * 100).toFixed(2))
                     : null;
-                const direction = matched ? matched.direction : "no_comparison";
-                const cyLeads = matched ? (matched.cy_leads ?? matched.leads ?? 0) : 0;
-                const share = matched ? matched.share_pct : 0.0;
+                const direction =
+                  pyVal !== null
+                    ? cyVal > pyVal
+                      ? "increase"
+                      : cyVal < pyVal
+                      ? "decline"
+                      : "no_change"
+                    : matched ? matched.direction : "no_comparison";
+                const share = totalAdmissions > 0
+                  ? Number(((cyVal / totalAdmissions) * 100).toFixed(2))
+                  : (matched ? matched.share_pct : 0.0);
                 const fillColor = getStateColor(matched);
 
                 return (
@@ -378,15 +395,22 @@ export default function IndiaStateMap({
           {/* Top 5 States Leaderboard Badges */}
           <div className="mt-4 pt-3 border-t border-slate-100 dark:border-slate-800 flex flex-wrap items-center gap-2">
             <span className="text-xs font-bold text-slate-600 dark:text-slate-300 mr-1">Top States:</span>
-            {statesData.slice(0, 5).map((st, i) => {
-              const val =
+            {topStates.map((st, i) => {
+              const val = getMetricVal(st);
+              const pyVal =
                 metric === "leads"
-                  ? (st.cy_leads ?? st.leads ?? 0)
+                  ? (st.py_leads ?? null)
                   : metric === "cucet"
-                  ? (st.cy_cucet ?? st.cucet ?? 0)
-                  : (st.cy_admissions ?? st.admissions ?? 0);
-              const isInc = st.direction === "increase";
-              const isDec = st.direction === "decline";
+                  ? (st.py_cucet ?? null)
+                  : (st.py_admissions ?? null);
+              const varPct =
+                st.variance_pct !== undefined && st.variance_pct !== null
+                  ? st.variance_pct
+                  : pyVal && pyVal > 0
+                  ? Number((((val - pyVal) / pyVal) * 100).toFixed(2))
+                  : null;
+              const isInc = varPct !== null ? varPct > 0 : st.direction === "increase";
+              const isDec = varPct !== null ? varPct < 0 : st.direction === "decline";
 
               return (
                 <span
@@ -400,13 +424,13 @@ export default function IndiaStateMap({
                   <span className="font-bold text-slate-900 dark:text-white ml-0.5">
                     {val.toLocaleString()}
                   </span>
-                  {hasPyData && st.variance_pct !== null && (
+                  {hasPyData && varPct !== null && (
                     <span
                       className={`text-[10px] font-bold ${
                         isInc ? "text-emerald-600 dark:text-emerald-400" : isDec ? "text-rose-600 dark:text-rose-400" : "text-slate-400"
                       }`}
                     >
-                      {st.variance_pct > 0 ? `+${st.variance_pct}%` : `${st.variance_pct}%`}
+                      {varPct > 0 ? `+${varPct}%` : `${varPct}%`}
                     </span>
                   )}
                 </span>
