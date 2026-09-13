@@ -831,6 +831,7 @@ export interface CounsellorsListResponse {
     overall_conversion_rate: number;
     conversion_rate_display: string;
   };
+  summary_kpis?: any;
   counsellors: CounsellorListItem[];
 }
 

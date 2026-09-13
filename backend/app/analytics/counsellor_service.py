@@ -28,10 +28,10 @@ def extract_employee_id(owner_name: Optional[str]) -> str:
     """Extract canonical employee ID from owner string e.g. 'Ganesh Dutt E1678' -> 'E1678'."""
     if not owner_name:
         return "UNKNOWN"
-    m = re.search(r'([A-Z0-9]+)$', owner_name.strip())
+    m = re.search(r'\b([A-Za-z]{1,3}\d{2,7})\b', owner_name.strip())
     if m:
-        return m.group(1)
-    return owner_name.strip().upper()
+        return m.group(1).upper()
+    return "UNKNOWN"
 
 
 def parse_counsellor_identity(owner_name: Optional[str]) -> tuple[str, Optional[str]]:
@@ -51,7 +51,83 @@ def parse_counsellor_identity(owner_name: Optional[str]) -> tuple[str, Optional[
         name = m.group(1).strip()
         emp_id = m.group(2).upper()
         return (name if name else raw), emp_id
+    emp_m = re.search(r'\b([A-Za-z]{1,3}\d{2,7})\b', raw)
+    if emp_m:
+        emp_id = emp_m.group(1).upper()
+        clean_name = re.sub(r'\b' + re.escape(emp_id) + r'\b', '', raw, flags=re.IGNORECASE).strip()
+        clean_name = re.sub(r'\s+', ' ', clean_name).strip()
+        return (clean_name if clean_name else raw), emp_id
     return raw, None
+
+
+def deduplicate_counsellor_entries(entries: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """Deduplicate and merge counsellor records by unique Employee ID or normalized name.
+    
+    Guarantees that each counsellor has a single unique entry. Aggregates leads, admissions,
+    and call statistics, while choosing the best canonical display name (Title Case / active record).
+    """
+    merged: Dict[str, Dict[str, Any]] = {}
+
+    for c in entries:
+        emp_id = c.get("owner_id") or c.get("employee_id")
+        if not emp_id or emp_id == "UNKNOWN":
+            emp_id = extract_employee_id(c.get("raw_counsellor") or c.get("counsellor"))
+            if emp_id == "UNKNOWN":
+                emp_id = None
+
+        if emp_id:
+            key = f"EMP:{emp_id.upper()}"
+        else:
+            norm_name = re.sub(r'\s+', ' ', (c.get("counsellor_name") or c.get("counsellor") or "").strip().lower())
+            key = f"NAME:{norm_name}"
+
+        leads = int(c.get("leads_assigned") or 0)
+        admissions = int(c.get("admissions") or 0)
+
+        if key not in merged:
+            c_copy = dict(c)
+            if emp_id:
+                c_copy["owner_id"] = emp_id.upper()
+                c_copy["employee_id"] = emp_id.upper()
+            c_copy["leads_assigned"] = leads
+            c_copy["admissions"] = admissions
+            merged[key] = c_copy
+        else:
+            existing = merged[key]
+            existing["leads_assigned"] = int(existing.get("leads_assigned") or 0) + leads
+            existing["admissions"] = int(existing.get("admissions") or 0) + admissions
+
+            for k in ["calls_0", "calls_1", "calls_2", "calls_3", "calls_4_plus", "total_calls", "overdue_followups", "due_today_followups", "interested_leads"]:
+                if k in c and k in existing:
+                    existing[k] = int(existing[k] or 0) + int(c[k] or 0)
+
+            curr_name = (c.get("counsellor_name") or "").strip()
+            prev_name = (existing.get("counsellor_name") or "").strip()
+            is_prev_upper = len(prev_name) > 2 and prev_name == prev_name.upper()
+            is_curr_upper = len(curr_name) > 2 and curr_name == curr_name.upper()
+
+            if leads > (existing["leads_assigned"] - leads) or (is_prev_upper and not is_curr_upper):
+                existing["counsellor_name"] = curr_name or existing["counsellor_name"]
+                existing["counsellor"] = c.get("counsellor") or existing["counsellor"]
+                existing["raw_counsellor"] = c.get("raw_counsellor") or existing["raw_counsellor"]
+
+            if emp_id and not existing.get("owner_id"):
+                existing["owner_id"] = emp_id.upper()
+                existing["employee_id"] = emp_id.upper()
+
+    deduped = []
+    for item in merged.values():
+        leads = item["leads_assigned"]
+        adms = item["admissions"]
+        conv = round((adms / leads * 100), 2) if leads > 0 else 0.0
+        item["conversion_rate"] = conv
+        item["conversion_rate_display"] = f"{conv:.2f}%"
+        if "total_calls" in item and leads > 0:
+            item["avg_calls_per_lead"] = round(item["total_calls"] / leads, 1)
+        deduped.append(item)
+
+    deduped.sort(key=lambda x: x["leads_assigned"], reverse=True)
+    return deduped
 
 
 def _build_lead_filter_where(
@@ -261,11 +337,12 @@ def get_counsellor_summary(
             "conversion_rate_display": f"{conv_rate:.2f}%",
         })
 
+    deduped_counsellors = deduplicate_counsellor_entries(counsellors_list)
     overall_conv = round((total_admissions_all / total_leads * 100), 2) if total_leads > 0 else 0.0
 
     return {
         "status": "success",
-        "total_counsellors": len(counsellors_list),
+        "total_counsellors": len(deduped_counsellors),
         "summary": {
             "total_leads_assigned": total_leads,
             "total_admissions": total_admissions_all,
@@ -273,7 +350,7 @@ def get_counsellor_summary(
             "conversion_rate_display": f"{overall_conv:.2f}%",
         },
         "summary_kpis": {
-            "total_counsellors": len(counsellors_list),
+            "total_counsellors": len(deduped_counsellors),
             "total_leads_assigned": total_leads,
             "total_calls_made": total_calls_all,
             "total_admissions": total_admissions_all,
@@ -281,7 +358,7 @@ def get_counsellor_summary(
             "total_interested_leads": total_interested_all,
             "overall_conversion_rate": overall_conv,
         },
-        "counsellors": counsellors_list,
+        "counsellors": deduped_counsellors,
     }
 
 
@@ -390,11 +467,12 @@ def get_counsellors_list(
             "conversion_rate_display": f"{conv:.2f}%",
         })
 
+    deduped_counsellors = deduplicate_counsellor_entries(counsellors_list)
     overall_conv = round((total_admissions / total_leads * 100), 2) if total_leads > 0 else 0.0
 
     result = {
         "status": "success",
-        "total_counsellors": len(counsellors_list),
+        "total_counsellors": len(deduped_counsellors),
         "summary": {
             "total_leads_assigned": total_leads,
             "total_admissions": total_admissions,
@@ -402,12 +480,12 @@ def get_counsellors_list(
             "conversion_rate_display": f"{overall_conv:.2f}%",
         },
         "summary_kpis": {
-            "total_counsellors": len(counsellors_list),
+            "total_counsellors": len(deduped_counsellors),
             "total_leads_assigned": total_leads,
             "total_admissions": total_admissions,
             "overall_conversion_rate": overall_conv,
         },
-        "counsellors": counsellors_list,
+        "counsellors": deduped_counsellors,
     }
     _COUNSELLORS_LIST_CACHE[cache_key] = (now, result)
     return result
@@ -493,8 +571,13 @@ def get_counsellor_detail_report(
     all_cats = [r[0] for r in all_cats_rows]
 
     # 3. Aggregate metrics for this counsellor by source category using dashboard_agg
-    agg_conds = ["da.owner = :owner"]
     agg_params: dict[str, Any] = {"owner": resolved_owner}
+    if emp_id:
+        agg_conds = ["(da.owner ILIKE :emp_pat OR da.owner = :owner)"]
+        agg_params["emp_pat"] = f"%{emp_id}"
+    else:
+        agg_conds = ["da.owner = :owner"]
+
     if academic_year and str(academic_year).lower() != "all":
         agg_conds.append("da.academic_year = :acad_year")
         agg_params["acad_year"] = int(academic_year)
@@ -517,6 +600,13 @@ def get_counsellor_detail_report(
 
     if not cat_rows:
         # Fallback to staging.records only if dashboard_agg yielded zero rows
+        fallback_params = {**params, "owner": resolved_owner}
+        if emp_id:
+            fallback_owner_filter = "(r.raw_data->>'OwnerIdName' ILIKE :emp_pat OR r.raw_data->>'OwnerIdName' = :owner)"
+            fallback_params["emp_pat"] = f"%{emp_id}"
+        else:
+            fallback_owner_filter = "r.raw_data->>'OwnerIdName' = :owner"
+
         fallback_cat_sql = f"""
             SELECT 
                 COALESCE(sm.lead_type, 'Others') as category,
@@ -525,10 +615,10 @@ def get_counsellor_detail_report(
             FROM staging.records r
             JOIN system.datasets sd ON r.dataset_id = sd.id
             LEFT JOIN organization.source_master sm ON LOWER(TRIM(COALESCE(r.raw_data->>'MSSourcebi', r.raw_data->>'Source', r.raw_data->>'Origin', ''))) = LOWER(TRIM(sm.source))
-            WHERE {where_base} AND r.raw_data->>'OwnerIdName' = :owner
+            WHERE {where_base} AND {fallback_owner_filter}
             GROUP BY 1;
         """
-        cat_rows = db.execute(text(fallback_cat_sql), {**params, "owner": resolved_owner}).mappings().all()
+        cat_rows = db.execute(text(fallback_cat_sql), fallback_params).mappings().all()
 
     cat_map = {r["category"]: (int(r["leads"] or 0), int(r["admissions"] or 0)) for r in cat_rows}
 

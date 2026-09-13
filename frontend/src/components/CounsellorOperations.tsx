@@ -27,6 +27,7 @@ import {
   getCounsellorReport,
   getLeadActivityReport,
   getCounsellorExportUrl,
+  deduplicateCounsellors,
   CounsellorListItem,
   CounsellorDetailReport,
 } from "../lib/api";
@@ -241,15 +242,36 @@ export const CounsellorOperations: React.FC = () => {
   // Client-side search filtering over Level 1 counsellors for instant snappy response
   const filteredCounsellors = useMemo(() => {
     if (!listData?.counsellors) return [];
-    if (!searchQuery.trim()) return listData.counsellors;
+    // Ensure deduplication is guaranteed even on initial cached data
+    const deduped = deduplicateCounsellors(listData.counsellors);
+    if (!searchQuery.trim()) return deduped;
     const q = searchQuery.toLowerCase().trim();
-    return listData.counsellors.filter(
+    return deduped.filter(
       (c) =>
         (c.counsellor_name && c.counsellor_name.toLowerCase().includes(q)) ||
         (c.owner_id && c.owner_id.toLowerCase().includes(q)) ||
         (c.raw_counsellor && c.raw_counsellor.toLowerCase().includes(q))
     );
   }, [listData, searchQuery]);
+
+  // Dynamic Summary KPIs synchronized with filtered counsellors
+  const displayedSummary = useMemo(() => {
+    if (!filteredCounsellors || filteredCounsellors.length === 0) {
+      return {
+        leads: 0,
+        admissions: 0,
+        conversion: "0.00%",
+      };
+    }
+    const leads = filteredCounsellors.reduce((acc, c) => acc + (c.leads_assigned || 0), 0);
+    const adm = filteredCounsellors.reduce((acc, c) => acc + (c.admissions || 0), 0);
+    const conv = leads > 0 ? ((adm / leads) * 100).toFixed(2) + "%" : "0.00%";
+    return {
+      leads,
+      admissions: adm,
+      conversion: conv,
+    };
+  }, [filteredCounsellors]);
 
   // Academic years options
   const yearOptions = useMemo(() => {
@@ -805,13 +827,13 @@ export const CounsellorOperations: React.FC = () => {
             <span>Total Counsellors: <strong className="text-blue-500 font-extrabold">{filteredCounsellors.length}</strong></span>
           </div>
           <div>
-            <span>Assigned Leads: <strong className="font-extrabold">{summaryKpis.total_leads_assigned.toLocaleString()}</strong></span>
+            <span>Assigned Leads: <strong className="font-extrabold">{displayedSummary.leads.toLocaleString()}</strong></span>
           </div>
           <div>
-            <span>Total Admissions: <strong className="font-extrabold text-emerald-500">{summaryKpis.total_admissions.toLocaleString()}</strong></span>
+            <span>Total Admissions: <strong className="font-extrabold text-emerald-500">{displayedSummary.admissions.toLocaleString()}</strong></span>
           </div>
           <div>
-            <span>Overall Conversion: <strong className="font-extrabold text-purple-500">{summaryKpis.conversion_rate_display}</strong></span>
+            <span>Overall Conversion: <strong className="font-extrabold text-purple-500">{displayedSummary.conversion}</strong></span>
           </div>
         </div>
       )}
@@ -890,7 +912,7 @@ export const CounsellorOperations: React.FC = () => {
               <tbody className={`divide-y ${isDark ? "divide-slate-800/60" : "divide-slate-200"}`}>
                 {filteredCounsellors.map((c) => (
                   <tr
-                    key={c.raw_counsellor}
+                    key={c.owner_id ? `counsellor-${c.owner_id}` : `counsellor-${c.raw_counsellor}`}
                     onClick={() => setSelectedCounsellor(c)}
                     className={`cursor-pointer transition-all ${
                       isDark ? "hover:bg-slate-800/50" : "hover:bg-blue-50/50"

@@ -3,9 +3,98 @@
  */
 import { API_BASE_URL } from "./client";
 import type {
+  CounsellorListItem,
   CounsellorsListResponse,
   CounsellorDetailReport,
 } from "./types";
+
+/**
+ * Deduplicate counsellors ensuring each staff member has a single entry identified by
+ * their unique Employee ID (e.g. E14865, NL42, L100624) or normalized name.
+ * Combines leads assigned, admissions, and recalculates conversion rates.
+ */
+export function deduplicateCounsellors(items: CounsellorListItem[]): CounsellorListItem[] {
+  if (!items || items.length === 0) return [];
+  const merged = new Map<string, CounsellorListItem>();
+
+  for (const c of items) {
+    // 1. Identify canonical employee ID (matching pattern like E14865, NL42, L100624)
+    let empId: string | null = null;
+    for (const candidate of [c.owner_id, c.employee_id, c.raw_counsellor, c.counsellor]) {
+      if (!candidate) continue;
+      const m = String(candidate).match(/\b([A-Za-z]{1,3}\d{2,7})\b/);
+      if (m) {
+        empId = m[1].toUpperCase();
+        break;
+      }
+    }
+
+    // 2. Determine unique key: by Employee ID if available, else normalized name
+    const key = empId
+      ? `EMP:${empId}`
+      : `NAME:${(c.counsellor_name || c.counsellor || "").trim().toLowerCase().replace(/\s+/g, " ")}`;
+
+    const existing = merged.get(key);
+    const leads = Number(c.leads_assigned || 0);
+    const admissions = Number(c.admissions || 0);
+
+    if (!existing) {
+      // Clean display name by stripping trailing employee ID if present
+      let cleanName = (c.counsellor_name || c.counsellor || "").trim();
+      if (empId) {
+        cleanName = cleanName.replace(new RegExp(`\\s*${empId}\\s*$`, "i"), "").trim() || cleanName;
+      }
+
+      merged.set(key, {
+        ...c,
+        counsellor_name: cleanName,
+        owner_id: empId || c.owner_id || null,
+        employee_id: empId || c.employee_id || empId || undefined,
+        leads_assigned: leads,
+        admissions: admissions,
+      });
+    } else {
+      existing.leads_assigned += leads;
+      existing.admissions += admissions;
+
+      // Choose preferred display name:
+      // Prefer the variant that has actual leads/admissions, or Title Case over ALL-CAPS
+      const currName = (c.counsellor_name || c.counsellor || "").trim();
+      const prevName = existing.counsellor_name || "";
+      const isPrevAllUpper = prevName.length > 2 && prevName === prevName.toUpperCase();
+      const isCurrAllUpper = currName.length > 2 && currName === currName.toUpperCase();
+
+      if (leads > existing.leads_assigned - leads || (isPrevAllUpper && !isCurrAllUpper)) {
+        let cleanCurr = currName;
+        if (empId) {
+          cleanCurr = cleanCurr.replace(new RegExp(`\\s*${empId}\\s*$`, "i"), "").trim() || cleanCurr;
+        }
+        if (cleanCurr) {
+          existing.counsellor_name = cleanCurr;
+        }
+        existing.counsellor = c.counsellor || existing.counsellor;
+        existing.raw_counsellor = c.raw_counsellor || existing.raw_counsellor;
+      }
+
+      if (empId && !existing.owner_id) {
+        existing.owner_id = empId;
+        existing.employee_id = empId;
+      }
+    }
+  }
+
+  const result: CounsellorListItem[] = [];
+  for (const item of merged.values()) {
+    const leads = item.leads_assigned;
+    const adm = item.admissions;
+    const conv = leads > 0 ? Number(((adm / leads) * 100).toFixed(2)) : 0.0;
+    item.conversion_rate = conv;
+    item.conversion_rate_display = `${conv.toFixed(2)}%`;
+    result.push(item);
+  }
+
+  return result.sort((a, b) => b.leads_assigned - a.leads_assigned);
+}
 
 export async function getCounsellorsList(filters: {
   academic_year?: string;
@@ -23,7 +112,33 @@ export async function getCounsellorsList(filters: {
     const err = await response.json().catch(() => ({}));
     throw new Error((err as { detail?: string }).detail || "Failed to fetch counsellors list");
   }
-  return response.json();
+  const rawData: CounsellorsListResponse = await response.json();
+  const dedupedCounsellors = deduplicateCounsellors(rawData.counsellors || []);
+
+  const totalLeads = dedupedCounsellors.reduce((acc, c) => acc + (c.leads_assigned || 0), 0);
+  const totalAdm = dedupedCounsellors.reduce((acc, c) => acc + (c.admissions || 0), 0);
+  const overallConv = totalLeads > 0 ? Number(((totalAdm / totalLeads) * 100).toFixed(2)) : 0.0;
+
+  return {
+    ...rawData,
+    total_counsellors: dedupedCounsellors.length,
+    summary: {
+      total_leads_assigned: totalLeads,
+      total_admissions: totalAdm,
+      overall_conversion_rate: overallConv,
+      conversion_rate_display: `${overallConv.toFixed(2)}%`,
+    },
+    summary_kpis: rawData.summary_kpis
+      ? {
+          ...rawData.summary_kpis,
+          total_counsellors: dedupedCounsellors.length,
+          total_leads_assigned: totalLeads,
+          total_admissions: totalAdm,
+          overall_conversion_rate: overallConv,
+        }
+      : undefined,
+    counsellors: dedupedCounsellors,
+  };
 }
 
 export async function getCounsellorReport(

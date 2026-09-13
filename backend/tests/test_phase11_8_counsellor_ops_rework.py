@@ -35,15 +35,22 @@ def test_01_counsellor_list_loads_dynamically(db, client):
 
 
 def test_02_no_hardcoded_counsellor_names(db):
-    """Test 2: No hardcoded counsellor names — names come directly from dataset."""
+    """Test 2: No hardcoded counsellor names — names come directly from dataset and are unique per employee ID."""
     res = get_counsellors_list(db, academic_year=2026)
     c_names = [c["counsellor_name"] for c in res["counsellors"]]
     assert len(c_names) > 0
-    # Counsellors should match whatever is in analytics.dashboard_agg
-    db_counsellors = db.execute(
-        text("SELECT DISTINCT owner FROM analytics.dashboard_agg WHERE academic_year = 2026 AND owner IS NOT NULL")
-    ).fetchall()
-    assert len(c_names) == len(db_counsellors)
+    # Counsellors should be deduplicated by employee ID (unique per staff member)
+    emp_ids = [c["employee_id"] for c in res["counsellors"] if c.get("employee_id")]
+    assert len(emp_ids) == len(set(emp_ids)), "All employee IDs must be strictly unique!"
+
+
+def test_aliza_has_single_unique_employee_id_entry(db):
+    """Test: Aliza has exactly one entry with employee ID E14865, no duplicate 0-lead rows."""
+    res = get_counsellors_list(db, academic_year=2026, search="aliza")
+    aliza_records = [c for c in res["counsellors"] if c.get("employee_id") == "E14865" or "aliza" in c["counsellor_name"].lower()]
+    assert len(aliza_records) == 1, f"Expected exactly 1 record for Aliza, got {len(aliza_records)}"
+    assert aliza_records[0]["owner_id"] == "E14865"
+    assert aliza_records[0]["leads_assigned"] > 0
 
 
 def test_03_total_assigned_leads_is_correct(db):
