@@ -736,9 +736,20 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 {(overview?.kpis?.leads?.cy ?? 0).toLocaleString()}
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
-                <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview?.kpis?.leads?.py != null ? `${pyShort}: ${(overview.kpis.leads.py ?? 0).toLocaleString()}` : "Single Year Scope"}
-                </span>
+                {overview?.kpis?.leads?.py != null ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-md border tracking-wider select-none ${
+                      isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                    }`}>
+                      {pyShort}
+                    </span>
+                    <span className={`font-semibold tabular-nums ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                      {(overview.kpis.leads.py ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                ) : (
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Single Year Scope</span>
+                )}
                 {renderMetricDiff(overview?.kpis?.leads?.change ?? 0, overview?.kpis?.leads?.growth_pct ?? null)}
               </div>
             </div>
@@ -756,8 +767,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 <div className="font-extrabold text-indigo-500 dark:text-indigo-400 flex items-center gap-1">
                   <span>{(overview.kpis.leads.sub_metric.cy ?? 0).toLocaleString()}</span>
                   {overview.kpis.leads.sub_metric.py != null && (
-                    <span className="text-[10px] font-normal text-slate-400">
-                      ({pyShort}: {(overview.kpis.leads.sub_metric.py ?? 0).toLocaleString()})
+                    <span className="text-[10px] font-normal text-slate-400 flex items-center gap-0.5">
+                      <span className={`px-1 py-0.2 text-[9px] font-bold rounded border ${
+                        isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}>
+                        {pyShort}
+                      </span>
+                      <span>{(overview.kpis.leads.sub_metric.py ?? 0).toLocaleString()}</span>
                     </span>
                   )}
                 </div>
@@ -803,9 +819,20 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   {(overview.kpis.cucet.cy ?? 0).toLocaleString()}
                 </div>
                 <div className="flex items-center justify-between text-xs pt-1">
-                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                    {overview.kpis.cucet.py != null ? `${pyShort}: ${(overview.kpis.cucet.py ?? 0).toLocaleString()}` : "Single Year Scope"}
-                  </span>
+                  {overview.kpis.cucet.py != null ? (
+                    <div className="flex items-center gap-1.5">
+                      <span className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-md border tracking-wider select-none ${
+                        isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}>
+                        {pyShort}
+                      </span>
+                      <span className={`font-semibold tabular-nums ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                        {(overview.kpis.cucet.py ?? 0).toLocaleString()}
+                      </span>
+                    </div>
+                  ) : (
+                    <span className={isDark ? "text-slate-400" : "text-slate-500"}>Single Year Scope</span>
+                  )}
                   {renderMetricDiff(overview.kpis.cucet.change ?? 0, overview.kpis.cucet.growth_pct ?? null)}
                 </div>
               </div>
@@ -823,8 +850,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                   <div className="font-extrabold text-violet-500 dark:text-violet-400 flex items-center gap-1">
                     <span>{(overview.kpis.cucet.sub_metric.cy ?? 0).toLocaleString()}</span>
                     {overview.kpis.cucet.sub_metric.py != null && (
-                      <span className="text-[10px] font-normal text-slate-400">
-                        ({pyShort}: {(overview.kpis.cucet.sub_metric.py ?? 0).toLocaleString()})
+                      <span className="text-[10px] font-normal text-slate-400 flex items-center gap-0.5">
+                        <span className={`px-1 py-0.2 text-[9px] font-bold rounded border ${
+                          isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                        }`}>
+                          {pyShort}
+                        </span>
+                        <span>{(overview.kpis.cucet.sub_metric.py ?? 0).toLocaleString()}</span>
                       </span>
                     )}
                   </div>
@@ -870,9 +902,20 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 {(overview?.kpis?.admissions?.cy ?? 0).toLocaleString()}
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
-                <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview?.kpis?.admissions?.py != null ? `${pyShort}: ${(overview.kpis.admissions.py ?? 0).toLocaleString()}` : "Single Year Scope"}
-                </span>
+                {overview?.kpis?.admissions?.py != null ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-md border tracking-wider select-none ${
+                      isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                    }`}>
+                      {pyShort}
+                    </span>
+                    <span className={`font-semibold tabular-nums ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                      {(overview.kpis.admissions.py ?? 0).toLocaleString()}
+                    </span>
+                  </div>
+                ) : (
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Single Year Scope</span>
+                )}
                 {renderMetricDiff(overview?.kpis?.admissions?.change ?? 0, overview?.kpis?.admissions?.growth_pct ?? null)}
               </div>
             </div>
@@ -890,8 +933,13 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 <div className="font-extrabold text-blue-500 dark:text-blue-400 flex items-center gap-1">
                   <span>{(overview.kpis.admissions.sub_metric.cy ?? 0).toLocaleString()}</span>
                   {overview.kpis.admissions.sub_metric.py != null && (
-                    <span className="text-[10px] font-normal text-slate-400">
-                      ({pyShort}: {(overview.kpis.admissions.sub_metric.py ?? 0).toLocaleString()})
+                    <span className="text-[10px] font-normal text-slate-400 flex items-center gap-0.5">
+                      <span className={`px-1 py-0.2 text-[9px] font-bold rounded border ${
+                        isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                      }`}>
+                        {pyShort}
+                      </span>
+                      <span>{(overview.kpis.admissions.sub_metric.py ?? 0).toLocaleString()}</span>
                     </span>
                   )}
                 </div>
@@ -920,9 +968,20 @@ export const ExecutiveDashboard: React.FC<ExecutiveDashboardProps> = ({
                 {overview.kpis.conversion_rate.cy}%
               </div>
               <div className="flex items-center justify-between text-xs pt-1">
-                <span className={isDark ? "text-slate-400" : "text-slate-500"}>
-                  {overview.kpis.conversion_rate.py != null ? `${pyShort}: ${overview.kpis.conversion_rate.py}%` : "Single Year Scope"}
-                </span>
+                {overview.kpis.conversion_rate.py != null ? (
+                  <div className="flex items-center gap-1.5">
+                    <span className={`px-1.5 py-0.5 text-[10px] font-extrabold rounded-md border tracking-wider select-none ${
+                      isDark ? "bg-slate-800 text-slate-400 border-slate-700" : "bg-slate-100 text-slate-500 border-slate-200"
+                    }`}>
+                      {pyShort}
+                    </span>
+                    <span className={`font-semibold tabular-nums ${isDark ? "text-slate-300" : "text-slate-600"}`}>
+                      {overview.kpis.conversion_rate.py}%
+                    </span>
+                  </div>
+                ) : (
+                  <span className={isDark ? "text-slate-400" : "text-slate-500"}>Single Year Scope</span>
+                )}
                 {renderMetricDiff(overview.kpis.conversion_rate.change, overview.kpis.conversion_rate.growth_pct, true)}
               </div>
             </div>

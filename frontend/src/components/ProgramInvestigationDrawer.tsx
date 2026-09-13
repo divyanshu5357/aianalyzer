@@ -644,7 +644,13 @@ export default function ProgramInvestigationDrawer({
                             {metrics.var_admissions >= 0 ? '+' : ''}{metrics.var_admissions} ({metrics.var_admissions_pct >= 0 ? '+' : ''}{metrics.var_admissions_pct}%)
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs {pyShort} {metrics.py_admissions.toLocaleString()}</span>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <span>vs</span>
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                            {pyShort}
+                          </span>
+                          <span>{metrics.py_admissions.toLocaleString()}</span>
+                        </div>
                       </div>
 
                       <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
@@ -655,7 +661,13 @@ export default function ProgramInvestigationDrawer({
                             {metrics.var_leads >= 0 ? '+' : ''}{metrics.var_leads_pct}%
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>vs {pyShort} {metrics.py_leads.toLocaleString()}</span>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <span>vs</span>
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                            {pyShort}
+                          </span>
+                          <span>{metrics.py_leads.toLocaleString()}</span>
+                        </div>
                       </div>
 
                       <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
@@ -666,7 +678,12 @@ export default function ProgramInvestigationDrawer({
                             {metrics.var_conversion_rate >= 0 ? '+' : ''}{metrics.var_conversion_rate.toFixed(1)}%
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort} {metrics.conversion_rate_py.toFixed(1)}%</span>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                            {pyShort}
+                          </span>
+                          <span>{metrics.conversion_rate_py.toFixed(1)}%</span>
+                        </div>
                       </div>
 
                       <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
@@ -677,7 +694,12 @@ export default function ProgramInvestigationDrawer({
                             {metrics.var_cucet >= 0 ? '+' : ''}{metrics.var_cucet_pct}%
                           </span>
                         </div>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort} {metrics.py_cucet.toLocaleString()}</span>
+                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                            {pyShort}
+                          </span>
+                          <span>{metrics.py_cucet.toLocaleString()}</span>
+                        </div>
                       </div>
                     </div>
                   )}
