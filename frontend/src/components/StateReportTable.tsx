@@ -140,6 +140,218 @@ function RateTransitionBadge({
   );
 }
 
+// ── Mobile Detection Hook ─────────────────────────────────────────────────────
+
+function useIsMobile() {
+  const [isMobile, setIsMobile] = useState(false);
+  useEffect(() => {
+    const check = () => setIsMobile(window.innerWidth < 768);
+    check();
+    window.addEventListener('resize', check);
+    return () => window.removeEventListener('resize', check);
+  }, []);
+  return isMobile;
+}
+
+// ── Mobile State Card ─────────────────────────────────────────────────────────
+
+function MobileStateCard({
+  row,
+  isDark,
+  onSelect,
+}: {
+  row: StateReportRow;
+  isDark: boolean;
+  onSelect: () => void;
+}) {
+  const admUp = row.var_adm >= 0;
+  const leadsUp = row.var_leads >= 0;
+
+  const greenColor = isDark ? '#10b981' : '#059669';
+  const redColor = isDark ? '#ef4444' : '#dc2626';
+  const borderColor = admUp ? greenColor : redColor;
+  const admColor = admUp ? greenColor : redColor;
+  const leadsColor = leadsUp ? greenColor : redColor;
+
+  const cardBg = isDark
+    ? admUp ? 'rgba(16,185,129,0.04)' : 'rgba(239,68,68,0.04)'
+    : admUp ? 'rgba(16,185,129,0.03)' : 'rgba(239,68,68,0.03)';
+
+  return (
+    <div
+      onClick={onSelect}
+      className="active:scale-[0.98] transition-transform duration-100 cursor-pointer"
+      style={{
+        borderLeft: `3px solid ${borderColor}`,
+        borderRadius: 10,
+        background: isDark ? '#111827' : '#ffffff',
+        marginBottom: 8,
+        padding: '12px 14px',
+        boxShadow: isDark
+          ? '0 1px 3px rgba(0,0,0,0.4)'
+          : '0 1px 3px rgba(0,0,0,0.06), 0 0 0 1px rgba(0,0,0,0.04)',
+        border: isDark ? 'none' : '1px solid #e2e8f0',
+        borderLeftWidth: 3,
+        borderLeftStyle: 'solid' as const,
+        borderLeftColor: borderColor,
+        position: 'relative',
+        overflow: 'hidden',
+      }}
+    >
+      <div style={{ position: 'absolute', inset: 0, background: cardBg, pointerEvents: 'none' }} />
+
+      {/* Row 1: State name + Admission badge */}
+      <div style={{ position: 'relative', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 8, marginBottom: 10 }}>
+        <div className="flex items-center gap-2 flex-1 min-w-0">
+          <StatusDot status={row.status_indicator} />
+          <span style={{
+            fontSize: 13,
+            fontWeight: 700,
+            color: isDark ? '#e2e8f0' : '#1e293b',
+            overflow: 'hidden',
+            textOverflow: 'ellipsis',
+            whiteSpace: 'nowrap',
+          }}>
+            {row.name || row.state}
+          </span>
+        </div>
+
+        <span style={{
+          display: 'inline-flex',
+          alignItems: 'center',
+          gap: 3,
+          fontSize: 11,
+          fontWeight: 700,
+          padding: '3px 8px',
+          borderRadius: 6,
+          background: admUp ? (isDark ? 'rgba(16,185,129,0.15)' : 'rgba(5,150,105,0.12)') : (isDark ? 'rgba(239,68,68,0.15)' : 'rgba(220,38,38,0.12)'),
+          color: admColor,
+          border: `1px solid ${admUp ? (isDark ? 'rgba(16,185,129,0.25)' : 'rgba(5,150,105,0.2)') : (isDark ? 'rgba(239,68,68,0.25)' : 'rgba(220,38,38,0.2)')}`,
+          whiteSpace: 'nowrap',
+          flexShrink: 0,
+        }}>
+          <span style={{ fontSize: 12 }}>{admUp ? '▲' : '▼'}</span>
+          {admUp ? '+' : ''}{row.var_adm} Adm
+        </span>
+      </div>
+
+      {/* Row 2: 3-column metric grid */}
+      <div style={{ position: 'relative', display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 6 }}>
+        {/* Leads */}
+        <div style={{
+          background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+          borderRadius: 7,
+          padding: '7px 8px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 500, color: isDark ? '#9ca3af' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Leads</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#f1f5f9' : '#1e293b' }}>{row.cy_leads.toLocaleString()}</div>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: leadsColor,
+            marginTop: 1,
+          }}>
+            {leadsUp ? '↑' : '↓'} {leadsUp ? '+' : ''}{row.var_leads_pct.toFixed(0)}%
+          </div>
+        </div>
+
+        {/* CUCET */}
+        <div style={{
+          background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+          borderRadius: 7,
+          padding: '7px 8px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 500, color: isDark ? '#9ca3af' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>CUCET</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#f1f5f9' : '#1e293b' }}>{row.cy_cucet.toLocaleString()}</div>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: row.var_cucet >= 0 ? greenColor : redColor,
+            marginTop: 1,
+          }}>
+            {row.var_cucet >= 0 ? '↑' : '↓'} {row.var_cucet >= 0 ? '+' : ''}{row.var_cucet_pct.toFixed(0)}%
+          </div>
+        </div>
+
+        {/* Admissions */}
+        <div style={{
+          background: isDark ? 'rgba(255,255,255,0.04)' : '#f8fafc',
+          borderRadius: 7,
+          padding: '7px 8px',
+          textAlign: 'center',
+        }}>
+          <div style={{ fontSize: 9, fontWeight: 500, color: isDark ? '#9ca3af' : '#6b7280', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: 2 }}>Admissions</div>
+          <div style={{ fontSize: 14, fontWeight: 700, color: isDark ? '#f1f5f9' : '#1e293b' }}>{row.cy_adm.toLocaleString()}</div>
+          <div style={{
+            fontSize: 10,
+            fontWeight: 600,
+            color: admColor,
+            marginTop: 1,
+          }}>
+            {admUp ? '↑' : '↓'} {admUp ? '+' : ''}{row.var_adm_pct.toFixed(0)}%
+          </div>
+        </div>
+      </div>
+
+      {/* Row 3: Conversion rates */}
+      <div style={{
+        position: 'relative',
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        marginTop: 8,
+        paddingTop: 8,
+        borderTop: `1px solid ${isDark ? 'rgba(255,255,255,0.06)' : '#f1f5f9'}`,
+        fontSize: 11,
+      }}>
+        <span style={{ color: isDark ? '#9ca3af' : '#64748b' }}>
+          Lead-Adm: <span style={{ fontWeight: 600, color: isDark ? '#38bdf8' : '#0284c7' }}>{row.lead_adm_pct.toFixed(1)}%</span>
+        </span>
+        <span style={{ color: isDark ? '#9ca3af' : '#64748b' }}>
+          CUCET-Adm: <span style={{ fontWeight: 600, color: isDark ? '#c084fc' : '#9333ea' }}>{row.cucet_adm_pct.toFixed(1)}%</span>
+        </span>
+      </div>
+    </div>
+  );
+}
+
+// ── Mobile Total Card ─────────────────────────────────────────────────────────
+
+function MobileTotalCard({ row, isDark }: { row: StateReportRow; isDark: boolean }) {
+  return (
+    <div style={{
+      borderRadius: 10,
+      background: isDark ? 'linear-gradient(135deg, #1e1b4b, #312e81)' : 'linear-gradient(135deg, #eef2ff, #e0e7ff)',
+      padding: '14px 16px',
+      marginBottom: 8,
+      border: `1px solid ${isDark ? 'rgba(99,102,241,0.3)' : 'rgba(99,102,241,0.2)'}`,
+    }}>
+      <div style={{ fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '1px', color: isDark ? '#a5b4fc' : '#4f46e5', marginBottom: 10 }}>
+        ⬛ Total
+      </div>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: 8 }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Leads</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_leads.toLocaleString()}</div>
+          <VarBadge value={row.var_leads} pct={row.var_leads_pct} />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>CUCET</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_cucet.toLocaleString()}</div>
+          <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} />
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Adm</div>
+          <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#10b981' : '#059669' }}>{row.cy_adm.toLocaleString()}</div>
+          <VarBadge value={row.var_adm} pct={row.var_adm_pct} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ── Row expand/collapse helpers ───────────────────────────────────────────────
 
 type ExpandState = 'collapsed' | 'loading' | 'expanded';
@@ -194,6 +406,7 @@ export default function StateReportTable({
   sourceFilter = 'All',
   activeMetric = null,
 }: StateReportTableProps) {
+  const isMobile = useIsMobile();
   const { year: contextYear, periods } = useAppContext();
   const activeYear = filters.academic_year || contextYear || 2026;
   const activePeriod = periods?.find((p: PeriodSummary) => (p.period_end_year || p.period_start_year) === activeYear);
@@ -427,6 +640,32 @@ export default function StateReportTable({
       : 'text-slate-500 hover:text-slate-900 border-slate-200'
   }`;
   const tdBase = 'px-3 py-2 text-xs whitespace-nowrap border-b border-transparent';
+
+  // ── Mobile Card View ────────────────────────────────────────────────────────
+  if (isMobile) {
+    return (
+      <div style={{ maxHeight: 'calc(100vh - 190px)', overflowY: 'auto', padding: '4px 0', WebkitOverflowScrolling: 'touch' }}>
+        {/* Total card at top */}
+        {totalRow && <MobileTotalCard row={totalRow} isDark={isDark} />}
+
+        {/* State cards */}
+        {topRows.map((row) => (
+          <MobileStateCard
+            key={row.id || row.state || row.name}
+            row={row}
+            isDark={isDark}
+            onSelect={() => onSelectState && onSelectState(row.state_key || row.state || row.name)}
+          />
+        ))}
+
+        {topRows.length === 0 && (
+          <div style={{ textAlign: 'center', padding: '40px 16px', color: isDark ? '#6b7280' : '#9ca3af', fontSize: 13 }}>
+            No states found
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className={`flex flex-col h-full rounded-xl border overflow-hidden shadow-sm transition-colors ${

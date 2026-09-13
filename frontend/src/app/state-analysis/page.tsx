@@ -11,7 +11,7 @@ import { prefetchTopStatesChildren } from '@/lib/cache/prefetch';
 import type { StateReportRow, StateReportResponse, PeriodSummary } from '@/lib/api/types';
 
 const initialSlicerFilters: StateFilterState = {
-  regionType: 'GEN',
+  regionType: 'ALL',
   activeMetric: null,
   source: 'All',
 };
@@ -33,7 +33,7 @@ export default function StateAnalysisPage() {
   const cyYear = activePeriod?.period_end_year || activeYear || 2026;
   const cyShort = `'${String(cyYear).slice(-2)}`;
 
-  // State Slicer Filters (Image 2)
+  // State Slicer Filters
   const [stateFilters, setStateFilters] = useState<StateFilterState>(initialSlicerFilters);
 
   // Cached UI state
@@ -127,10 +127,15 @@ export default function StateAnalysisPage() {
     setSortOrder(order);
   }
 
-  // Filter rows based on active regionType (GEN vs INT)
+  // Filter rows based on active regionType (ALL vs GEN vs INT)
   const filteredReport = useMemo(() => {
     if (!report?.rows) return null;
     const { regionType } = stateFilters;
+
+    // Default to displaying all 26 state groups directly from dataset with 0 mutation
+    if (regionType === 'ALL') {
+      return report;
+    }
 
     const filteredRows = report.rows.filter((r) => {
       const name = (r.state || r.name || '').toLowerCase();
@@ -201,11 +206,12 @@ export default function StateAnalysisPage() {
       total,
       scope: report.scope,
     };
-  }, [report, stateFilters.regionType]);
+  }, [report, stateFilters]);
 
+  // Display report (defaults to all 26 state groups)
   const displayReport = filteredReport || report;
 
-  // Health summary metrics across unique states
+  // Diagnostics summary for Insights trigger
   const { attentionCount, watchCount, healthyCount, firstAttentionState } = useMemo(() => {
     let att = 0;
     let wt = 0;
@@ -248,7 +254,96 @@ export default function StateAnalysisPage() {
     <div className={`min-h-screen flex flex-col transition-colors duration-200 ${
       isDark ? 'bg-[#0B0F19] text-slate-100' : 'bg-slate-50 text-slate-900'
     }`}>
-      {/* State Wise Analysis Filter Bar (Image 2) */}
+      
+      {/* 1. Page Header (Identical layout to Programs page) */}
+      <div className={`border-b px-3 sm:px-6 pt-3 sm:pt-5 pb-3 sm:pb-4 shrink-0 ${
+        isDark ? 'border-[#1E293B]' : 'border-slate-200'
+      }`}>
+        <div className="flex items-start justify-between gap-3 sm:gap-4 flex-wrap">
+          <div>
+            <div className="flex items-center gap-2 mb-1">
+              <div className={`w-6 h-6 sm:w-7 sm:h-7 rounded-lg flex items-center justify-center ${
+                isDark ? 'bg-indigo-600/20' : 'bg-indigo-50'
+              }`}>
+                <svg className={`w-3.5 h-3.5 sm:w-4 sm:h-4 ${isDark ? 'text-indigo-400' : 'text-indigo-600'}`} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <circle cx="12" cy="12" r="10" />
+                  <path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z" />
+                  <path d="M2 12h20" />
+                </svg>
+              </div>
+              <h1 className={`text-sm sm:text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
+                State Wise Analysis
+              </h1>
+            </div>
+            <p className={`text-xs hidden sm:block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+              3-level drill-down: State Group → Source Category → Sub-Source. All metrics server-side.
+            </p>
+          </div>
+
+          {/* Header Action Area: AI Insights Entry Button + KPI Pills */}
+          <div className="flex items-center gap-2 sm:gap-3 flex-wrap">
+            {report && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (!selectedState && firstAttentionState) {
+                    setSelectedState(firstAttentionState);
+                  } else if (!selectedState && displayReport?.rows[0]) {
+                    setSelectedState(displayReport.rows[0].state || displayReport.rows[0].name);
+                  }
+                  setIsInvestigationOpen(true);
+                }}
+                className={`inline-flex items-center gap-2 px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-md hover:scale-[1.02] cursor-pointer border ${
+                  isDark
+                    ? 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 text-white border-indigo-400/30 shadow-indigo-950/40 hover:shadow-indigo-900/60'
+                    : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white border-indigo-500/30 shadow-indigo-200 hover:shadow-indigo-300'
+                }`}
+                title="Open State Performance Insight & Course Groups Analysis"
+              >
+                <span className="text-sm leading-none">✨</span>
+                <span>Insight</span>
+                {attentionCount > 0 || watchCount > 0 ? (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white shadow-xs">
+                    {attentionCount + watchCount} Issues
+                  </span>
+                ) : (
+                  <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white">
+                    Healthy
+                  </span>
+                )}
+              </button>
+            )}
+
+            {/* Stats pills (Shows Authentic 26 State Groups directly from dataset) */}
+            {displayReport && (
+              <div className="flex gap-1.5 sm:gap-2 flex-wrap">
+                {[
+                  { label: 'State Groups', value: String(displayReport.count), color: isDark ? 'text-indigo-300' : 'text-indigo-600' },
+                  { label: `${cyShort} Leads`, value: displayReport.total.cy_leads.toLocaleString(), color: isDark ? 'text-white' : 'text-slate-900' },
+                  { label: `${cyShort} Adm`, value: displayReport.total.cy_adm.toLocaleString(), color: isDark ? 'text-emerald-300' : 'text-emerald-600' },
+                  { label: 'Net Adm', value: displayReport.total.net_admissions.toLocaleString(), color: isDark ? 'text-sky-300' : 'text-sky-600' },
+                ].map(({ label, value, color }) => (
+                  <div
+                    key={label}
+                    className={`flex items-center gap-1 sm:gap-2 border rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 ${
+                      isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-xs'
+                    }`}
+                  >
+                    <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider ${
+                      isDark ? 'text-gray-400' : 'text-slate-500'
+                    }`}>
+                      {label}
+                    </span>
+                    <span className={`text-xs sm:text-sm font-bold ${color}`}>{value}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+
+      {/* 2. State Slicer Filter Bar (Unified design with Programs) */}
       <StateFilterBar
         filters={stateFilters}
         onChange={setStateFilters}
@@ -257,77 +352,8 @@ export default function StateAnalysisPage() {
         isDark={isDark}
       />
 
-      {/* Sub Header Action Area: AI Insights Entry Button + KPI Pills */}
-      <div className={`border-b px-3 sm:px-6 py-2.5 shrink-0 flex items-center justify-between gap-3 flex-wrap ${
-        isDark ? 'border-[#1E293B] bg-white/[0.02]' : 'border-slate-200 bg-slate-50/50'
-      }`}>
-        <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-          3-level drill-down: State Group → Source Category → Sub-Source. All metrics server-side.
-        </p>
-
-        <div className="flex items-center gap-3 flex-wrap ml-auto">
-          {displayReport && (
-            <button
-              type="button"
-              onClick={() => {
-                if (!selectedState && firstAttentionState) {
-                  setSelectedState(firstAttentionState);
-                } else if (!selectedState && displayReport.rows[0]) {
-                  setSelectedState(displayReport.rows[0].state || displayReport.rows[0].name);
-                }
-                setIsInvestigationOpen(true);
-              }}
-              className={`inline-flex items-center gap-2 px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all shadow-md hover:scale-[1.02] cursor-pointer border ${
-                isDark
-                  ? 'bg-gradient-to-r from-indigo-600 via-indigo-500 to-purple-600 text-white border-indigo-400/30 shadow-indigo-950/40 hover:shadow-indigo-900/60'
-                  : 'bg-gradient-to-r from-indigo-600 to-purple-600 text-white border-indigo-500/30 shadow-indigo-200 hover:shadow-indigo-300'
-              }`}
-              title="Open State Performance Insight & Course Groups Analysis"
-            >
-              <span className="text-sm leading-none">✨</span>
-              <span>Insight</span>
-              {attentionCount > 0 || watchCount > 0 ? (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-extrabold bg-rose-500 text-white shadow-xs">
-                  {attentionCount + watchCount} Issues
-                </span>
-              ) : (
-                <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500 text-white">
-                  Healthy
-                </span>
-              )}
-            </button>
-          )}
-
-          {/* Stats pills */}
-          {displayReport && (
-            <div className="flex gap-1.5 sm:gap-2 flex-wrap">
-              {[
-                { label: 'State Groups', value: String(displayReport.count), color: isDark ? 'text-indigo-300' : 'text-indigo-600' },
-                { label: `${cyShort} Leads`, value: displayReport.total.cy_leads.toLocaleString(), color: isDark ? 'text-white' : 'text-slate-900' },
-                { label: `${cyShort} Adm`, value: displayReport.total.cy_adm.toLocaleString(), color: isDark ? 'text-emerald-300' : 'text-emerald-600' },
-                { label: 'Net Adm', value: displayReport.total.net_admissions.toLocaleString(), color: isDark ? 'text-sky-300' : 'text-sky-600' },
-              ].map(({ label, value, color }) => (
-                <div
-                  key={label}
-                  className={`flex items-center gap-1 sm:gap-2 border rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 ${
-                    isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-xs'
-                  }`}
-                >
-                  <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider ${
-                    isDark ? 'text-gray-400' : 'text-slate-500'
-                  }`}>
-                    {label}
-                  </span>
-                  <span className={`text-xs sm:text-sm font-bold ${color}`}>{value}</span>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      </div>
-
-      {/* Legend & Hint */}
-      <div className={`px-6 py-2 flex gap-4 border-b shrink-0 flex-wrap ${
+      {/* 3. Legend & Hint */}
+      <div className={`px-3 sm:px-6 py-2 flex gap-4 border-b shrink-0 flex-wrap ${
         isDark ? 'border-white/5' : 'border-slate-100'
       }`}>
         {[
@@ -347,8 +373,8 @@ export default function StateAnalysisPage() {
         </div>
       </div>
 
-      {/* Table Frame */}
-      <div className="flex-1 px-4 py-3 min-h-0">
+      {/* 4. Table Frame */}
+      <div className="flex-1 px-3 sm:px-6 py-3 min-h-0">
         {error ? (
           <div className="flex flex-col items-center gap-3 py-16">
             <div className="w-10 h-10 rounded-full bg-red-500/10 flex items-center justify-center">
