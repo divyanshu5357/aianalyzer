@@ -75,11 +75,11 @@ export default function StateFilterBar({
 
   return (
     <div
-      className={`border-b px-3 sm:px-6 py-2.5 transition-colors select-none ${
+      className={`relative z-40 border-b px-3 sm:px-6 py-2.5 transition-colors select-none ${
         isDark ? 'bg-[#0d101d] border-white/10' : 'bg-white border-slate-200'
       }`}
     >
-      <div className="flex items-center justify-between gap-3 sm:gap-4 flex-wrap overflow-x-auto pb-1 scrollbar-thin">
+      <div className="flex items-center justify-between gap-3 sm:gap-4 flex-wrap pb-1">
         {/* Left Side: Title + Globe Icon + GEN/INT Toggle (Image 2) */}
         <div className="flex items-center gap-3 shrink-0">
           <div className="flex items-center gap-2">
