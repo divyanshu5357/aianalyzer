@@ -651,6 +651,8 @@ export interface SubProgramsAnalysis {
 export interface ProgramInvestigationNode {
   success: boolean;
   program_group: string;
+  program_name?: string;
+  parent_program_group?: string | null;
   academic_year: number;
   campus: string;
   current_drilldown: { dimension: string | null; parent_value: string | null };

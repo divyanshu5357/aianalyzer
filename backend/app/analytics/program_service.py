@@ -1641,6 +1641,7 @@ def get_program_investigation_node(
     ).fetchall()
     matching_pcodes = {r[0] for r in courses if r[1] and r[1].strip().upper() == program_group.strip().upper()}
     course_name_map = {r[0]: (r[2].strip() if r[2] else r[0].upper()) for r in courses if r[0]}
+    code_to_group_map = {r[0]: (r[1].strip() if r[1] else "") for r in courses if r[0]}
     if not matching_pcodes:
         matching_pcodes = {program_group.strip().lower()}
 
@@ -1972,6 +1973,7 @@ def get_program_investigation_node(
                 "cy_leads": d["cy_leads"],
                 "var_leads": d["var_leads"],
                 "var_leads_pct": d["var_leads_pct"],
+                "conversion_rate": d.get("conversion_rate", 0.0),
                 "can_drill_down": True,
             })
 
@@ -1993,6 +1995,11 @@ def get_program_investigation_node(
                 "cy_adm": d["cy_adm"],
                 "var_adm": d["var_adm"],
                 "var_adm_pct": d["var_adm_pct"],
+                "py_leads": d["py_leads"],
+                "cy_leads": d["cy_leads"],
+                "var_leads": d["var_leads"],
+                "var_leads_pct": d["var_leads_pct"],
+                "conversion_rate": d.get("conversion_rate", 0.0),
                 "can_drill_down": True,
             })
 
@@ -2005,9 +2012,17 @@ def get_program_investigation_node(
     all_dims = ["state", "lead_type", "main_source", "counsellor"]
     next_dims = [d for d in all_dims if d != drill_dim]
 
+    pg_norm = program_group.strip().lower()
+    p_name = course_name_map.get(pg_norm, program_group)
+    parent_pg = code_to_group_map.get(pg_norm, None)
+    if parent_pg and parent_pg.strip().upper() == program_group.strip().upper():
+        parent_pg = None
+
     res = {
         "success": True,
         "program_group": program_group,
+        "program_name": p_name,
+        "parent_program_group": parent_pg,
         "academic_year": academic_year,
         "campus": campus or "All Campuses",
         "current_drilldown": {"dimension": drill_dim or None, "parent_value": parent_val or None},

@@ -1455,8 +1455,19 @@ export default function StateInvestigationDrawer({
                                               </span>
                                             </div>
                                             <div className="mt-1 text-[10px] opacity-80 flex justify-between">
-                                              <span>Leads: {child.cy_leads || 0} ({child.var_leads_pct || 0}%)</span>
-                                              <span>Conv: {child.conversion_rate || 0}%</span>
+                                              <span>Leads: {(child.cy_leads ?? child.py_leads ?? 0).toLocaleString()} ({child.var_leads_pct !== undefined && child.var_leads_pct !== null ? `${child.var_leads_pct > 0 ? '+' : ''}${child.var_leads_pct}%` : '0%'})</span>
+                                              <span>Conv: {(() => {
+                                                if (typeof child.conversion_rate === 'number' && child.conversion_rate > 0) {
+                                                  return `${child.conversion_rate.toFixed(1)}%`;
+                                                }
+                                                if (child.cy_leads && child.cy_leads > 0 && typeof child.cy_adm === 'number') {
+                                                  return `${((child.cy_adm / child.cy_leads) * 100).toFixed(1)}%`;
+                                                }
+                                                if (child.cy_leads === 0) {
+                                                  return '—';
+                                                }
+                                                return '0.0%';
+                                              })()}</span>
                                             </div>
                                           </div>
                                         ))}

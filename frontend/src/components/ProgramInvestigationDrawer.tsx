@@ -45,6 +45,9 @@ export default function ProgramInvestigationDrawer({
     return initialProgram || availablePrograms[0]?.program_group || availablePrograms[0]?.program || 'CSE';
   });
 
+  // Track parent program group if investigating a sub-program code (e.g. parent: MCA, sub: MC305)
+  const [parentGroup, setParentGroup] = useState<string | null>(null);
+
   // Filter dropdown: issues only vs all
   const [issuesOnly, setIssuesOnly] = useState<boolean>(false);
 
@@ -77,6 +80,13 @@ export default function ProgramInvestigationDrawer({
       setError(null);
     }
   }, [initialProgram, selectedProgram]);
+
+  // Sync parent program group from nodeData if backend returns it
+  useEffect(() => {
+    if (nodeData?.parent_program_group) {
+      setParentGroup(nodeData.parent_program_group);
+    }
+  }, [nodeData]);
 
   // Clean up on unmount
   useEffect(() => {
@@ -184,16 +194,36 @@ export default function ProgramInvestigationDrawer({
       }
     });
 
+    // CRITICAL: Ensure currently investigated program (e.g. MC305 under MCA) is in the options list so <select> can display it
+    if (selectedProgram && !unique.has(selectedProgram)) {
+      const effectiveParent = parentGroup || nodeData?.parent_program_group;
+      const pName = nodeData?.program_name;
+      const displayName = pName && pName !== selectedProgram
+        ? `${selectedProgram} - ${pName}${effectiveParent ? ` (${effectiveParent})` : ''}`
+        : effectiveParent
+        ? `${selectedProgram} (${effectiveParent})`
+        : selectedProgram;
+
+      unique.set(selectedProgram, {
+        label: displayName,
+        health: nodeData?.health,
+      });
+    }
+
     const list = Array.from(unique.entries()).map(([name, info]) => ({
       name,
       ...info,
     }));
 
     if (issuesOnly) {
-      return list.filter((p) => p.health?.status === 'attention' || p.health?.status === 'watch');
+      return list.filter((p) => 
+        p.name === selectedProgram || 
+        p.health?.status === 'attention' || 
+        p.health?.status === 'watch'
+      );
     }
     return list;
-  }, [availablePrograms, issuesOnly]);
+  }, [availablePrograms, issuesOnly, selectedProgram, nodeData, parentGroup]);
 
   const issuesCount = React.useMemo(() => {
     const seen = new Set<string>();
@@ -211,8 +241,13 @@ export default function ProgramInvestigationDrawer({
   }, [availablePrograms]);
 
   // Handle program switch
-  function handleSelectProgram(prog: string) {
+  function handleSelectProgram(prog: string, parent?: string) {
     setSelectedProgram(prog);
+    if (parent) {
+      setParentGroup(parent);
+    } else if (availablePrograms.some((p) => (p.program_group || p.program) === prog)) {
+      setParentGroup(null);
+    }
     setDrillPath([]);
     setExpandedDriverIds(new Set());
     setChildDriversMap({});
@@ -399,11 +434,27 @@ export default function ProgramInvestigationDrawer({
             }`}
           >
             {/* Left: Program dropdown & Prev/Next navigation */}
-            <div className="flex items-center gap-2 min-w-0 flex-1">
+            <div className="flex items-center gap-2 min-w-0 flex-1 flex-wrap sm:flex-nowrap">
+              {/* Back to Parent Group button when investigating a sub-program code */}
+              {(parentGroup || nodeData?.parent_program_group) && selectedProgram !== (parentGroup || nodeData?.parent_program_group) && (
+                <button
+                  type="button"
+                  onClick={() => handleSelectProgram(parentGroup || nodeData?.parent_program_group || '')}
+                  className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-xs font-bold border transition-all cursor-pointer shrink-0 shadow-xs ${
+                    isDark
+                      ? 'bg-indigo-950/70 border-indigo-500/50 text-indigo-300 hover:bg-indigo-900/80 hover:text-white'
+                      : 'bg-indigo-50 border-indigo-300 text-indigo-700 hover:bg-indigo-100'
+                  }`}
+                  title={`Return to ${parentGroup || nodeData?.parent_program_group} overview`}
+                >
+                  <span>← Back to {parentGroup || nodeData?.parent_program_group}</span>
+                </button>
+              )}
+
               <label htmlFor="prog-select" className={`text-xs font-semibold shrink-0 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 Program:
               </label>
-              <div className="min-w-0 flex-1 max-w-[240px] sm:max-w-[320px]">
+              <div className="min-w-0 flex-1 max-w-[260px] sm:max-w-[340px]">
                 <select
                   id="prog-select"
                   value={selectedProgram}
@@ -419,7 +470,7 @@ export default function ProgramInvestigationDrawer({
                     const statusLabel = p.health?.label || 'Healthy';
                     return (
                       <option key={p.name} value={p.name}>
-                        {badgeIcon} {p.name} ({statusLabel})
+                        {badgeIcon} {p.label || p.name} ({statusLabel})
                       </option>
                     );
                   })}
@@ -583,8 +634,19 @@ export default function ProgramInvestigationDrawer({
                 >
                   <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
                     <div>
-                      <div className="flex items-center gap-2">
-                        <h3 className="text-base font-bold">{selectedProgram} Executive Digest</h3>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h3 className="text-base font-bold">
+                          {selectedProgram}
+                          {nodeData.program_name && nodeData.program_name !== selectedProgram ? ` - ${nodeData.program_name}` : ''}
+                          {' '}Executive Digest
+                        </h3>
+                        {(parentGroup || nodeData.parent_program_group) && selectedProgram !== (parentGroup || nodeData.parent_program_group) && (
+                          <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${
+                            isDark ? 'bg-indigo-950/60 text-indigo-300 border-indigo-700/50' : 'bg-indigo-50 text-indigo-700 border-indigo-200'
+                          }`}>
+                            Part of {parentGroup || nodeData.parent_program_group}
+                          </span>
+                        )}
                         {health && (
                           <span
                             className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-semibold ${
@@ -823,7 +885,7 @@ export default function ProgramInvestigationDrawer({
                                   </span>
                                   <button
                                     type="button"
-                                    onClick={() => handleSelectProgram(sp.program_code)}
+                                    onClick={() => handleSelectProgram(sp.program_code, selectedProgram)}
                                     className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-1 ${
                                       isDark ? 'border-slate-700 text-indigo-400 hover:text-white hover:bg-slate-800' : 'border-slate-300 text-indigo-600 hover:bg-indigo-50'
                                     }`}
@@ -924,7 +986,7 @@ export default function ProgramInvestigationDrawer({
                                 </span>
                                 <button
                                   type="button"
-                                  onClick={() => handleSelectProgram(sp.program_code)}
+                                  onClick={() => handleSelectProgram(sp.program_code, selectedProgram)}
                                   className={`text-[10px] px-2 py-0.5 rounded border transition-colors cursor-pointer flex items-center gap-1 ${
                                     isDark ? 'border-slate-700 text-indigo-400 hover:text-white hover:bg-slate-800' : 'border-slate-300 text-indigo-600 hover:bg-indigo-50'
                                   }`}
@@ -1107,8 +1169,19 @@ export default function ProgramInvestigationDrawer({
                                           </span>
                                         </div>
                                         <div className="mt-1 text-[10px] opacity-80 flex justify-between">
-                                          <span>Leads: {child.cy_leads || 0} ({child.var_leads_pct || 0}%)</span>
-                                          <span>Conv: {child.conversion_rate || 0}%</span>
+                                          <span>Leads: {(child.cy_leads ?? child.py_leads ?? 0).toLocaleString()} ({child.var_leads_pct !== undefined && child.var_leads_pct !== null ? `${child.var_leads_pct > 0 ? '+' : ''}${child.var_leads_pct}%` : '0%'})</span>
+                                          <span>Conv: {(() => {
+                                            if (typeof child.conversion_rate === 'number' && child.conversion_rate > 0) {
+                                              return `${child.conversion_rate.toFixed(1)}%`;
+                                            }
+                                            if (child.cy_leads && child.cy_leads > 0 && typeof child.cy_adm === 'number') {
+                                              return `${((child.cy_adm / child.cy_leads) * 100).toFixed(1)}%`;
+                                            }
+                                            if (child.cy_leads === 0) {
+                                              return '—';
+                                            }
+                                            return '0.0%';
+                                          })()}</span>
                                         </div>
                                       </div>
                                     ))}
