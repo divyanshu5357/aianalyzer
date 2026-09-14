@@ -12,8 +12,8 @@ import type {
 
 // ── Sparkline Component ──────────────────────────────────────────────────────
 
-function Sparkline({ data, color = '#6366f1' }: { data: number[]; color?: string }) {
-  if (!data || data.length < 2) return <span className="text-gray-500 text-xs">—</span>;
+function Sparkline({ data, color = '#6366f1', isDark = true }: { data: number[]; color?: string; isDark?: boolean }) {
+  if (!data || data.length < 2) return <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>—</span>;
 
   const max = Math.max(...data, 1);
   const min = Math.min(...data);
@@ -67,12 +67,16 @@ function StatusDot({ status }: { status?: 'positive' | 'negative' | 'neutral' })
 
 // ── Variance Badge ────────────────────────────────────────────────────────────
 
-function VarBadge({ value, pct }: { value: number; pct: number }) {
-  if (value === 0 && pct === 0) return <span className="text-gray-500 text-xs">—</span>;
+function VarBadge({ value, pct, isDark = true }: { value: number; pct: number; isDark?: boolean }) {
+  if (value === 0 && pct === 0) return <span className={isDark ? 'text-slate-500 text-xs' : 'text-slate-400 text-xs'}>—</span>;
   const isPos = value >= 0;
   const cls = isPos
-    ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
-    : 'bg-red-500/15 text-red-400 border border-red-500/25';
+    ? isDark
+      ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/25'
+      : 'bg-emerald-50 text-emerald-700 border border-emerald-200'
+    : isDark
+      ? 'bg-red-500/15 text-red-400 border border-red-500/25'
+      : 'bg-red-50 text-red-700 border border-red-200';
   const sign = isPos ? '+' : '';
   return (
     <span className={`inline-flex items-center gap-0.5 rounded-md px-1.5 py-0.5 text-[10px] font-semibold whitespace-nowrap ${cls}`}>
@@ -83,16 +87,20 @@ function VarBadge({ value, pct }: { value: number; pct: number }) {
 
 // ── Refund Cell ───────────────────────────────────────────────────────────────
 
-function RefundCell({ py, cy, diff }: { py: number; cy: number; diff: number }) {
+function RefundCell({ py, cy, diff, isDark = true }: { py: number; cy: number; diff: number; isDark?: boolean }) {
   if (py === 0 && cy === 0 && diff === 0) {
-    return <span className="text-gray-500 text-xs">—</span>;
+    return <span className={isDark ? 'text-slate-500 text-xs' : 'text-slate-400 text-xs'}>—</span>;
   }
   const isPos = diff > 0;
   const sign = isPos ? '+' : '';
-  const cls = isPos ? 'text-red-400' : diff < 0 ? 'text-emerald-400' : 'text-gray-500';
+  const cls = isPos
+    ? (isDark ? 'text-red-400' : 'text-red-600')
+    : diff < 0
+      ? (isDark ? 'text-emerald-400' : 'text-emerald-600')
+      : (isDark ? 'text-slate-400' : 'text-slate-500');
   return (
     <span className="text-xs whitespace-nowrap">
-      <span className="text-gray-300">{py} → {cy}</span>{' '}
+      <span className={isDark ? 'text-slate-300' : 'text-slate-600'}>{py} → {cy}</span>{' '}
       <span className={cls}>({sign}{diff})</span>
     </span>
   );
@@ -130,10 +138,10 @@ function RateTransitionBadge({
 
   return (
     <span className="text-[11px] tabular-nums whitespace-nowrap">
-      <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{py.toFixed(1)}%</span>
-      <span className="mx-1 text-slate-400">→</span>
-      <span className={`font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{cy.toFixed(1)}%</span>{' '}
-      <span className={isPos ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-600 font-semibold') : 'text-slate-400'}>
+      <span className={isDark ? 'text-slate-300' : 'text-slate-600 font-medium'}>{py.toFixed(1)}%</span>
+      <span className={`mx-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>→</span>
+      <span className={`font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{cy.toFixed(1)}%</span>{' '}
+      <span className={isPos ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-700 font-semibold') : (isDark ? 'text-slate-400' : 'text-slate-600 font-medium')}>
         ({sign}{diff.toFixed(1)}%)
       </span>
     </span>
@@ -335,17 +343,17 @@ function MobileTotalCard({ row, isDark }: { row: StateReportRow; isDark: boolean
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Leads</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_leads.toLocaleString()}</div>
-          <VarBadge value={row.var_leads} pct={row.var_leads_pct} />
+          <VarBadge value={row.var_leads} pct={row.var_leads_pct} isDark={isDark} />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>CUCET</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#ffffff' : '#1e293b' }}>{row.cy_cucet.toLocaleString()}</div>
-          <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} />
+          <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} />
         </div>
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: 9, color: isDark ? '#94a3b8' : '#6b7280', textTransform: 'uppercase', marginBottom: 2 }}>Adm</div>
           <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#10b981' : '#059669' }}>{row.cy_adm.toLocaleString()}</div>
-          <VarBadge value={row.var_adm} pct={row.var_adm_pct} />
+          <VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} />
         </div>
       </div>
     </div>
@@ -584,7 +592,7 @@ export default function StateReportTable({
     const isActive = sortBy === col;
     if (!isActive) {
       return (
-        <span className={`text-[10px] ml-1 select-none opacity-30 ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>
+        <span className={`text-[10px] ml-1 select-none opacity-60 ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
           ↑↓
         </span>
       );
@@ -636,8 +644,8 @@ export default function StateReportTable({
 
   const thBase = `px-3 py-2.5 text-[11px] font-semibold tracking-wider uppercase whitespace-nowrap cursor-pointer select-none transition-colors border-b ${
     isDark
-      ? 'text-gray-400 hover:text-white border-white/10'
-      : 'text-slate-500 hover:text-slate-900 border-slate-200'
+      ? 'text-slate-300 hover:text-white border-white/10'
+      : 'text-slate-700 hover:text-slate-950 border-slate-200'
   }`;
   const tdBase = 'px-3 py-2 text-xs whitespace-nowrap border-b border-transparent';
 
@@ -668,7 +676,7 @@ export default function StateReportTable({
   }
 
   return (
-    <div className={`flex flex-col h-full rounded-xl border overflow-hidden shadow-sm transition-colors ${
+    <div className={`relative z-10 flex flex-col h-full rounded-xl border overflow-hidden shadow-sm transition-colors ${
       isDark ? 'bg-[#0f1117] border-white/10' : 'bg-white border-slate-200'
     }`}>
       {/* Scrollable table container */}
@@ -680,7 +688,7 @@ export default function StateReportTable({
               {/* Frozen Column: State Name */}
               <th
                 onClick={() => handleHeaderClick('state')}
-                className={`sticky left-0 z-30 min-w-[240px] ${thBase} ${isDark ? 'bg-[#0d0f1a]' : 'bg-white'}`}
+                className={`sticky left-0 z-25 min-w-[240px] ${thBase} ${isDark ? 'bg-[#0d0f1a]' : 'bg-white'}`}
               >
                 <div className="flex items-center gap-1">
                   <span>STATE GROUP</span>
@@ -753,7 +761,7 @@ export default function StateReportTable({
             ) : flatRows.length === 0 ? (
               <tr>
                 <td colSpan={19} className="py-16 text-center">
-                  <p className={`text-sm ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                  <p className={`text-sm ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>
                     No state records found for the selected scope.
                   </p>
                 </td>
@@ -809,7 +817,7 @@ export default function StateReportTable({
                             }}
                             disabled={isLoading}
                             className={`w-4 h-4 flex items-center justify-center rounded text-[10px] transition-colors cursor-pointer ${
-                              isDark ? 'text-gray-400 hover:text-white' : 'text-slate-400 hover:text-slate-900'
+                              isDark ? 'text-slate-300 hover:text-white' : 'text-slate-600 hover:text-slate-900 font-bold'
                             }`}
                             title={isExpanded ? 'Collapse' : 'Expand'}
                           >
@@ -837,23 +845,23 @@ export default function StateReportTable({
                     </td>
 
                     {/* Numeric Columns */}
-                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                       {row.py_leads > 0 ? row.py_leads.toLocaleString() : '—'}
                     </td>
-                    <td className={`${tdBase} text-right font-mono font-bold ${isDark ? 'text-gray-100' : 'text-slate-800'}`}>
+                    <td className={`${tdBase} text-right font-mono font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                       {row.cy_leads.toLocaleString()}
                     </td>
                     <td className={`${tdBase} text-right`}>
-                      <VarBadge value={row.var_leads} pct={row.var_leads_pct} />
+                      <VarBadge value={row.var_leads} pct={row.var_leads_pct} isDark={isDark} />
                     </td>
-                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                       {row.py_cucet > 0 ? row.py_cucet.toLocaleString() : '—'}
                     </td>
-                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-gray-200' : 'text-slate-700'}`}>
+                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-slate-200' : 'text-slate-800'}`}>
                       {row.cy_cucet.toLocaleString()}
                     </td>
                     <td className={`${tdBase} text-right`}>
-                      <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} />
+                      <VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} />
                     </td>
                     <td className={`${tdBase} text-right whitespace-nowrap ${
                       activeMetric === 'lead_cucet_pct' ? (isDark ? 'bg-amber-950/30' : 'bg-amber-50/80') : ''
@@ -864,14 +872,14 @@ export default function StateReportTable({
                         isDark={isDark}
                       />
                     </td>
-                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                    <td className={`${tdBase} text-right font-mono ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                       {row.py_adm > 0 ? row.py_adm.toLocaleString() : '—'}
                     </td>
-                    <td className={`${tdBase} text-right font-mono font-bold ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
+                    <td className={`${tdBase} text-right font-mono font-bold ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
                       {row.cy_adm.toLocaleString()}
                     </td>
                     <td className={`${tdBase} text-right`}>
-                      <VarBadge value={row.var_adm} pct={row.var_adm_pct} />
+                      <VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} />
                     </td>
                     <td className={`${tdBase} text-right whitespace-nowrap ${
                       activeMetric === 'lead_adm_pct' ? (isDark ? 'bg-indigo-950/30' : 'bg-indigo-50/80') : ''
@@ -895,9 +903,10 @@ export default function StateReportTable({
                       <Sparkline
                         data={row.lead_trend}
                         color={row.level === 1 ? '#6366f1' : row.level === 2 ? '#10b981' : '#f59e0b'}
+                        isDark={isDark}
                       />
                     </td>
-                    <td className={`${tdBase} text-right font-mono font-bold ${isDark ? 'text-sky-400' : 'text-sky-600'}`}>
+                    <td className={`${tdBase} text-right font-mono font-bold ${isDark ? 'text-sky-300' : 'text-sky-700'}`}>
                       {row.net_admissions.toLocaleString()}
                     </td>
                     <td className={`${tdBase} text-right font-mono`}>
@@ -905,15 +914,16 @@ export default function StateReportTable({
                         py={row.refund_py_vs_cy.py}
                         cy={row.refund_py_vs_cy.cy}
                         diff={row.refund_py_vs_cy.diff}
+                        isDark={isDark}
                       />
                     </td>
-                    <td className={`${tdBase} text-right text-[11px] ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+                    <td className={`${tdBase} text-right text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       {row.refund_pct_py_vs_cy.cy_pct.toFixed(1)}%
                     </td>
-                    <td className={`${tdBase} text-center ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                    <td className={`${tdBase} text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       {row.fee_paid}
                     </td>
-                    <td className={`${tdBase} text-center ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+                    <td className={`${tdBase} text-center ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                       {row.net_fee_paid_pct}
                     </td>
                   </tr>
@@ -931,7 +941,7 @@ export default function StateReportTable({
             }`}>
               <tr>
                 {/* Frozen Total label */}
-                <td className={`sticky left-0 z-30 px-3 py-3 text-xs uppercase tracking-wider ${
+                <td className={`sticky left-0 z-25 px-3 py-3 text-xs uppercase tracking-wider ${
                   isDark ? 'bg-[#0d1030] text-indigo-300' : 'bg-[#eef2ff] text-indigo-700'
                 }`}>
                   <div className="flex items-center gap-2">
@@ -939,23 +949,23 @@ export default function StateReportTable({
                     <span>TOTAL ({topRows.length} STATE GROUPS)</span>
                   </div>
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-xs opacity-75">
+                <td className={`px-3 py-3 text-right font-mono text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   {totalRow.py_leads.toLocaleString()}
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-xs font-extrabold">
+                <td className={`px-3 py-3 text-right font-mono text-xs font-extrabold ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   {totalRow.cy_leads.toLocaleString()}
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <VarBadge value={totalRow.var_leads} pct={totalRow.var_leads_pct} />
+                  <VarBadge value={totalRow.var_leads} pct={totalRow.var_leads_pct} isDark={isDark} />
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-xs opacity-75">
+                <td className={`px-3 py-3 text-right font-mono text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   {totalRow.py_cucet.toLocaleString()}
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-xs">
+                <td className={`px-3 py-3 text-right font-mono text-xs ${isDark ? 'text-white' : 'text-slate-900'}`}>
                   {totalRow.cy_cucet.toLocaleString()}
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <VarBadge value={totalRow.var_cucet} pct={totalRow.var_cucet_pct} />
+                  <VarBadge value={totalRow.var_cucet} pct={totalRow.var_cucet_pct} isDark={isDark} />
                 </td>
                 <td className={`px-3 py-3 text-right text-xs whitespace-nowrap ${
                   activeMetric === 'lead_cucet_pct' ? (isDark ? 'bg-amber-950/30' : 'bg-amber-50/80') : ''
@@ -966,14 +976,14 @@ export default function StateReportTable({
                     isDark={isDark}
                   />
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-xs opacity-75">
+                <td className={`px-3 py-3 text-right font-mono text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   {totalRow.py_adm.toLocaleString()}
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-xs text-emerald-400 font-bold">
+                <td className={`px-3 py-3 text-right font-mono text-xs font-bold ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>
                   {totalRow.cy_adm.toLocaleString()}
                 </td>
                 <td className="px-3 py-3 text-right">
-                  <VarBadge value={totalRow.var_adm} pct={totalRow.var_adm_pct} />
+                  <VarBadge value={totalRow.var_adm} pct={totalRow.var_adm_pct} isDark={isDark} />
                 </td>
                 <td className={`px-3 py-3 text-right text-xs whitespace-nowrap ${
                   activeMetric === 'lead_adm_pct' ? (isDark ? 'bg-indigo-950/30' : 'bg-indigo-50/80') : ''
@@ -994,9 +1004,9 @@ export default function StateReportTable({
                   />
                 </td>
                 <td className="px-3 py-3 text-center">
-                  <Sparkline data={totalRow.lead_trend} color="#818cf8" />
+                  <Sparkline data={totalRow.lead_trend} color="#818cf8" isDark={isDark} />
                 </td>
-                <td className="px-3 py-3 text-right font-mono text-xs text-sky-400 font-bold">
+                <td className={`px-3 py-3 text-right font-mono text-xs font-bold ${isDark ? 'text-sky-300' : 'text-sky-700'}`}>
                   {totalRow.net_admissions.toLocaleString()}
                 </td>
                 <td className="px-3 py-3 text-right font-mono text-xs">
@@ -1004,13 +1014,14 @@ export default function StateReportTable({
                     py={totalRow.refund_py_vs_cy.py}
                     cy={totalRow.refund_py_vs_cy.cy}
                     diff={totalRow.refund_py_vs_cy.diff}
+                    isDark={isDark}
                   />
                 </td>
-                <td className="px-3 py-3 text-right text-xs opacity-75">
+                <td className={`px-3 py-3 text-right text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
                   {totalRow.refund_pct_py_vs_cy.cy_pct.toFixed(1)}%
                 </td>
-                <td className="px-3 py-3 text-center text-xs opacity-60">N/A</td>
-                <td className="px-3 py-3 text-center text-xs opacity-60">N/A</td>
+                <td className={`px-3 py-3 text-center text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>N/A</td>
+                <td className={`px-3 py-3 text-center text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>N/A</td>
               </tr>
             </tfoot>
           )}

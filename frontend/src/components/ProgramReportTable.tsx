@@ -27,8 +27,8 @@ function useIsMobile(breakpoint = 640) {
 
 // ── Sparkline Component ──────────────────────────────────────────────────────
 
-function Sparkline({ data, color = '#6366f1' }: { data: number[]; color?: string }) {
-  if (!data || data.length < 2) return <span className="text-gray-500 text-xs">—</span>;
+function Sparkline({ data, color = '#6366f1', isDark = true }: { data: number[]; color?: string; isDark?: boolean }) {
+  if (!data || data.length < 2) return <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>—</span>;
 
   const max = Math.max(...data, 1);
   const min = Math.min(...data);
@@ -89,7 +89,7 @@ function MiniSparkline({ data, color = '#6366f1' }: { data: number[]; color?: st
 // ── Variance Badge ────────────────────────────────────────────────────────────
 
 function VarBadge({ value, pct, isDark = true }: { value: number; pct: number; isDark?: boolean }) {
-  if (value === 0 && pct === 0) return <span className="text-gray-500 text-xs">—</span>;
+  if (value === 0 && pct === 0) return <span className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>—</span>;
   const isPos = value >= 0;
   const cls = isPos
     ? isDark
@@ -115,10 +115,10 @@ function RefundCell({ py, cy, diff, isDark = true }: { py: number; cy: number; d
     ? (isDark ? 'text-red-400' : 'text-red-600')
     : diff < 0
       ? (isDark ? 'text-emerald-400' : 'text-emerald-600')
-      : (isDark ? 'text-gray-500' : 'text-slate-400');
+      : (isDark ? 'text-slate-400' : 'text-slate-600 font-medium');
   return (
     <span className="text-xs whitespace-nowrap">
-      <span className={isDark ? 'text-gray-300' : 'text-slate-500'}>{py} → {cy}</span>{' '}
+      <span className={isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}>{py} → {cy}</span>{' '}
       <span className={cls}>({sign}{diff})</span>
     </span>
   );
@@ -156,10 +156,10 @@ function RateTransitionBadge({
 
   return (
     <span className="text-[11px] tabular-nums whitespace-nowrap">
-      <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{py.toFixed(1)}%</span>
-      <span className="mx-1 text-slate-400">→</span>
-      <span className={`font-semibold ${isDark ? 'text-slate-100' : 'text-slate-800'}`}>{cy.toFixed(1)}%</span>{' '}
-      <span className={isPos ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-600 font-semibold') : 'text-slate-400'}>
+      <span className={isDark ? 'text-slate-300' : 'text-slate-600 font-medium'}>{py.toFixed(1)}%</span>
+      <span className={`mx-1 ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>→</span>
+      <span className={`font-semibold ${isDark ? 'text-slate-100' : 'text-slate-900'}`}>{cy.toFixed(1)}%</span>{' '}
+      <span className={isPos ? (isDark ? 'text-emerald-400 font-semibold' : 'text-emerald-700 font-semibold') : (isDark ? 'text-slate-400' : 'text-slate-600 font-medium')}>
         ({sign}{diff.toFixed(1)}%)
       </span>
     </span>
@@ -737,7 +737,9 @@ export default function ProgramReportTable({
                   e.stopPropagation();
                   handleToggle(row);
                 }}
-                className="flex-shrink-0 w-5 h-5 rounded flex items-center justify-center text-gray-400 hover:text-indigo-400 hover:bg-indigo-500/10 transition-all cursor-pointer"
+                className={`flex-shrink-0 w-5 h-5 rounded flex items-center justify-center transition-all cursor-pointer ${
+                  isDark ? 'text-slate-300 hover:text-indigo-300 hover:bg-indigo-500/20' : 'text-slate-600 hover:text-indigo-700 hover:bg-indigo-50 font-bold'
+                }`}
                 title={isExpanded ? 'Collapse' : 'Expand hierarchy'}
               >
                 {isLoading ? (
@@ -769,13 +771,13 @@ export default function ProgramReportTable({
         </td>
 
         {/* Col 2-4: PY/CY Leads + Var */}
-        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{row.py_leads.toLocaleString()}</td>
-        <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-gray-100' : 'text-slate-800'}`}>{row.cy_leads.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{row.py_leads.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_leads.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_leads} pct={row.var_leads_pct} isDark={isDark} /></td>
 
         {/* Col 5-7: PY/CY CUCET + Var */}
-        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{row.py_cucet.toLocaleString()}</td>
-        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-100' : 'text-slate-800'}`}>{row.cy_cucet.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{row.py_cucet.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_cucet.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} /></td>
 
         {/* Col 8: Lead-CUCET % */}
@@ -788,8 +790,8 @@ export default function ProgramReportTable({
         </td>
 
         {/* Col 9-11: PY/CY Adm + Var */}
-        <td className={`px-3 py-2 text-xs text-right tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-400'}`}>{row.py_adm.toLocaleString()}</td>
-        <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>{row.cy_adm.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{row.py_adm.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-bold ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>{row.cy_adm.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} /></td>
 
         {/* Col 12: Lead-Adm % */}
@@ -812,11 +814,11 @@ export default function ProgramReportTable({
 
         {/* Col 14: Lead Trend sparkline */}
         <td className="px-3 py-2">
-          <Sparkline data={row.lead_trend} color={sparklineColor(row.level)} />
+          <Sparkline data={row.lead_trend} color={sparklineColor(row.level)} isDark={isDark} />
         </td>
 
         {/* Col 15: Net Admissions */}
-        <td className={`px-3 py-2 text-xs text-right tabular-nums font-medium ${isDark ? 'text-gray-200' : 'text-slate-700'}`}>{row.net_admissions.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right tabular-nums font-semibold ${isDark ? 'text-sky-300' : 'text-sky-700'}`}>{row.net_admissions.toLocaleString()}</td>
 
         {/* Col 16: Refund Py vs Cy */}
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
@@ -827,7 +829,7 @@ export default function ProgramReportTable({
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
           {refundPct ? (
             <span className="text-xs">
-              <span className={isDark ? 'text-gray-400' : 'text-slate-500'}>{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
+              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
               <span className={refundPct.diff_pct <= 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-red-400' : 'text-red-600')}>
                 ({refundPct.diff_pct >= 0 ? '+' : ''}{refundPct.diff_pct.toFixed(0)}%)
               </span>
@@ -836,8 +838,8 @@ export default function ProgramReportTable({
         </td>
 
         {/* Col 18-19: Fee Paid / Net-Fee % (N/A) */}
-        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-gray-600' : 'text-slate-400'}`} title="Fee payment data not present in uploaded CRM dataset">N/A</td>
-        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-gray-600' : 'text-slate-400'}`} title="Fee payment data not present in uploaded CRM dataset">N/A</td>
+        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-slate-400' : 'text-slate-500'}`} title="Fee payment data not present in uploaded CRM dataset">N/A</td>
+        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-slate-400' : 'text-slate-500'}`} title="Fee payment data not present in uploaded CRM dataset">N/A</td>
       </tr>
     );
   }
@@ -858,10 +860,10 @@ export default function ProgramReportTable({
             <span className={`text-xs font-bold uppercase tracking-wider ${isDark ? 'text-indigo-300' : 'text-indigo-600'}`}>⬛ Total</span>
           </div>
         </td>
-        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_leads.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{row.py_leads.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_leads.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_leads} pct={row.var_leads_pct} isDark={isDark} /></td>
-        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_cucet.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{row.py_cucet.toLocaleString()}</td>
         <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.cy_cucet.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_cucet} pct={row.var_cucet_pct} isDark={isDark} /></td>
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
@@ -871,8 +873,8 @@ export default function ProgramReportTable({
             isDark={isDark}
           />
         </td>
-        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{row.py_adm.toLocaleString()}</td>
-        <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-600'}`}>{row.cy_adm.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right font-semibold tabular-nums ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>{row.py_adm.toLocaleString()}</td>
+        <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-emerald-300' : 'text-emerald-700'}`}>{row.cy_adm.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right"><VarBadge value={row.var_adm} pct={row.var_adm_pct} isDark={isDark} /></td>
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
           <RateTransitionBadge
@@ -889,7 +891,7 @@ export default function ProgramReportTable({
           />
         </td>
         <td className="px-3 py-2">
-          <Sparkline data={row.lead_trend} color="#818cf8" />
+          <Sparkline data={row.lead_trend} color="#818cf8" isDark={isDark} />
         </td>
         <td className={`px-3 py-2 text-xs text-right font-bold tabular-nums ${isDark ? 'text-white' : 'text-slate-900'}`}>{row.net_admissions.toLocaleString()}</td>
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
@@ -898,15 +900,15 @@ export default function ProgramReportTable({
         <td className="px-3 py-2 text-xs text-right whitespace-nowrap">
           {refundPct ? (
             <span className="text-xs">
-              <span className={isDark ? 'text-gray-400' : 'text-slate-500'}>{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
+              <span className={isDark ? 'text-slate-400' : 'text-slate-500'}>{refundPct.py_pct.toFixed(0)}% → {refundPct.cy_pct.toFixed(0)}%</span>{' '}
               <span className={refundPct.diff_pct <= 0 ? (isDark ? 'text-emerald-400' : 'text-emerald-600') : (isDark ? 'text-red-400' : 'text-red-600')}>
                 ({refundPct.diff_pct >= 0 ? '+' : ''}{refundPct.diff_pct.toFixed(0)}%)
               </span>
             </span>
           ) : '—'}
         </td>
-        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-gray-600' : 'text-slate-400'}`}>N/A</td>
-        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-gray-600' : 'text-slate-400'}`}>N/A</td>
+        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>N/A</td>
+        <td className={`px-3 py-2 text-xs text-right ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>N/A</td>
       </tr>
     );
   }
@@ -956,7 +958,7 @@ export default function ProgramReportTable({
         </span>
       );
     }
-    return <span className={`ml-1 ${isDark ? 'text-emerald-400/40 group-hover:text-emerald-200' : 'text-slate-700/50 group-hover:text-slate-900'}`}>↕</span>;
+    return <span className={`ml-1 ${isDark ? 'text-emerald-300/70 group-hover:text-white' : 'text-slate-700/70 group-hover:text-slate-950'}`}>↕</span>;
   }
 
   // ── Mobile Loading Skeleton ──────────────────────────────────────────────────
@@ -1067,25 +1069,25 @@ export default function ProgramReportTable({
   // ── Desktop Table View ──────────────────────────────────────────────────────
   return (
     <div
-      className={`relative overflow-auto rounded-xl border ${isDark ? 'border-white/10' : 'border-slate-200'}`}
+      className={`relative z-10 overflow-auto rounded-xl border ${isDark ? 'border-white/10' : 'border-slate-200'}`}
       style={{ maxHeight: 'calc(100vh - 190px)', scrollbarWidth: 'thin' }}
     >
       <table className="w-full border-collapse text-xs" style={{ minWidth: 1600 }}>
-        <thead className="sticky top-0 z-30">
+        <thead className="sticky top-0 z-20">
           <tr className={`border-b ${isDark ? 'bg-[#0f241d] border-emerald-500/20' : 'bg-[#9fe3be] border-emerald-400/50'}`}>
             {headers.map((h, i) => (
               <th
                 key={i}
                 onClick={() => handleHeaderClick(h.sortKey)}
                 className={[
-                  'px-3 py-3 text-left font-bold uppercase tracking-wider text-[11px] whitespace-nowrap border-b select-none',
+                  'px-3 py-3 text-left font-bold uppercase tracking-wider text-[11px] whitespace-nowrap border-b select-none transition-colors',
                   isDark ? 'border-emerald-500/20' : 'border-emerald-400/40',
                   h.sortKey ? 'cursor-pointer group' : 'cursor-default',
                   sortBy === h.sortKey
                     ? (isDark ? 'text-white underline decoration-2' : 'text-slate-950 underline decoration-2')
-                    : (isDark ? 'text-emerald-200' : 'text-slate-900'),
+                    : (isDark ? 'text-emerald-100 hover:text-white font-bold' : 'text-slate-900 hover:text-black font-bold'),
                   h.frozen
-                    ? `sticky left-0 z-20 border-r ${isDark ? 'bg-[#0f241d] border-r-emerald-500/20' : 'bg-[#9fe3be] border-r-emerald-300'}`
+                    ? `sticky left-0 z-25 border-r ${isDark ? 'bg-[#0f241d] border-r-emerald-500/20' : 'bg-[#9fe3be] border-r-emerald-300'}`
                     : '',
                 ].join(' ')}
                 style={h.frozen ? { minWidth: 260 } : {}}

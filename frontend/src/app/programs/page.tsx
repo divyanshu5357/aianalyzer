@@ -314,7 +314,7 @@ export default function ProgramsPage() {
                   { label: 'Net Adm', value: displayReport.total.net_admissions.toLocaleString(), color: isDark ? 'text-sky-300' : 'text-sky-600' },
                 ].map(({ label, value, color }) => (
                   <div key={label} className={`flex items-center gap-1 sm:gap-2 border rounded-lg px-2 sm:px-3 py-1 sm:py-1.5 ${isDark ? 'bg-white/5 border-white/10' : 'bg-white border-slate-200 shadow-sm'}`}>
-                    <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{label}</span>
+                    <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider ${isDark ? 'text-slate-300' : 'text-slate-700 font-semibold'}`}>{label}</span>
                     <span className={`text-xs sm:text-sm font-bold ${color}`}>{value}</span>
                   </div>
                 ))}
@@ -343,10 +343,10 @@ export default function ProgramsPage() {
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${color}`} />
-            <span className={`text-[10px] ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>{label}</span>
+            <span className={`text-[10px] ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>{label}</span>
           </div>
         ))}
-        <div className={`ml-auto text-[10px] hidden md:flex items-center gap-2 ${isDark ? 'text-gray-400' : 'text-slate-500'}`}>
+        <div className={`ml-auto text-[10px] hidden md:flex items-center gap-2 ${isDark ? 'text-slate-300' : 'text-slate-600 font-medium'}`}>
           <span>▸ expand · ▾ collapse</span>
           <span className="text-indigo-400 font-medium">· click any row for Insight</span>
           <span>· click column ↑↓ to sort</span>
@@ -354,7 +354,7 @@ export default function ProgramsPage() {
       </div>
       {/* Mobile hint */}
       <div className={`sm:hidden px-3 py-1.5 border-b shrink-0 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
-        <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>Tap any program for Insight · <span className="text-emerald-400">▲ up</span> <span className="text-red-400">▼ down</span></span>
+        <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>Tap any program for Insight · <span className="text-emerald-400">▲ up</span> <span className="text-red-400">▼ down</span></span>
       </div>
 
       {/* Table */}
@@ -369,7 +369,7 @@ export default function ProgramsPage() {
             <p className="text-sm text-red-400">{error}</p>
             <button
               onClick={() => fetchReport(sortBy, sortOrder)}
-              className={`text-xs border rounded-lg px-3 py-1.5 transition-colors ${isDark ? 'text-gray-400 hover:text-white border-white/10' : 'text-slate-500 hover:text-slate-900 border-slate-200'}`}
+              className={`text-xs border rounded-lg px-3 py-1.5 transition-colors cursor-pointer ${isDark ? 'text-slate-300 hover:text-white border-white/10' : 'text-slate-700 hover:text-slate-900 border-slate-300'}`}
             >
               Retry
             </button>

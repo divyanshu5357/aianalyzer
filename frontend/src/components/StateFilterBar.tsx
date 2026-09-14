@@ -86,7 +86,7 @@ export default function StateFilterBar({
   return (
     <div
       ref={barRef}
-      className={`relative z-30 border-b px-3 sm:px-6 py-2.5 transition-colors select-none ${
+      className={`relative z-40 border-b px-3 sm:px-6 py-2.5 transition-colors select-none ${
         isDark ? 'bg-[#0d101d] border-white/10' : 'bg-slate-50/80 border-slate-200'
       }`}
     >
@@ -129,10 +129,10 @@ export default function StateFilterBar({
                       handleRegionChange(r);
                       setOpenDropdown(null);
                     }}
-                    className={`px-3 py-1.5 rounded-lg hover:bg-amber-600/10 hover:text-amber-400 cursor-pointer flex items-center justify-between transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
                       filters.regionType === r
                         ? (isDark ? 'bg-amber-600/20 text-amber-300 font-bold' : 'bg-amber-50 text-amber-700 font-bold')
-                        : ''
+                        : (isDark ? 'hover:bg-amber-600/20 hover:text-amber-300 text-slate-200' : 'hover:bg-amber-50 hover:text-amber-700 text-slate-800')
                     }`}
                   >
                     <span>{regionLabels[r]}</span>
@@ -177,10 +177,10 @@ export default function StateFilterBar({
                       onChange({ ...filters, source: src });
                       setOpenDropdown(null);
                     }}
-                    className={`px-3 py-1.5 rounded-lg hover:bg-indigo-600/10 hover:text-indigo-400 cursor-pointer flex items-center justify-between transition-colors ${
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
                       filters.source === src
                         ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold')
-                        : ''
+                        : (isDark ? 'hover:bg-indigo-600/20 hover:text-indigo-300 text-slate-200' : 'hover:bg-indigo-50 hover:text-indigo-700 text-slate-800')
                     }`}
                   >
                     <span className="truncate">{src}</span>

@@ -330,7 +330,7 @@ export default function StateAnalysisPage() {
                     }`}
                   >
                     <span className={`text-[9px] sm:text-[10px] uppercase tracking-wider ${
-                      isDark ? 'text-gray-400' : 'text-slate-500'
+                      isDark ? 'text-slate-300' : 'text-slate-700 font-semibold'
                     }`}>
                       {label}
                     </span>
@@ -363,12 +363,12 @@ export default function StateAnalysisPage() {
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${color}`} />
-            <span className={`text-[10px] ${isDark ? 'text-gray-500' : 'text-slate-400'}`}>
+            <span className={`text-[10px] ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>
               {label}
             </span>
           </div>
         ))}
-        <div className={`ml-auto text-[10px] hidden md:block ${isDark ? 'text-gray-600' : 'text-slate-400'}`}>
+        <div className={`ml-auto text-[10px] hidden md:block ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
           ▸ expand · ▾ collapse · click any row for Insight · click column ↑↓ to sort
         </div>
       </div>
@@ -386,7 +386,7 @@ export default function StateAnalysisPage() {
             <button
               onClick={() => fetchReport(sortBy, sortOrder)}
               className={`text-xs border rounded-lg px-3 py-1.5 transition-colors cursor-pointer ${
-                isDark ? 'text-gray-400 hover:text-white border-white/10' : 'text-slate-500 hover:text-slate-900 border-slate-200'
+                isDark ? 'text-slate-300 hover:text-white border-white/10' : 'text-slate-700 hover:text-slate-900 border-slate-300'
               }`}
             >
               Retry

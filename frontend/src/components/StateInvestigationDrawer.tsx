@@ -449,7 +449,7 @@ export default function StateInvestigationDrawer({
                     Course Group & Root Cause
                   </span>
                 </div>
-                <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   Course groups breakdown, admissions, leads, CUCET & conversion drivers
                 </p>
               </div>
@@ -462,7 +462,7 @@ export default function StateInvestigationDrawer({
                 className={`p-1.5 rounded-lg border transition-colors ${
                   isDark
                     ? 'border-slate-700/80 text-slate-400 hover:text-white hover:bg-slate-800'
-                    : 'border-slate-200 text-slate-500 hover:text-slate-800 hover:bg-slate-100'
+                    : 'border-slate-200 text-slate-600 hover:text-slate-900 hover:bg-slate-100'
                 }`}
                 title="Close drawer (ESC)"
               >
@@ -572,7 +572,7 @@ export default function StateInvestigationDrawer({
                 isDark ? 'border-slate-800 bg-[#0B0F19]' : 'border-slate-100 bg-slate-100/50'
               }`}
             >
-              <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+              <span className={`text-[10px] uppercase font-bold tracking-wider ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                 Path:
               </span>
               <button
@@ -608,7 +608,7 @@ export default function StateInvestigationDrawer({
                 type="button"
                 onClick={() => handleStepBack(-1)}
                 className={`ml-auto text-[10px] px-2 py-0.5 rounded border transition-colors ${
-                  isDark ? 'border-slate-700 text-slate-400 hover:text-white' : 'border-slate-200 text-slate-500 hover:text-slate-800'
+                  isDark ? 'border-slate-700 text-slate-300 hover:text-white' : 'border-slate-200 text-slate-700 hover:text-slate-900 font-medium'
                 }`}
               >
                 ↺ Reset
@@ -621,7 +621,7 @@ export default function StateInvestigationDrawer({
             {loading && !nodeData && (
               <div className="py-20 flex flex-col items-center justify-center gap-3">
                 <div className="w-8 h-8 rounded-full border-2 border-indigo-500 border-t-transparent animate-spin" />
-                <p className={`text-xs ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                <p className={`text-xs ${isDark ? 'text-slate-300' : 'text-slate-600'}`}>
                   Analyzing course groups, admissions, leads & CUCET across {selectedState}...
                 </p>
               </div>
@@ -711,67 +711,67 @@ export default function StateInvestigationDrawer({
                   {/* Metrics Ribbon */}
                   {metrics && (
                     <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-2 border-t border-slate-700/40">
-                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
-                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Admissions</span>
+                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200 shadow-xs'}`}>
+                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Admissions</span>
                         <div className="flex items-baseline gap-1.5 mt-0.5">
                           <span className="text-base font-bold tabular-nums">{metrics.cy_admissions.toLocaleString()}</span>
                           <span className={`text-xs font-semibold tabular-nums ${metrics.var_admissions >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {metrics.var_admissions >= 0 ? '+' : ''}{metrics.var_admissions} ({metrics.var_admissions_pct >= 0 ? '+' : ''}{metrics.var_admissions_pct}%)
                           </span>
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <div className={`flex items-center gap-1 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                           <span>vs</span>
-                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>
                             {pyShort}
                           </span>
                           <span>{metrics.py_admissions.toLocaleString()}</span>
                         </div>
                       </div>
 
-                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
-                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Leads</span>
+                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200 shadow-xs'}`}>
+                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Leads</span>
                         <div className="flex items-baseline gap-1.5 mt-0.5">
                           <span className="text-base font-bold tabular-nums">{metrics.cy_leads.toLocaleString()}</span>
                           <span className={`text-xs font-semibold tabular-nums ${metrics.var_leads >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {metrics.var_leads >= 0 ? '+' : ''}{metrics.var_leads_pct}%
                           </span>
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <div className={`flex items-center gap-1 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                           <span>vs</span>
-                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>
                             {pyShort}
                           </span>
                           <span>{metrics.py_leads.toLocaleString()}</span>
                         </div>
                       </div>
 
-                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
-                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Conversion</span>
+                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200 shadow-xs'}`}>
+                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>Conversion</span>
                         <div className="flex items-baseline gap-1.5 mt-0.5">
                           <span className="text-base font-bold tabular-nums">{metrics.conversion_rate_cy.toFixed(2)}%</span>
                           <span className={`text-xs font-semibold tabular-nums ${metrics.var_conversion_rate >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {metrics.var_conversion_rate >= 0 ? '+' : ''}{metrics.var_conversion_rate.toFixed(2)}%
                           </span>
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
-                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                        <div className={`flex items-center gap-1 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>
                             {pyShort}
                           </span>
                           <span>{metrics.conversion_rate_py.toFixed(2)}%</span>
                         </div>
                       </div>
 
-                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200'}`}>
-                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>CUCET Reg.</span>
+                      <div className={`p-2.5 rounded-xl border ${isDark ? 'bg-black/20 border-white/5' : 'bg-white border-slate-200 shadow-xs'}`}>
+                        <span className={`text-[10px] uppercase font-bold ${isDark ? 'text-slate-300' : 'text-slate-700'}`}>CUCET Reg.</span>
                         <div className="flex items-baseline gap-1.5 mt-0.5">
                           <span className="text-base font-bold tabular-nums">{metrics.cy_cucet.toLocaleString()}</span>
                           <span className={`text-xs font-semibold tabular-nums ${metrics.var_cucet >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                             {metrics.var_cucet >= 0 ? '+' : ''}{metrics.var_cucet_pct}%
                           </span>
                         </div>
-                        <div className="flex items-center gap-1 text-[10px] text-slate-400">
+                        <div className={`flex items-center gap-1 text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                           <span>vs</span>
-                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-600'}`}>
+                          <span className={`px-1 py-0.2 rounded border text-[9px] font-extrabold ${isDark ? 'bg-slate-800 border-slate-700 text-slate-300' : 'bg-slate-100 border-slate-200 text-slate-700'}`}>
                             {pyShort}
                           </span>
                           <span>{metrics.py_cucet.toLocaleString()}</span>
@@ -794,7 +794,7 @@ export default function StateInvestigationDrawer({
                       <h4 className="text-xs uppercase tracking-wider font-bold text-indigo-400 flex items-center gap-1.5">
                         <span>⭐</span> State Highlights: Top & Lowest Course Groups
                       </h4>
-                      <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                      <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-600'}`}>
                         Computed across all course intakes in {selectedState}
                       </span>
                     </div>
@@ -1038,7 +1038,7 @@ export default function StateInvestigationDrawer({
                           />
                           <span className="absolute left-2.5 top-2 text-xs opacity-50">🔍</span>
                         </div>
-                        <span className={`text-[11px] ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
+                        <span className={`text-[11px] ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>
                           Showing {sortedCourseGroups.length} course groups in {selectedState}
                         </span>
                       </div>
@@ -1170,7 +1170,7 @@ export default function StateInvestigationDrawer({
                   {activeTab === 'dropping' && (
                     <div className="space-y-2.5">
                       {nodeData.sub_programs_analysis?.dropping_programs.length === 0 ? (
-                        <div className={`p-6 rounded-xl border text-center text-xs ${isDark ? 'border-slate-800 bg-[#121829] text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                        <div className={`p-6 rounded-xl border text-center text-xs ${isDark ? 'border-slate-800 bg-[#121829] text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-700 font-medium'}`}>
                           ✨ No contracting programs identified in {selectedState}. All active courses are expanding or stable.
                         </div>
                       ) : (
@@ -1220,36 +1220,36 @@ export default function StateInvestigationDrawer({
 
                             <div className="grid grid-cols-3 gap-2 text-xs">
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Admissions</div>
+                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>Admissions</div>
                                 <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
                                   <span className="font-bold tabular-nums text-rose-400">{sp.cy_admissions}</span>
                                   <span className="text-[10px] text-rose-400/80 font-semibold tabular-nums">
                                     ({sp.var_admissions >= 0 ? '+' : ''}{sp.var_admissions}, {sp.var_admissions_pct >= 0 ? '+' : ''}{sp.var_admissions_pct.toFixed(1)}%)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_admissions}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>{pyShort}: {sp.py_admissions}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Leads</div>
+                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>Leads</div>
                                 <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
                                   <span className="font-bold tabular-nums">{sp.cy_leads.toLocaleString()}</span>
                                   <span className={`text-[10px] font-semibold tabular-nums ${sp.var_leads >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                     ({sp.var_leads_pct >= 0 ? '+' : ''}{sp.var_leads_pct.toFixed(1)}%)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_leads.toLocaleString()}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>{pyShort}: {sp.py_leads.toLocaleString()}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Conversion</div>
+                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>Conversion</div>
                                 <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
                                   <span className="font-bold tabular-nums">{sp.conversion_rate_cy.toFixed(2)}%</span>
                                   <span className={`text-[10px] font-semibold tabular-nums ${sp.var_conversion_rate >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                     ({sp.var_conversion_rate >= 0 ? '+' : ''}{sp.var_conversion_rate.toFixed(2)}% pts)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.conversion_rate_py.toFixed(2)}%</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>{pyShort}: {sp.conversion_rate_py.toFixed(2)}%</div>
                               </div>
                             </div>
                           </div>
@@ -1262,7 +1262,7 @@ export default function StateInvestigationDrawer({
                   {activeTab === 'expanding' && (
                     <div className="space-y-2.5">
                       {nodeData.sub_programs_analysis?.expanding_programs.length === 0 ? (
-                        <div className={`p-6 rounded-xl border text-center text-xs ${isDark ? 'border-slate-800 bg-[#121829] text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                        <div className={`p-6 rounded-xl border text-center text-xs ${isDark ? 'border-slate-800 bg-[#121829] text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-700 font-medium'}`}>
                           No expanding programs detected for this period.
                         </div>
                       ) : (
@@ -1297,36 +1297,36 @@ export default function StateInvestigationDrawer({
 
                             <div className="grid grid-cols-3 gap-2 text-xs">
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Admissions</div>
+                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>Admissions</div>
                                 <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
                                   <span className="font-bold tabular-nums text-emerald-400">{sp.cy_admissions}</span>
                                   <span className="text-[10px] text-emerald-400 font-semibold tabular-nums">
                                     (+{sp.var_admissions})
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_admissions}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>{pyShort}: {sp.py_admissions}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Leads</div>
+                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>Leads</div>
                                 <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
                                   <span className="font-bold tabular-nums">{sp.cy_leads.toLocaleString()}</span>
                                   <span className="text-[10px] text-emerald-400 font-semibold tabular-nums">
                                     ({sp.var_leads_pct >= 0 ? '+' : ''}{sp.var_leads_pct.toFixed(1)}%)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.py_leads.toLocaleString()}</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>{pyShort}: {sp.py_leads.toLocaleString()}</div>
                               </div>
 
                               <div className={`p-2 rounded-lg border ${isDark ? 'bg-black/20 border-white/5' : 'bg-slate-50 border-slate-100'}`}>
-                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>Conversion</div>
+                                <div className={`text-[10px] font-semibold ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>Conversion</div>
                                 <div className="flex items-baseline gap-1 mt-0.5 flex-wrap">
                                   <span className="font-bold tabular-nums">{sp.conversion_rate_cy.toFixed(2)}%</span>
                                   <span className={`text-[10px] font-semibold tabular-nums ${sp.var_conversion_rate >= 0 ? 'text-emerald-400' : 'text-rose-400'}`}>
                                     ({sp.var_conversion_rate >= 0 ? '+' : ''}{sp.var_conversion_rate.toFixed(2)}% pts)
                                   </span>
                                 </div>
-                                <div className={`text-[9px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>{pyShort}: {sp.conversion_rate_py.toFixed(2)}%</div>
+                                <div className={`text-[9px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>{pyShort}: {sp.conversion_rate_py.toFixed(2)}%</div>
                               </div>
                             </div>
                           </div>
@@ -1342,13 +1342,13 @@ export default function StateInvestigationDrawer({
                         <h4 className="text-xs uppercase tracking-wider font-bold text-rose-400 flex items-center gap-1.5">
                           <span>⚠️</span> Detected Issues & Negative Drag in {selectedState} ({nodeData.issues?.length || 0})
                         </h4>
-                        <span className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
+                        <span className={`text-[10px] ${isDark ? 'text-slate-400' : 'text-slate-600 font-medium'}`}>
                           Click [Why?] for underlying evidence
                         </span>
                       </div>
 
                       {(!nodeData.issues || nodeData.issues.length === 0) ? (
-                        <div className={`p-4 rounded-xl border text-center text-xs ${isDark ? 'border-slate-800 bg-[#121829] text-slate-400' : 'border-slate-200 bg-slate-50 text-slate-500'}`}>
+                        <div className={`p-4 rounded-xl border text-center text-xs ${isDark ? 'border-slate-800 bg-[#121829] text-slate-300' : 'border-slate-200 bg-slate-50 text-slate-700 font-medium'}`}>
                           🎉 No material performance contractions detected for {selectedState}. Core channels are performing within healthy bounds.
                         </div>
                       ) : (

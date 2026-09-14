@@ -155,7 +155,7 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
 
         {/* Navigation Items */}
         <div className="px-4 py-6">
-          <p className={`px-3 mb-3 text-[10px] font-extrabold uppercase tracking-wider ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+          <p className={`px-3 mb-3 text-[10px] font-extrabold uppercase tracking-wider ${isDark ? "text-slate-400" : "text-slate-600"}`}>
             Workspaces
           </p>
           <nav className="space-y-1">
@@ -362,11 +362,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                 }`}
                 title={dateRangeLimits ? `Dataset data range: ${dateRangeLimits.min_date} to ${dateRangeLimits.max_date}` : "Select date range"}
               >
-                <Calendar className={`w-3.5 h-3.5 shrink-0 ${(appliedFromDate || appliedToDate) ? "text-indigo-500" : "text-slate-400"}`} />
+                <Calendar className={`w-3.5 h-3.5 shrink-0 ${(appliedFromDate || appliedToDate) ? "text-indigo-500" : isDark ? "text-slate-400" : "text-slate-500"}`} />
                 
                 {/* From Date Input with label */}
                 <div className="flex items-center gap-0.5">
-                  <span className={`text-[9px] font-bold uppercase tracking-wider select-none ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider select-none ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                     From
                   </span>
                   <input
@@ -383,11 +383,11 @@ export const AppShell: React.FC<{ children: React.ReactNode }> = ({ children }) 
                   />
                 </div>
                 
-                <span className="text-slate-400 text-xs font-bold select-none px-0.5">→</span>
+                <span className={`${isDark ? "text-slate-400" : "text-slate-600"} text-xs font-bold select-none px-0.5`}>→</span>
                 
                 {/* To Date Input with label */}
                 <div className="flex items-center gap-0.5">
-                  <span className={`text-[9px] font-bold uppercase tracking-wider select-none ${isDark ? "text-slate-500" : "text-slate-400"}`}>
+                  <span className={`text-[9px] font-bold uppercase tracking-wider select-none ${isDark ? "text-slate-400" : "text-slate-600"}`}>
                     To
                   </span>
                   <input

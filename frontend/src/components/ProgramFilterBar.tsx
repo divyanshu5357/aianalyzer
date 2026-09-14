@@ -100,7 +100,7 @@ export default function ProgramFilterBar({
   return (
     <div
       ref={barRef}
-      className={`relative z-30 border-b px-3 sm:px-6 py-2.5 transition-colors select-none ${
+      className={`relative z-40 border-b px-3 sm:px-6 py-2.5 transition-colors select-none ${
         isDark ? 'bg-[#0d101d] border-white/10' : 'bg-slate-50/80 border-slate-200'
       }`}
     >
@@ -143,8 +143,10 @@ export default function ProgramFilterBar({
                       onChange({ ...filters, leadType: lt });
                       setOpenDropdown(null);
                     }}
-                    className={`px-3 py-1.5 rounded-lg hover:bg-indigo-600/10 hover:text-indigo-400 cursor-pointer flex items-center justify-between transition-colors ${
-                      filters.leadType === lt ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold') : ''
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
+                      filters.leadType === lt
+                        ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold')
+                        : (isDark ? 'hover:bg-indigo-600/20 hover:text-indigo-300 text-slate-200' : 'hover:bg-indigo-50 hover:text-indigo-700 text-slate-800')
                     }`}
                   >
                     <span>{lt}</span>
@@ -189,8 +191,10 @@ export default function ProgramFilterBar({
                       onChange({ ...filters, source: src });
                       setOpenDropdown(null);
                     }}
-                    className={`px-3 py-1.5 rounded-lg hover:bg-indigo-600/10 hover:text-indigo-400 cursor-pointer flex items-center justify-between transition-colors ${
-                      filters.source === src ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold') : ''
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
+                      filters.source === src
+                        ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold')
+                        : (isDark ? 'hover:bg-indigo-600/20 hover:text-indigo-300 text-slate-200' : 'hover:bg-indigo-50 hover:text-indigo-700 text-slate-800')
                     }`}
                   >
                     <span className="truncate">{src}</span>
@@ -234,13 +238,15 @@ export default function ProgramFilterBar({
             </button>
             {openDropdown === 'leetToGen' && (
               <div className={`${popoverBase} w-48`}>
-                <div className="flex items-center justify-between pb-1.5 mb-1.5 border-b border-white/10 px-1 text-[10px] font-bold uppercase tracking-wider text-slate-400">
+                <div className={`flex items-center justify-between pb-1.5 mb-1.5 border-b px-1 text-[10px] font-bold uppercase tracking-wider ${
+                  isDark ? 'border-white/10 text-slate-400' : 'border-slate-200 text-slate-600'
+                }`}>
                   <span>Categories</span>
                   {filters.selectedLeetToGen.length > 0 && (
                     <button
                       type="button"
                       onClick={() => onChange({ ...filters, selectedLeetToGen: [] })}
-                      className="hover:underline cursor-pointer text-indigo-400"
+                      className={`hover:underline cursor-pointer ${isDark ? 'text-indigo-400 hover:text-indigo-300' : 'text-indigo-600 hover:text-indigo-800'}`}
                     >
                       Clear
                     </button>
@@ -253,7 +259,7 @@ export default function ProgramFilterBar({
                       <label
                         key={opt}
                         className={`flex items-center gap-2 px-2 py-1 rounded-lg cursor-pointer transition-colors ${
-                          isDark ? 'hover:bg-white/5' : 'hover:bg-slate-100'
+                          isDark ? 'hover:bg-white/5 text-slate-200' : 'hover:bg-slate-100 text-slate-800'
                         }`}
                       >
                         <input
@@ -305,8 +311,10 @@ export default function ProgramFilterBar({
                       onChange({ ...filters, top15: t });
                       setOpenDropdown(null);
                     }}
-                    className={`px-3 py-1.5 rounded-lg hover:bg-indigo-600/10 hover:text-indigo-400 cursor-pointer flex items-center justify-between transition-colors ${
-                      filters.top15 === t ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold') : ''
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
+                      filters.top15 === t
+                        ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold')
+                        : (isDark ? 'hover:bg-indigo-600/20 hover:text-indigo-300 text-slate-200' : 'hover:bg-indigo-50 hover:text-indigo-700 text-slate-800')
                     }`}
                   >
                     <span>{t}</span>
@@ -344,7 +352,7 @@ export default function ProgramFilterBar({
             </button>
             {openDropdown === 'programName' && (
               <div className={`${popoverBase} w-72 max-h-72 overflow-y-auto scrollbar-thin`}>
-                <div className="p-1.5 border-b border-white/10 sticky top-0 bg-inherit">
+                <div className={`p-1.5 border-b sticky top-0 ${isDark ? 'border-white/10 bg-[#141a29]' : 'border-slate-200 bg-white'}`}>
                   <input
                     type="text"
                     placeholder="Search program..."
@@ -363,8 +371,10 @@ export default function ProgramFilterBar({
                     onChange({ ...filters, programName: 'All' });
                     setOpenDropdown(null);
                   }}
-                  className={`px-3 py-1.5 rounded-lg hover:bg-indigo-600/10 cursor-pointer flex items-center justify-between font-semibold ${
-                    filters.programName === 'All' ? 'text-indigo-400' : ''
+                  className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between font-semibold transition-colors ${
+                    filters.programName === 'All'
+                      ? (isDark ? 'bg-indigo-600/20 text-indigo-300' : 'bg-indigo-50 text-indigo-700')
+                      : (isDark ? 'hover:bg-indigo-600/20 hover:text-indigo-300 text-slate-200' : 'hover:bg-indigo-50 hover:text-indigo-700 text-slate-800')
                   }`}
                 >
                   <span>All Programs</span>
@@ -377,8 +387,10 @@ export default function ProgramFilterBar({
                       onChange({ ...filters, programName: p });
                       setOpenDropdown(null);
                     }}
-                    className={`px-3 py-1.5 rounded-lg hover:bg-indigo-600/10 hover:text-indigo-400 cursor-pointer flex items-center justify-between transition-colors ${
-                      filters.programName === p ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold') : ''
+                    className={`px-3 py-1.5 rounded-lg cursor-pointer flex items-center justify-between transition-colors ${
+                      filters.programName === p
+                        ? (isDark ? 'bg-indigo-600/20 text-indigo-300 font-bold' : 'bg-indigo-50 text-indigo-700 font-bold')
+                        : (isDark ? 'hover:bg-indigo-600/20 hover:text-indigo-300 text-slate-200' : 'hover:bg-indigo-50 hover:text-indigo-700 text-slate-800')
                     }`}
                   >
                     <span className="truncate">{p}</span>
