@@ -551,19 +551,22 @@ def get_program_hierarchy_children(
     program_code: Optional[str] = None,
     lead_type: Optional[str] = None,
     main_source: Optional[str] = None,
+    source_cluster: Optional[str] = None,
     report_source: Optional[str] = None,
     source_category: Optional[str] = None,
     sub_source: Optional[str] = None,
+    cluster: Optional[str] = None,
     sort_by: str = "cy_leads",
     sort_order: str = "desc",
 ) -> Dict[str, Any]:
     """
-    Lazy hierarchical child loader (5-level drill-down):
+    Lazy hierarchical child loader (6-level drill-down):
       Level 2 ('program' or 'branch'): children of Level 1 program_group
       Level 3 ('lead_type' or 'source_category'): children of Level 2 program_code
       Level 4 ('main_source' or 'sub_source'): children of Level 3 program_code + lead_type
-      Level 5 ('report_source'): children of Level 4 program_code + lead_type + main_source
-    All 13 metrics are computed server-side in PostgreSQL from raw dashboard_agg data.
+      Level 5 ('source_cluster' or 'cluster'): children of Level 4 program_code + lead_type + main_source
+      Level 6 ('report_source'): children of Level 5 program_code + lead_type + main_source + source_cluster
+    All metrics are computed server-side in PostgreSQL from raw dashboard_agg data.
     """
     norm_level = level.lower().strip()
     if norm_level == "branch":
@@ -572,10 +575,13 @@ def get_program_hierarchy_children(
         norm_level = "lead_type"
     elif norm_level == "sub_source":
         norm_level = "main_source"
+    elif norm_level in ("cluster", "sources_cluster"):
+        norm_level = "source_cluster"
 
     eff_pcode = (program_code or "").strip() or None
     eff_lead_type = (lead_type or source_category or "").strip() or None
     eff_main_src = (main_source or sub_source or "").strip() or None
+    eff_cluster = (source_cluster or cluster or "").strip() or None
     eff_report_src = (report_source or "").strip() or None
 
     if not academic_year:
@@ -585,7 +591,7 @@ def get_program_hierarchy_children(
     has_date_filter = bool(from_date and to_date and from_date.strip() and to_date.strip())
 
     canon_campus = (campus or "all").strip().lower()
-    ch_cache_key = f"{norm_level}:{academic_year}:{canon_campus}:{from_date}:{to_date}:{program_group}:{eff_pcode}:{eff_lead_type}:{eff_main_src}:{eff_report_src}:{sort_by}:{sort_order}"
+    ch_cache_key = f"{norm_level}:{academic_year}:{canon_campus}:{from_date}:{to_date}:{program_group}:{eff_pcode}:{eff_lead_type}:{eff_main_src}:{eff_cluster}:{eff_report_src}:{sort_by}:{sort_order}"
     now_ts = time.time()
     if ch_cache_key in _PROGRAMS_CHILDREN_CACHE:
         c_time, c_data = _PROGRAMS_CHILDREN_CACHE[ch_cache_key]
@@ -926,8 +932,9 @@ def get_program_hierarchy_children(
             )
 
     # -------------------------------------------------------------
+    # -------------------------------------------------------------
     # LEVEL 4: Main Source (children of Level 3 program_code + lead_type)
-    # Direct, Website, Career_360, CP, etc. dynamically from source_master
+    # Direct, Website, Career_360, nNext, etc. dynamically from source_master
     # -------------------------------------------------------------
     elif norm_level == "main_source":
         level_int = 4
@@ -939,8 +946,8 @@ def get_program_hierarchy_children(
 
         lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
         ref_lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS')"
-        main_src_expr = "COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'Direct')"
-        ref_main_src_expr = "COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'Direct')"
+        main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'DIRECT')))"
+        ref_main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'DIRECT')))"
 
         query_sql = f"""
             WITH agg_data AS (
@@ -1071,25 +1078,191 @@ def get_program_hierarchy_children(
             )
 
     # -------------------------------------------------------------
-    # LEVEL 5: Report Source (children of Level 4 main_source)
-    # Granular campaign/vendor source dynamically from source_master
+    # LEVEL 5: Source Cluster (children of Level 4 main_source)
+    # GSN, NXT - OTHER, PMAX, FB, GDC, GDN, etc. dynamically from source_master
     # -------------------------------------------------------------
-    elif norm_level == "report_source":
+    elif norm_level == "source_cluster":
         level_int = 5
-        has_children = False
+        has_children = True
         params["p_code"] = eff_pcode.lower()
         params["eff_lt"] = eff_lead_type.upper()
-        params["eff_ms"] = eff_main_src
+        params["eff_ms"] = eff_main_src.upper()
         ref_params["p_code"] = eff_pcode.lower()
         ref_params["eff_lt"] = eff_lead_type.upper()
-        ref_params["eff_ms"] = eff_main_src
+        ref_params["eff_ms"] = eff_main_src.upper()
 
         lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
         ref_lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS')"
-        main_src_expr = "COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'Direct')"
-        ref_main_src_expr = "COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'Direct')"
+        main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'DIRECT')))"
+        ref_main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'DIRECT')))"
+        source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
+        ref_source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
+
+        query_sql = f"""
+            WITH agg_data AS (
+                SELECT 
+                    {source_cluster_expr} as source_cluster,
+                    SUM({cy_lead_expr}) as cy_leads,
+                    SUM({py_lead_expr}) as py_leads,
+                    SUM({cy_cucet_expr}) as cy_cucet,
+                    SUM({py_cucet_expr}) as py_cucet,
+                    SUM({cy_adm_expr}) as cy_adm,
+                    SUM({py_adm_expr}) as py_adm
+                FROM analytics.dashboard_agg d
+                LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+                WHERE {where_sql} 
+                  AND LOWER(d.program_code) = :p_code
+                  AND {lead_type_expr} = :eff_lt
+                  AND {main_src_expr} = :eff_ms
+                GROUP BY {source_cluster_expr}
+            ),
+            ref_data AS (
+                SELECT 
+                    {ref_source_cluster_expr} as source_cluster,
+                    SUM({cy_ref_expr}) as cy_refunds,
+                    SUM({py_ref_expr}) as py_refunds
+                FROM analytics.program_refunds_summary r
+                LEFT JOIN organization.source_master sm ON LOWER(TRIM(r.source)) = LOWER(TRIM(sm.source))
+                WHERE {ref_where_sql} 
+                  AND LOWER(r.program_code) = :p_code
+                  AND {ref_lead_type_expr} = :eff_lt
+                  AND {ref_main_src_expr} = :eff_ms
+                GROUP BY {ref_source_cluster_expr}
+            )
+            SELECT 
+                COALESCE(a.source_cluster, r.source_cluster) as source_cluster,
+                COALESCE(a.py_leads, 0) as py_leads,
+                COALESCE(a.cy_leads, 0) as cy_leads,
+                COALESCE(a.py_cucet, 0) as py_cucet,
+                COALESCE(a.cy_cucet, 0) as cy_cucet,
+                COALESCE(a.py_adm, 0) as py_adm,
+                COALESCE(a.cy_adm, 0) as cy_adm,
+                COALESCE(r.py_refunds, 0) as py_refunds,
+                COALESCE(r.cy_refunds, 0) as cy_refunds
+            FROM agg_data a
+            FULL OUTER JOIN ref_data r ON a.source_cluster = r.source_cluster
+            WHERE COALESCE(a.cy_leads, 0) > 0 OR COALESCE(a.py_leads, 0) > 0
+        """
+        all_params = {**params, **ref_params}
+        res = db.execute(text(query_sql), all_params).fetchall()
+
+        # Monthly trend for source clusters
+        trend_where = [
+            "d.academic_year = :cy_year",
+            "d.created_month IS NOT NULL",
+            "LOWER(d.program_code) = :p_code",
+            f"{lead_type_expr} = :eff_lt",
+            f"{main_src_expr} = :eff_ms",
+        ]
+        trend_params = {
+            "cy_year": academic_year,
+            "p_code": eff_pcode.lower(),
+            "eff_lt": eff_lead_type.upper(),
+            "eff_ms": eff_main_src.upper(),
+        }
+        if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
+            trend_where.append("LOWER(d.campus_name) = :campus")
+            trend_params["campus"] = campus.strip().lower()
+        if has_date_filter:
+            trend_where.append("d.created_month >= :from_m AND d.created_month <= :to_m")
+            trend_params["from_m"] = from_date.strip()[:7]
+            trend_params["to_m"] = to_date.strip()[:7]
+
+        sc_trend_sql = f"""
+            SELECT 
+                {source_cluster_expr} as sc,
+                d.created_month,
+                SUM(d.leads_cy) as leads
+            FROM analytics.dashboard_agg d
+            LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+            WHERE {" AND ".join(trend_where)}
+            GROUP BY {source_cluster_expr}, d.created_month
+            ORDER BY 1, 2
+        """
+        tr_rows = db.execute(text(sc_trend_sql), trend_params).fetchall()
+        sc_trends: Dict[str, Dict[str, int]] = {}
+        distinct_months = set()
+        for tr in tr_rows:
+            sc_name = tr[0]
+            m_key = tr[1]
+            sc_trends.setdefault(sc_name, {})[m_key] = int(tr[2] or 0)
+            distinct_months.add(m_key)
+        sorted_m = sorted(list(distinct_months))
+
+        for r in res:
+            sc_name = str(r[0])
+            py_l = int(r[1] or 0)
+            cy_l = int(r[2] or 0)
+            py_c = int(r[3] or 0)
+            cy_c = int(r[4] or 0)
+            py_a = int(r[5] or 0)
+            cy_a = int(r[6] or 0)
+            py_r = int(r[7] or 0)
+            cy_r = int(r[8] or 0)
+
+            node_id = f"sc:{eff_pcode}:{eff_lead_type}:{eff_main_src}:{sc_name}"
+            s_dict = sc_trends.get(sc_name, {})
+            row_trend = [s_dict.get(m, 0) for m in sorted_m]
+
+            rows.append(
+                _calculate_row_metrics(
+                    name=sc_name,
+                    py_leads=py_l,
+                    cy_leads=cy_l,
+                    py_cucet=py_c,
+                    cy_cucet=cy_c,
+                    py_adm=py_a,
+                    cy_adm=cy_a,
+                    py_refunds=py_r,
+                    cy_refunds=cy_r,
+                    lead_trend=row_trend,
+                    node_id=node_id,
+                    level=level_int,
+                    has_children=has_children,
+                    extra_props={
+                        "program_group": program_group,
+                        "program_code": eff_pcode,
+                        "lead_type": eff_lead_type,
+                        "source_category": eff_lead_type,
+                        "main_source": eff_main_src,
+                        "sub_source": eff_main_src,
+                        "source_cluster": sc_name,
+                    },
+                )
+            )
+
+    # -------------------------------------------------------------
+    # LEVEL 6: Report Source (children of Level 5 source_cluster)
+    # Granular campaign/vendor source dynamically from source_master
+    # -------------------------------------------------------------
+    elif norm_level == "report_source":
+        level_int = 6
+        has_children = False
+        params["p_code"] = eff_pcode.lower()
+        params["eff_lt"] = eff_lead_type.upper()
+        params["eff_ms"] = eff_main_src.upper()
+        ref_params["p_code"] = eff_pcode.lower()
+        ref_params["eff_lt"] = eff_lead_type.upper()
+        ref_params["eff_ms"] = eff_main_src.upper()
+
+        lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
+        ref_lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS')"
+        main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'DIRECT')))"
+        ref_main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'DIRECT')))"
+        source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
+        ref_source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
         rep_src_expr = "COALESCE(NULLIF(TRIM(sm.report_source), ''), NULLIF(TRIM(d.source), ''), 'Direct')"
         ref_rep_src_expr = "COALESCE(NULLIF(TRIM(sm.report_source), ''), NULLIF(TRIM(r.source), ''), 'Direct')"
+
+        cluster_filter = ""
+        ref_cluster_filter = ""
+        trend_cluster_filter = ""
+        if eff_cluster:
+            params["eff_sc"] = eff_cluster.upper()
+            ref_params["eff_sc"] = eff_cluster.upper()
+            cluster_filter = f"AND {source_cluster_expr} = :eff_sc"
+            ref_cluster_filter = f"AND {ref_source_cluster_expr} = :eff_sc"
+            trend_cluster_filter = f"AND {source_cluster_expr} = :eff_sc"
 
         query_sql = f"""
             WITH agg_data AS (
@@ -1107,6 +1280,7 @@ def get_program_hierarchy_children(
                   AND LOWER(d.program_code) = :p_code
                   AND {lead_type_expr} = :eff_lt
                   AND {main_src_expr} = :eff_ms
+                  {cluster_filter}
                 GROUP BY {rep_src_expr}
             ),
             ref_data AS (
@@ -1120,6 +1294,7 @@ def get_program_hierarchy_children(
                   AND LOWER(r.program_code) = :p_code
                   AND {ref_lead_type_expr} = :eff_lt
                   AND {ref_main_src_expr} = :eff_ms
+                  {ref_cluster_filter}
                 GROUP BY {ref_rep_src_expr}
             )
             SELECT 
@@ -1147,12 +1322,16 @@ def get_program_hierarchy_children(
             f"{lead_type_expr} = :eff_lt",
             f"{main_src_expr} = :eff_ms",
         ]
+        if trend_cluster_filter:
+            trend_where.append(f"{source_cluster_expr} = :eff_sc")
         trend_params = {
             "cy_year": academic_year,
             "p_code": eff_pcode.lower(),
             "eff_lt": eff_lead_type.upper(),
-            "eff_ms": eff_main_src,
+            "eff_ms": eff_main_src.upper(),
         }
+        if eff_cluster:
+            trend_params["eff_sc"] = eff_cluster.upper()
         if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
             trend_where.append("LOWER(d.campus_name) = :campus")
             trend_params["campus"] = campus.strip().lower()
@@ -1193,7 +1372,7 @@ def get_program_hierarchy_children(
             py_r = int(r[7] or 0)
             cy_r = int(r[8] or 0)
 
-            node_id = f"rs:{eff_pcode}:{eff_lead_type}:{eff_main_src}:{rs_name}"
+            node_id = f"rs:{eff_pcode}:{eff_lead_type}:{eff_main_src}:{eff_cluster or 'all'}:{rs_name}"
             r_dict = rep_trends.get(rs_name, {})
             row_trend = [r_dict.get(m, 0) for m in sorted_m]
 
@@ -1219,6 +1398,7 @@ def get_program_hierarchy_children(
                         "source_category": eff_lead_type,
                         "main_source": eff_main_src,
                         "sub_source": eff_main_src,
+                        "source_cluster": eff_cluster,
                         "report_source": rs_name,
                     },
                 )
@@ -1246,6 +1426,8 @@ def get_program_hierarchy_children(
             "program": eff_pcode,
             "lead_type": eff_lead_type,
             "main_source": eff_main_src,
+            "source_cluster": eff_cluster,
+            "report_source": eff_report_src,
             "source_category": eff_lead_type,
             "sub_source": eff_main_src,
         },

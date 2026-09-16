@@ -44,6 +44,7 @@ export async function getProgramHierarchyChildren(
   if (params.source_category) query.set('source_category', params.source_category);
   if (params.main_source) query.set('main_source', params.main_source);
   if (params.sub_source) query.set('sub_source', params.sub_source);
+  if (params.source_cluster) query.set('source_cluster', params.source_cluster);
   if (params.report_source) query.set('report_source', params.report_source);
   if (params.sort_by) query.set('sort_by', params.sort_by);
   if (params.sort_order) query.set('sort_order', params.sort_order);

@@ -566,7 +566,7 @@ export interface ProgramHealth {
 export interface ProgramReportRow {
   id: string;
   program: string;
-  level: 1 | 2 | 3 | 4 | 5;
+  level: 1 | 2 | 3 | 4 | 5 | 6;
   has_children: boolean;
   health?: ProgramHealth;
   py_leads: number;
@@ -595,6 +595,7 @@ export interface ProgramReportRow {
   program_name?: string;
   lead_type?: string;
   main_source?: string;
+  source_cluster?: string;
   report_source?: string;
   source_category?: string;
   sub_source?: string;
@@ -706,13 +707,14 @@ export interface ProgramReportResponse {
 export interface ProgramHierarchyResponse {
   rows: ProgramReportRow[];
   count: number;
-  level: 'program' | 'lead_type' | 'main_source' | 'report_source' | 'branch' | 'source_category' | 'sub_source';
+  level: 'program' | 'lead_type' | 'main_source' | 'source_cluster' | 'report_source' | 'branch' | 'source_category' | 'sub_source' | 'cluster';
   parent: {
     program_group?: string;
     program_code?: string;
     program?: string;
     lead_type?: string;
     main_source?: string;
+    source_cluster?: string;
     report_source?: string;
     source_category?: string;
     sub_source?: string;
@@ -729,7 +731,7 @@ export interface ProgramReportParams {
 }
 
 export interface ProgramHierarchyParams {
-  level: 'program' | 'lead_type' | 'main_source' | 'report_source' | 'branch' | 'source_category' | 'sub_source';
+  level: 'program' | 'lead_type' | 'main_source' | 'source_cluster' | 'report_source' | 'branch' | 'source_category' | 'sub_source' | 'cluster';
   academic_year?: number;
   campus?: string;
   from_date?: string;
@@ -739,6 +741,7 @@ export interface ProgramHierarchyParams {
   program?: string;
   lead_type?: string;
   main_source?: string;
+  source_cluster?: string;
   report_source?: string;
   source_category?: string;
   sub_source?: string;

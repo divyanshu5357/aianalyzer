@@ -116,13 +116,13 @@ def test_program_hierarchy_main_source_expansion(db):
         assert r["program_code"] == "CS201"
 
 
-# ─── Level 5: Report Source ───────────────────────────────────────────────────
+# ─── Level 5: Source Cluster ──────────────────────────────────────────────────
 
-def test_program_hierarchy_report_source_expansion(db):
-    """Verify Level 5 lazy expansion returns report sources for CS201 + IN HOUSE + Direct."""
+def test_program_hierarchy_source_cluster_expansion(db):
+    """Verify Level 5 lazy expansion returns source clusters for CS201 + IN HOUSE + Direct."""
     result = get_program_hierarchy_children(
         db,
-        level="report_source",
+        level="source_cluster",
         program_code="CS201",
         lead_type="IN HOUSE",
         main_source="Direct",
@@ -130,8 +130,31 @@ def test_program_hierarchy_report_source_expansion(db):
     )
     rows = result["rows"]
 
+    assert len(rows) >= 1, "Expected at least 1 source cluster"
     for r in rows:
         assert r["level"] == 5
+        assert r["has_children"] is True
+        assert r["program_code"] == "CS201"
+
+
+# ─── Level 6: Report Source ───────────────────────────────────────────────────
+
+def test_program_hierarchy_report_source_expansion(db):
+    """Verify Level 6 lazy expansion returns report sources for CS201 + IN HOUSE + Direct + DIRECT."""
+    result = get_program_hierarchy_children(
+        db,
+        level="report_source",
+        program_code="CS201",
+        lead_type="IN HOUSE",
+        main_source="Direct",
+        source_cluster="DIRECT",
+        academic_year=2026,
+    )
+    rows = result["rows"]
+
+    assert len(rows) >= 1, "Expected at least 1 report source"
+    for r in rows:
+        assert r["level"] == 6
         assert r["has_children"] is False
         assert r["program_code"] == "CS201"
 

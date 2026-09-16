@@ -50,7 +50,7 @@ def get_program_report(
 
 @router.get("/report/children")
 def get_program_children(
-    level: str = Query(..., description="Child level: 'program', 'lead_type', 'main_source', 'report_source' (or legacy aliases 'branch', 'source_category', 'sub_source')"),
+    level: str = Query(..., description="Child level: 'program', 'lead_type', 'main_source', 'source_cluster', 'report_source' (or legacy aliases 'branch', 'source_category', 'sub_source', 'cluster')"),
     academic_year: Optional[int] = Query(None, description="Academic year (CY)"),
     campus: Optional[str] = Query(None, description="Campus filter"),
     from_date: Optional[str] = Query(None, description="Start date (YYYY-MM-DD)"),
@@ -60,18 +60,22 @@ def get_program_children(
     program: Optional[str] = Query(None, description="Alias for program_code or program name"),
     lead_type: Optional[str] = Query(None, description="Parent lead type (IN HOUSE, OUT SOURCED, OTHERS)"),
     source_category: Optional[str] = Query(None, description="Legacy alias for lead_type"),
-    main_source: Optional[str] = Query(None, description="Parent main source (Career_360, Direct, Website, etc.)"),
+    main_source: Optional[str] = Query(None, description="Parent main source (nNext, Direct, Website, etc.)"),
+    sub_source: Optional[str] = Query(None, description="Legacy alias for main_source"),
+    source_cluster: Optional[str] = Query(None, description="Parent source cluster (GSN, PMAX, FB, etc.) for level='report_source'"),
+    cluster: Optional[str] = Query(None, description="Alias for source_cluster"),
     report_source: Optional[str] = Query(None, description="Parent report source"),
     sort_by: str = Query("cy_leads", description="Sort column"),
     sort_order: str = Query("desc", description="Sort direction (asc, desc)"),
     db: Session = Depends(get_db),
 ):
     """
-    Lazy hierarchical child loader (5-level drill-down):
+    Lazy hierarchical child loader (6-level drill-down):
     - Level 2 (program / branch): returns programs belonging to program_group
     - Level 3 (lead_type / source_category): returns lead types (IN HOUSE, OUT SOURCED, OTHERS) for program
-    - Level 4 (main_source / sub_source): returns main sources (Direct, Website, Career_360, etc.) for program + lead_type
-    - Level 5 (report_source): returns report sources for program + lead_type + main_source
+    - Level 4 (main_source / sub_source): returns main sources (nNext, Direct, Website, etc.) for program + lead_type
+    - Level 5 (source_cluster / cluster): returns source clusters (GSN, PMAX, FB, etc.) for program + lead_type + main_source
+    - Level 6 (report_source): returns report sources for program + lead_type + main_source + source_cluster
     """
     # Normalize level aliases
     norm_level = level.lower().strip()
@@ -81,8 +85,10 @@ def get_program_children(
         norm_level = "lead_type"
     elif norm_level == "sub_source":
         norm_level = "main_source"
+    elif norm_level in ("cluster", "sources_cluster"):
+        norm_level = "source_cluster"
 
-    valid_levels = ("program", "lead_type", "main_source", "report_source")
+    valid_levels = ("program", "lead_type", "main_source", "source_cluster", "report_source")
     if norm_level not in valid_levels:
         raise HTTPException(
             status_code=400,
@@ -92,7 +98,8 @@ def get_program_children(
     # Normalize parameters
     effective_pcode = (program_code or program or "").strip() or None
     effective_lead_type = (lead_type or source_category or "").strip() or None
-    effective_main_src = (main_source or "").strip() or None
+    effective_main_src = (main_source or sub_source or "").strip() or None
+    effective_cluster = (source_cluster or cluster or "").strip() or None
 
     if norm_level == "program" and not program_group:
         raise HTTPException(
@@ -100,22 +107,22 @@ def get_program_children(
             detail="Parameter 'program_group' is required when level='program'",
         )
 
-    if norm_level in ("lead_type", "main_source", "report_source") and not effective_pcode:
+    if norm_level in ("lead_type", "main_source", "source_cluster", "report_source") and not effective_pcode:
         raise HTTPException(
             status_code=400,
             detail=f"Parameter 'program_code' or 'program' is required when level='{level}'",
         )
 
-    if norm_level in ("main_source", "report_source") and not effective_lead_type:
+    if norm_level in ("main_source", "source_cluster", "report_source") and not effective_lead_type:
         raise HTTPException(
             status_code=400,
             detail=f"Parameter 'lead_type' is required when level='{level}'",
         )
 
-    if norm_level == "report_source" and not effective_main_src:
+    if norm_level in ("source_cluster", "report_source") and not effective_main_src:
         raise HTTPException(
             status_code=400,
-            detail="Parameter 'main_source' is required when level='report_source'",
+            detail=f"Parameter 'main_source' is required when level='{level}'",
         )
 
     try:
@@ -130,6 +137,7 @@ def get_program_children(
             program_code=effective_pcode,
             lead_type=effective_lead_type,
             main_source=effective_main_src,
+            source_cluster=effective_cluster,
             report_source=report_source,
             sort_by=sort_by,
             sort_order=sort_order,

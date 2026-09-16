@@ -508,7 +508,7 @@ export default function ProgramReportTable({
 
   const flatRows = buildFlatRows(nodes, topRows);
 
-  // Resolve child level and params for lazy loading (5-level hierarchy)
+  // Resolve child level and params for lazy loading (6-level hierarchy: Program Group -> Program -> Lead Type -> Main Source -> Source Cluster -> Report Source)
   function getChildParams(row: ProgramReportRow): ProgramHierarchyParams | null {
     if (row.level === 1) {
       return {
@@ -560,6 +560,28 @@ export default function ProgramReportTable({
       const lt = row.lead_type || row.source_category;
       const ms = row.main_source || row.sub_source || row.program;
       return {
+        level: 'source_cluster',
+        program_code: pCode,
+        program: pCode,
+        lead_type: lt,
+        source_category: lt,
+        main_source: ms,
+        sub_source: ms,
+        program_group: row.program_group,
+        academic_year: filters.academic_year,
+        campus: filters.campus,
+        from_date: filters.from_date,
+        to_date: filters.to_date,
+        sort_by: filters.sort_by,
+        sort_order: filters.sort_order,
+      };
+    }
+    if (row.level === 5) {
+      const pCode = row.program_code || row.program;
+      const lt = row.lead_type || row.source_category;
+      const ms = row.main_source || row.sub_source;
+      const sc = row.source_cluster || row.program;
+      return {
         level: 'report_source',
         program_code: pCode,
         program: pCode,
@@ -567,6 +589,7 @@ export default function ProgramReportTable({
         source_category: lt,
         main_source: ms,
         sub_source: ms,
+        source_cluster: sc,
         program_group: row.program_group,
         academic_year: filters.academic_year,
         campus: filters.campus,
@@ -598,17 +621,21 @@ export default function ProgramReportTable({
       return;
     }
 
-    // Check cache first (both local ref and persistent shared cache)
-    const cacheKey = `${buildScopeKey(filters)}|${nodeId}`;
-    const cached = childCache.current.get(cacheKey) || dashboardCache.getTreeChildren<ProgramReportRow>(cacheKey);
-    if (cached) {
-      childCache.current.set(cacheKey, cached);
+    // Expand
+    const scopeKey = buildScopeKey(filters);
+    const cachedChildren = childCache.current.get(`${scopeKey}|${nodeId}`);
+
+    if (cachedChildren && cachedChildren.length > 0) {
       setNodes((prev) => {
         const next = new Map(prev);
         const n = next.get(nodeId);
-        if (n) next.set(nodeId, { ...n, state: 'expanded', children: cached });
-        cached.forEach((c) => {
-          if (!next.has(c.id)) next.set(c.id, { row: c, state: 'collapsed', children: [] });
+        if (n) {
+          next.set(nodeId, { ...n, state: 'expanded', children: cachedChildren });
+        }
+        cachedChildren.forEach((child) => {
+          if (!next.has(child.id)) {
+            next.set(child.id, { row: child, state: 'collapsed', children: [] });
+          }
         });
         return next;
       });
@@ -618,7 +645,10 @@ export default function ProgramReportTable({
       return;
     }
 
-    // Set loading
+    // Fetch children lazily
+    const params = getChildParams(row);
+    if (!params) return;
+
     setNodes((prev) => {
       const next = new Map(prev);
       const n = next.get(nodeId);
@@ -626,28 +656,31 @@ export default function ProgramReportTable({
       return next;
     });
 
-    const params = getChildParams(row);
-    if (!params) return;
-
     try {
-      const resp = await getProgramHierarchyChildren(params);
-      const children = resp.rows;
-      childCache.current.set(cacheKey, children);
-      dashboardCache.setTreeChildren(cacheKey, children);
+      const result = await getProgramHierarchyChildren(params);
+      const children = result.rows || [];
+
+      // Cache by scope + nodeId
+      childCache.current.set(`${scopeKey}|${nodeId}`, children);
+
       setNodes((prev) => {
         const next = new Map(prev);
         const n = next.get(nodeId);
-        if (n) next.set(nodeId, { ...n, state: 'expanded', children });
-        children.forEach((c) => {
-          if (!next.has(c.id)) next.set(c.id, { row: c, state: 'collapsed', children: [] });
+        if (n) {
+          next.set(nodeId, { ...n, state: 'expanded', children });
+        }
+        children.forEach((child) => {
+          if (!next.has(child.id)) {
+            next.set(child.id, { row: child, state: 'collapsed', children: [] });
+          }
         });
         return next;
       });
+
       const currentExpanded = new Set(dashboardCache.getProgramUiState().expandedNodeIds);
       currentExpanded.add(nodeId);
       dashboardCache.setProgramUiState({ expandedNodeIds: currentExpanded });
-    } catch (err) {
-      console.error('Failed to load children for', nodeId, err);
+    } catch {
       setNodes((prev) => {
         const next = new Map(prev);
         const n = next.get(nodeId);
@@ -660,27 +693,29 @@ export default function ProgramReportTable({
   // ── Render ──────────────────────────────────────────────────────────────────
 
   const sparklineColor = (level: number) => {
-    const colors = ['#818cf8', '#818cf8', '#38bdf8', '#34d399', '#f59e0b'];
+    const colors = ['#818cf8', '#818cf8', '#38bdf8', '#34d399', '#fbbf24', '#f472b6'];
     return colors[(level - 1) % colors.length];
   };
 
   // Row background per level (theme-aware)
   const levelBg = (level: number) => {
     if (isDark) {
-      const bgs = ['', 'bg-[#1a1d2e]/60', 'bg-[#15172b]/40', 'bg-[#111320]/30', 'bg-[#0e101d]/40'];
+      const bgs = ['', 'bg-[#1a1d2e]/60', 'bg-[#15172b]/40', 'bg-[#111320]/30', 'bg-[#0e101d]/40', 'bg-[#0a0c16]/50'];
       return bgs[level - 1] || '';
     } else {
-      const bgs = ['', 'bg-slate-50', 'bg-slate-100/60', 'bg-slate-100/40', 'bg-slate-100/20'];
+      const bgs = ['', 'bg-slate-50', 'bg-slate-100/60', 'bg-slate-100/40', 'bg-slate-100/20', 'bg-slate-200/30'];
       return bgs[level - 1] || '';
     }
   };
 
   const getLevelTextColor = (level: number) => {
-    if (level === 1) return isDark ? '#e2e8f0' : '#1e293b';
-    if (level === 2) return isDark ? '#c4b5fd' : '#6366f1';
-    if (level === 3) return isDark ? '#38bdf8' : '#0284c7';
-    if (level === 4) return isDark ? '#34d399' : '#059669';
-    return isDark ? '#fbbf24' : '#d97706';
+    if (level === 1) return isDark ? '#e2e8f0' : '#1e293b'; // Program Group
+    if (level === 2) return isDark ? '#c4b5fd' : '#6366f1'; // Program Name in Short
+    if (level === 3) return isDark ? '#38bdf8' : '#0284c7'; // Lead Type
+    if (level === 4) return isDark ? '#34d399' : '#059669'; // Main Source
+    if (level === 5) return isDark ? '#fbbf24' : '#d97706'; // Source Cluster
+    if (level === 6) return isDark ? '#f472b6' : '#db2777'; // Report Source
+    return isDark ? '#94a3b8' : '#64748b';
   };
 
   // Frozen col background (solid, no opacity)

@@ -268,7 +268,7 @@ export default function ProgramsPage() {
               <h1 className={`text-sm sm:text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Program Performance</h1>
             </div>
             <p className={`text-xs hidden sm:block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              5-level drill-down: Program Group → Program → Lead Type → Main Source → Report Source. All metrics server-side.
+              6-level drill-down: Program Group → Program → Lead Type → Main Source → Sources Cluster → Report Source. All metrics server-side.
             </p>
           </div>
 
@@ -339,7 +339,8 @@ export default function ProgramsPage() {
           { color: 'bg-indigo-400', label: 'L2 Program' },
           { color: 'bg-sky-400', label: 'L3 Lead Type' },
           { color: 'bg-emerald-400', label: 'L4 Main Source' },
-          { color: 'bg-amber-400', label: 'L5 Report Source' },
+          { color: 'bg-amber-400', label: 'L5 Sources Cluster' },
+          { color: 'bg-pink-400', label: 'L6 Report Source' },
         ].map(({ color, label }) => (
           <div key={label} className="flex items-center gap-1.5">
             <div className={`w-2 h-2 rounded-full ${color}`} />
