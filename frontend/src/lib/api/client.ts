@@ -7,14 +7,23 @@ const rawApiUrl = (process.env.NEXT_PUBLIC_API_URL || "").trim().replace(/\/+$/,
 
 /**
  * Standardized API Base URL:
- * - When NEXT_PUBLIC_API_URL is configured to a valid HTTPS endpoint, browser calls it directly.
- * - When in browser over HTTPS and NEXT_PUBLIC_API_URL is HTTP (insecure), falls back to ""
- *   so requests route through the Next.js /api rewrite proxy without browser Mixed-Content rejection.
- * - When NEXT_PUBLIC_API_URL is empty/undefined, defaults to "" (using Next.js /api rewrite proxy).
+ * - In local browser development (localhost/127.0.0.1) or when protocol is HTTPS and target is HTTP,
+ *   falls back to "" so all requests route through the Next.js /api rewrite proxy.
+ * - This ensures preferred development behavior:
+ *     Browser -> localhost:3000/api/... -> local FastAPI backend
+ *   avoiding cross-origin CORS failures and port mismatches.
+ * - When NEXT_PUBLIC_API_URL is configured to a valid remote HTTPS endpoint in production, browser calls it directly.
  */
 export const API_BASE_URL: string = (() => {
-  if (typeof window !== "undefined" && window.location.protocol === "https:" && rawApiUrl.startsWith("http://")) {
-    return "";
+  if (typeof window !== "undefined") {
+    if (
+      (window.location.protocol === "https:" && rawApiUrl.startsWith("http://")) ||
+      window.location.hostname === "localhost" ||
+      window.location.hostname === "127.0.0.1" ||
+      !rawApiUrl
+    ) {
+      return "";
+    }
   }
   return rawApiUrl;
 })();

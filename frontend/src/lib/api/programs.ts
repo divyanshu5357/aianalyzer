@@ -33,6 +33,7 @@ export async function getProgramHierarchyChildren(
 ): Promise<ProgramHierarchyResponse> {
   const query = new URLSearchParams();
   query.set('level', params.level);
+  if (params.node_id) query.set('node_id', params.node_id);
   if (params.academic_year) query.set('academic_year', String(params.academic_year));
   if (params.campus && params.campus.toLowerCase() !== 'all campuses') query.set('campus', params.campus);
   if (params.from_date) query.set('from_date', params.from_date);

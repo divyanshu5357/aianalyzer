@@ -122,58 +122,338 @@ class StateResolver:
 # ---------------------------------------------------------------------------
 
 class SourceResolver:
-    """Resolves raw source values using organization.source_master."""
+    """
+    Database-driven source resolution engine using organization.source_master.
+    Preserves canonical hierarchy:
+      Lead Type -> Main Source -> Source Cluster -> Report Source -> Source
+    Safeguards:
+      - NNEXT is strictly distinct from Nxt - OTHER and nNext.
+      - Never collapses distinct business concepts via case folding.
+      - Supports composite evidence (Source + SourceMedium + Origin).
+      - Handles blank/missing fields gracefully without discarding evidence.
+    """
 
-    def __init__(self, db: Session):
-        self._by_source: Dict[str, dict] = {}
+    def __init__(self, db: Optional[Session] = None):
+        self._exact_sources: Dict[str, dict] = {}
+        self._lower_sources: Dict[str, List[dict]] = {}
+        self._clusters: Dict[str, List[dict]] = {}
+        self._report_sources: Dict[str, List[dict]] = {}
+        self._main_sources: Dict[str, List[dict]] = {}
+        self._all_records: List[dict] = []
         self._load(db)
 
-    def _load(self, db: Session) -> None:
-        rows = db.execute(text(
-            "SELECT source, main_source, source_cluster, report_source "
-            "FROM organization.source_master"
-        )).mappings().all()
-        for r in rows:
-            key = (r["source"] or "").strip().lower()
-            if key:
-                self._by_source[key] = {
-                    "source": r["source"],
-                    "main_source": r["main_source"],
-                    "source_cluster": r["source_cluster"],
-                    "report_source": r["report_source"],
-                }
+    def _load(self, db: Optional[Session] = None) -> None:
+        rows = []
+        if db is not None:
+            try:
+                rows = db.execute(text(
+                    "SELECT source, main_source, source_cluster, report_source, lead_type "
+                    "FROM organization.source_master"
+                )).mappings().all()
+            except Exception as e:
+                logger.warning("Could not load from organization.source_master, falling back to seeds: %s", e)
+                rows = []
 
-    def resolve(self, raw_source: Optional[str]) -> DimensionResolution:
-        if not raw_source or not raw_source.strip():
+        if not rows:
+            try:
+                from app.database.seeds.dimension_seed_data import SOURCES
+                rows = SOURCES
+            except Exception as e:
+                logger.error("Could not load fallback SOURCES: %s", e)
+                rows = []
+
+        for r in rows:
+            entry = {
+                "source": r.get("source") or "",
+                "main_source": r.get("main_source") or "",
+                "source_cluster": r.get("source_cluster") or "",
+                "report_source": r.get("report_source") or "",
+                "lead_type": r.get("lead_type") or "",
+            }
+            self._all_records.append(entry)
+
+            src = entry["source"].strip()
+            if src:
+                self._exact_sources[src] = entry
+                self._lower_sources.setdefault(src.lower(), []).append(entry)
+
+            sc = entry["source_cluster"].strip().upper()
+            if sc:
+                self._clusters.setdefault(sc, []).append(entry)
+
+            rs = entry["report_source"].strip().lower()
+            if rs:
+                self._report_sources.setdefault(rs, []).append(entry)
+
+            ms = entry["main_source"].strip().lower()
+            if ms:
+                self._main_sources.setdefault(ms, []).append(entry)
+
+    def resolve(
+        self,
+        raw_source: Optional[str],
+        raw_source_medium: Optional[str] = None,
+        raw_origin: Optional[str] = None,
+    ) -> DimensionResolution:
+        raw_s = (raw_source or "").strip()
+        raw_sm = (raw_source_medium or "").strip()
+        raw_o = (raw_origin or "").strip()
+
+        base_extra = {
+            "raw_source": raw_s,
+            "raw_source_medium": raw_sm,
+            "raw_origin": raw_o,
+            "resolved_lead_type": None,
+            "resolved_main_source": None,
+            "resolved_source_cluster": None,
+            "resolved_report_source": None,
+            "resolved_source": None,
+            "confidence": "NONE",
+            "resolution_reason": "",
+        }
+
+        if not raw_s and not raw_sm and not raw_o:
+            extra = dict(base_extra)
+            extra["resolution_reason"] = "All source fields are empty"
             return DimensionResolution(
-                raw_value=raw_source or "",
+                raw_value="",
                 canonical_value=None,
                 resolution_method="EMPTY",
                 resolution_status="UNRESOLVED",
-                extra={},
+                extra=extra,
             )
 
-        normalized = raw_source.strip().lower()
-        if normalized in self._by_source:
-            entry = self._by_source[normalized]
+        def _make_res(
+            canonical: Optional[str],
+            method: str,
+            status: str,
+            lead_type: Optional[str],
+            main_source: Optional[str],
+            source_cluster: Optional[str],
+            report_source: Optional[str],
+            confidence: str,
+            reason: str,
+        ) -> DimensionResolution:
+            extra = dict(base_extra)
+            extra.update({
+                "resolved_lead_type": lead_type,
+                "resolved_main_source": main_source,
+                "resolved_source_cluster": source_cluster,
+                "resolved_report_source": report_source,
+                "resolved_source": canonical,
+                # Also keep legacy shorthand keys for backward compatibility
+                "lead_type": lead_type,
+                "main_source": main_source,
+                "source_cluster": source_cluster,
+                "report_source": report_source,
+                "confidence": confidence,
+                "resolution_reason": reason,
+            })
             return DimensionResolution(
-                raw_value=raw_source,
-                canonical_value=entry["source"],
-                resolution_method="EXACT_MATCH",
-                resolution_status="RESOLVED",
-                extra={
-                    "main_source": entry["main_source"],
-                    "source_cluster": entry["source_cluster"],
-                    "report_source": entry["report_source"],
-                },
+                raw_value=raw_s or raw_sm or raw_o,
+                canonical_value=canonical,
+                resolution_method=method,
+                resolution_status=status,
+                extra=extra,
             )
 
-        return DimensionResolution(
-            raw_value=raw_source,
-            canonical_value=None,
-            resolution_method="UNRESOLVED",
-            resolution_status="UNRESOLVED",
-            extra={},
+        # -------------------------------------------------------------
+        # 1. Composite Match (Source + SourceMedium)
+        # -------------------------------------------------------------
+        if raw_s and raw_sm:
+            norm_sm = raw_sm.upper()
+            alias_map = {
+                "GPMAX": "PMAX",
+                "GDG": "GDC",
+                "MWCON": "FB",
+            }
+            cluster_target = alias_map.get(norm_sm, norm_sm)
+
+            # Agency nNext handling with SourceMedium channel evidence
+            if raw_s.lower() == "nnext" and raw_s != "NNEXT":
+                cluster_val = "Nxt - OTHER"
+                rep_src = "Others"
+                sm_l = raw_sm.lower()
+                if "gsn" in sm_l:
+                    cluster_val = "GSN"
+                    rep_src = "Google"
+                elif "gdn" in sm_l:
+                    cluster_val = "GDN"
+                    rep_src = "Google"
+                elif "pmax" in sm_l:
+                    cluster_val = "PMAX"
+                    rep_src = "Google"
+                elif any(k in sm_l for k in ("fb", "mwcon", "mreach", "mvideo", "mlg")):
+                    cluster_val = "FB"
+                    rep_src = "Facebook"
+                elif "gdc" in sm_l or "gdg" in sm_l:
+                    cluster_val = "GDC"
+                    rep_src = "Google"
+                elif "yt" in sm_l:
+                    cluster_val = "YT"
+                    rep_src = "Youtube"
+
+                return _make_res(
+                    canonical="nNext",
+                    method="COMPOSITE",
+                    status="RESOLVED",
+                    lead_type="In House",
+                    main_source="nNext",
+                    source_cluster=cluster_val,
+                    report_source=rep_src,
+                    confidence="HIGH",
+                    reason=f"Resolved digital marketing agency nNext via SourceMedium channel '{raw_sm}'",
+                )
+
+            candidates = []
+            for s in self._all_records:
+                rs = s["report_source"].lower()
+                sc = s["source_cluster"].upper()
+                src = s["source"].lower()
+
+                src_match = (
+                    rs == raw_s.lower()
+                    or src == raw_s.lower()
+                    or (raw_s.lower() == "meta" and rs == "facebook")
+                )
+                cluster_match = (
+                    sc == cluster_target
+                    or cluster_target in sc
+                    or raw_sm.lower() in src
+                )
+                if src_match and cluster_match:
+                    candidates.append(s)
+
+            if candidates:
+                c = candidates[0]
+                cluster_val = cluster_target if cluster_target in ("GSN", "GDN", "PMAX", "FB", "GDC") else c["source_cluster"]
+                return _make_res(
+                    canonical=c["source"],
+                    method="COMPOSITE",
+                    status="RESOLVED",
+                    lead_type=c["lead_type"],
+                    main_source=c["main_source"],
+                    source_cluster=cluster_val,
+                    report_source=c["report_source"],
+                    confidence="HIGH",
+                    reason=f"Matched via Source ({raw_s}) + SourceMedium ({raw_sm})",
+                )
+
+        # -------------------------------------------------------------
+        # 2. Exact Case-Sensitive Match on Source
+        # -------------------------------------------------------------
+        if raw_s and raw_s in self._exact_sources:
+            entry = self._exact_sources[raw_s]
+            return _make_res(
+                canonical=entry["source"],
+                method="EXACT",
+                status="RESOLVED",
+                lead_type=entry["lead_type"],
+                main_source=entry["main_source"],
+                source_cluster=entry["source_cluster"],
+                report_source=entry["report_source"],
+                confidence="HIGH",
+                reason=f"Exact case-sensitive match on source '{raw_s}'",
+            )
+
+        # -------------------------------------------------------------
+        # 3. Agency Direct / Distinct NNEXT Guard (when SourceMedium is missing)
+        # -------------------------------------------------------------
+        if raw_s.lower() == "nnext" and raw_s != "NNEXT":
+            return _make_res(
+                canonical="nNext",
+                method="COMPOSITE",
+                status="RESOLVED",
+                lead_type="In House",
+                main_source="nNext",
+                source_cluster="Nxt - OTHER",
+                report_source="Others",
+                confidence="HIGH",
+                reason="Identified as digital marketing agency nNext (distinct from source NNEXT)",
+            )
+
+        # -------------------------------------------------------------
+        # 4. Exact Case-Insensitive Match on Source
+        # -------------------------------------------------------------
+        lower_s = raw_s.lower()
+        if lower_s in self._lower_sources:
+            entries = self._lower_sources[lower_s]
+            distinct_ms = {e["main_source"] for e in entries}
+            distinct_lt = {e["lead_type"] for e in entries}
+            distinct_sc = {e["source_cluster"] for e in entries}
+            if len(distinct_ms) > 1 or len(distinct_lt) > 1 or len(distinct_sc) > 1:
+                return _make_res(
+                    canonical=entries[0]["source"],
+                    method="AMBIGUOUS",
+                    status="AMBIGUOUS",
+                    lead_type=entries[0]["lead_type"],
+                    main_source=entries[0]["main_source"],
+                    source_cluster=entries[0]["source_cluster"],
+                    report_source=entries[0]["report_source"],
+                    confidence="LOW",
+                    reason=f"Multiple ambiguous dimension entries for '{raw_s}'",
+                )
+
+            entry = entries[0]
+            return _make_res(
+                canonical=entry["source"],
+                method="EXACT_CASE_INSENSITIVE",
+                status="RESOLVED",
+                lead_type=entry["lead_type"],
+                main_source=entry["main_source"],
+                source_cluster=entry["source_cluster"],
+                report_source=entry["report_source"],
+                confidence="HIGH",
+                reason=f"Case-insensitive match on source '{raw_s}'",
+            )
+
+        # -------------------------------------------------------------
+        # 5. Missing Source Fallback (SourceMedium only)
+        # -------------------------------------------------------------
+        if not raw_s and raw_sm:
+            norm_sm = raw_sm.upper()
+            if norm_sm in self._clusters:
+                c_entries = self._clusters[norm_sm]
+                distinct_ms = {e["main_source"] for e in c_entries}
+                distinct_lt = {e["lead_type"] for e in c_entries}
+                if len(distinct_ms) > 1 or len(distinct_lt) > 1:
+                    return _make_res(
+                        canonical=c_entries[0]["source"],
+                        method="AMBIGUOUS",
+                        status="AMBIGUOUS",
+                        lead_type=c_entries[0]["lead_type"],
+                        main_source=c_entries[0]["main_source"],
+                        source_cluster=c_entries[0]["source_cluster"],
+                        report_source=c_entries[0]["report_source"],
+                        confidence="LOW",
+                        reason=f"Ambiguous SourceMedium '{raw_sm}' maps to multiple dimension rows",
+                    )
+                c = c_entries[0]
+                return _make_res(
+                    canonical=c["source"],
+                    method="FALLBACK",
+                    status="RESOLVED",
+                    lead_type=c["lead_type"],
+                    main_source=c["main_source"],
+                    source_cluster=c["source_cluster"],
+                    report_source=c["report_source"],
+                    confidence="MEDIUM",
+                    reason=f"Resolved unambiguously from SourceMedium evidence '{raw_sm}'",
+                )
+
+        # -------------------------------------------------------------
+        # 6. UNMAPPED
+        # -------------------------------------------------------------
+        return _make_res(
+            canonical=None,
+            method="UNMAPPED",
+            status="UNRESOLVED",
+            lead_type=None,
+            main_source=None,
+            source_cluster=None,
+            report_source=None,
+            confidence="NONE",
+            reason=f"No master dimension entry matches source='{raw_s}', medium='{raw_sm}', origin='{raw_o}'",
         )
 
 

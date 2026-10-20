@@ -133,14 +133,14 @@ def test_program_hierarchy_source_cluster_expansion(db):
     assert len(rows) >= 1, "Expected at least 1 source cluster"
     for r in rows:
         assert r["level"] == 5
-        assert r["has_children"] is True
+        assert r["has_children"] is False, "Source cluster is leaf level in 3-level source hierarchy"
         assert r["program_code"] == "CS201"
 
 
-# ─── Level 6: Report Source ───────────────────────────────────────────────────
+# ─── Level 6: Report Source (Deprecated - 3-level source hierarchy leaf is Level 5) ───
 
 def test_program_hierarchy_report_source_expansion(db):
-    """Verify Level 6 lazy expansion returns report sources for CS201 + IN HOUSE + Direct + DIRECT."""
+    """Verify Level 6 lazy expansion returns empty because Source Cluster (Level 5) is the leaf."""
     result = get_program_hierarchy_children(
         db,
         level="report_source",
@@ -151,12 +151,7 @@ def test_program_hierarchy_report_source_expansion(db):
         academic_year=2026,
     )
     rows = result["rows"]
-
-    assert len(rows) >= 1, "Expected at least 1 report source"
-    for r in rows:
-        assert r["level"] == 6
-        assert r["has_children"] is False
-        assert r["program_code"] == "CS201"
+    assert len(rows) == 0, "Source Cluster is leaf; report_source returns 0 rows"
 
 
 

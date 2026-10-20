@@ -581,6 +581,18 @@ def ensure_all_database_tables(db: Session) -> None:
                     ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS program_code VARCHAR(100);
                     ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS created_month VARCHAR(7);
                     ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS admission_month VARCHAR(7);
+                    ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS fasttrack_cy BIGINT DEFAULT 0;
+                    ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS scholarship_cy BIGINT DEFAULT 0;
+                    ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS refunds_cy BIGINT DEFAULT 0;
+                    ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS fasttrack_py BIGINT DEFAULT 0;
+                    ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS scholarship_py BIGINT DEFAULT 0;
+                    ALTER TABLE analytics.dashboard_agg ADD COLUMN IF NOT EXISTS refunds_py BIGINT DEFAULT 0;
+                    ALTER TABLE analytics.uploaded_metrics ADD COLUMN IF NOT EXISTS cy_fasttrack NUMERIC DEFAULT 0;
+                    ALTER TABLE analytics.uploaded_metrics ADD COLUMN IF NOT EXISTS cy_scholarship NUMERIC DEFAULT 0;
+                    ALTER TABLE analytics.uploaded_metrics ADD COLUMN IF NOT EXISTS cy_refunds NUMERIC DEFAULT 0;
+                    ALTER TABLE analytics.uploaded_metrics ADD COLUMN IF NOT EXISTS py_fasttrack NUMERIC DEFAULT 0;
+                    ALTER TABLE analytics.uploaded_metrics ADD COLUMN IF NOT EXISTS py_scholarship NUMERIC DEFAULT 0;
+                    ALTER TABLE analytics.uploaded_metrics ADD COLUMN IF NOT EXISTS py_refunds NUMERIC DEFAULT 0;
                     ALTER TABLE analytics.dashboard_agg DROP CONSTRAINT IF EXISTS uq_dashboard_agg_dimensions;
                     """
                 )
@@ -865,6 +877,25 @@ def ensure_all_database_tables(db: Session) -> None:
                 );
                 CREATE INDEX IF NOT EXISTS idx_prog_refunds_lookup ON analytics.program_refunds_summary (academic_year, LOWER(campus_name), LOWER(program_code));
                 CREATE INDEX IF NOT EXISTS idx_dashboard_agg_prog_lookup ON analytics.dashboard_agg (academic_year, LOWER(campus_name), LOWER(program_code));
+                
+                CREATE TABLE IF NOT EXISTS analytics.program_source_agg (
+                    id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+                    academic_year INT NOT NULL,
+                    campus_name VARCHAR(100) NOT NULL,
+                    program_code VARCHAR(100) NOT NULL,
+                    program_group VARCHAR(100),
+                    lead_type VARCHAR(100) NOT NULL,
+                    main_source VARCHAR(100) NOT NULL,
+                    source_cluster VARCHAR(100) NOT NULL,
+                    created_month VARCHAR(7),
+                    admission_month VARCHAR(7),
+                    leads_count BIGINT DEFAULT 0,
+                    cucet_count BIGINT DEFAULT 0,
+                    admission_count BIGINT DEFAULT 0,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                );
+                CREATE INDEX IF NOT EXISTS idx_psa_lookup ON analytics.program_source_agg (academic_year, LOWER(campus_name), LOWER(program_code), lead_type, main_source, source_cluster);
+                CREATE INDEX IF NOT EXISTS idx_psa_group ON analytics.program_source_agg (academic_year, LOWER(campus_name), LOWER(program_group));
                 """
             )
         )

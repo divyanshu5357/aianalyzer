@@ -7,7 +7,8 @@ COLUMN_MAP = {
     "Owner": "owner",
     "Cluster": "cluster",
     "Lead Type": "lead_type",
-    "Source Cluster": "main_source",
+    "Main Source": "main_source",
+    "Source Cluster": "source_cluster",
     "MSSourcebi": "source",
     "Campus Name": "campus_name",
     "State Group": "state",
@@ -71,7 +72,8 @@ def normalize_dataset(
     col_owner = get_orig("owner", "Owner")
     col_cluster = get_orig("cluster", "Cluster")
     col_lead_type = get_orig("lead_type", "Lead Type")
-    col_main_source = get_orig("main_source", "Source Cluster")
+    col_main_source = get_orig("main_source", "Main Source")
+    col_source_cluster = get_orig("source_cluster", "Source Cluster")
     col_source = get_orig("source", "MSSourcebi")
     col_campus = get_orig("campus_name", "Campus Name")
     col_state = get_orig("state", "State Group")

@@ -268,7 +268,7 @@ export default function ProgramsPage() {
               <h1 className={`text-sm sm:text-base font-bold ${isDark ? 'text-white' : 'text-slate-900'}`}>Program Performance</h1>
             </div>
             <p className={`text-xs hidden sm:block ${isDark ? 'text-slate-400' : 'text-slate-500'}`}>
-              6-level drill-down: Program Group → Program → Lead Type → Main Source → Sources Cluster → Report Source. All metrics server-side.
+              Program Performance & Source Hierarchy. All metrics server-side.
             </p>
           </div>
 
@@ -332,26 +332,11 @@ export default function ProgramsPage() {
         isDark={isDark}
       />
 
-      {/* Legend - hidden on mobile */}
-      <div className={`hidden sm:flex px-6 py-2 gap-4 border-b shrink-0 flex-wrap ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
-        {[
-          { color: isDark ? 'bg-slate-300' : 'bg-slate-500', label: 'L1 Program Group' },
-          { color: 'bg-indigo-400', label: 'L2 Program' },
-          { color: 'bg-sky-400', label: 'L3 Lead Type' },
-          { color: 'bg-emerald-400', label: 'L4 Main Source' },
-          { color: 'bg-amber-400', label: 'L5 Sources Cluster' },
-          { color: 'bg-pink-400', label: 'L6 Report Source' },
-        ].map(({ color, label }) => (
-          <div key={label} className="flex items-center gap-1.5">
-            <div className={`w-2 h-2 rounded-full ${color}`} />
-            <span className={`text-[10px] ${isDark ? 'text-slate-300' : 'text-slate-700 font-medium'}`}>{label}</span>
-          </div>
-        ))}
-        <div className={`ml-auto text-[10px] hidden md:flex items-center gap-2 ${isDark ? 'text-slate-300' : 'text-slate-600 font-medium'}`}>
-          <span>▸ expand · ▾ collapse</span>
-          <span className="text-indigo-400 font-medium">· click any row for Insight</span>
-          <span>· click column ↑↓ to sort</span>
-        </div>
+      {/* Mini Helper Bar */}
+      <div className={`hidden sm:flex px-6 py-2 justify-end items-center gap-2 border-b shrink-0 text-[10px] ${isDark ? 'border-white/5 text-slate-300' : 'border-slate-100 text-slate-600 font-medium'}`}>
+        <span>▸ expand · ▾ collapse</span>
+        <span className="text-indigo-400 font-medium">· click any row for Insight</span>
+        <span>· click column ↑↓ to sort</span>
       </div>
       {/* Mobile hint */}
       <div className={`sm:hidden px-3 py-1.5 border-b shrink-0 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>

@@ -256,6 +256,24 @@ def resolve_year_column(
             col = get_metric_column_for_period(metric, "py")
             return (str(r["id"]), col, target_year, "py")
 
+    # 3. Match academic_year or academic_label on active datasets
+    ds_row = db.execute(
+        text("""
+            SELECT id, academic_year, academic_label
+            FROM system.datasets
+            WHERE (academic_year = :yr OR academic_label = :lbl)
+              AND is_analytics_enabled = TRUE
+              AND COALESCE(row_count, 0) > 0
+            ORDER BY is_period_active DESC, is_active DESC, created_at DESC
+            LIMIT 1
+        """),
+        {"yr": target_year, "lbl": str(target_year)},
+    ).mappings().first()
+
+    if ds_row:
+        col = get_metric_column_for_period(metric, "cy")
+        return (str(ds_row["id"]), col, target_year, "cy")
+
     # Fallback to active dataset if target_year matches active dataset's period metadata
     from app.database.repository import get_active_dataset_info
     active = get_active_dataset_info(db)

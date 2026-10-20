@@ -65,17 +65,18 @@ def get_program_children(
     source_cluster: Optional[str] = Query(None, description="Parent source cluster (GSN, PMAX, FB, etc.) for level='report_source'"),
     cluster: Optional[str] = Query(None, description="Alias for source_cluster"),
     report_source: Optional[str] = Query(None, description="Parent report source"),
+    node_id: Optional[str] = Query(None, description="Optional node id fallback"),
     sort_by: str = Query("cy_leads", description="Sort column"),
     sort_order: str = Query("desc", description="Sort direction (asc, desc)"),
     db: Session = Depends(get_db),
 ):
     """
-    Lazy hierarchical child loader (6-level drill-down):
+    Lazy hierarchical child loader (5-level drill-down):
     - Level 2 (program / branch): returns programs belonging to program_group
     - Level 3 (lead_type / source_category): returns lead types (IN HOUSE, OUT SOURCED, OTHERS) for program
-    - Level 4 (main_source / sub_source): returns main sources (nNext, Direct, Website, etc.) for program + lead_type
+    - Level 4 (main_source / sub_source): returns main sources (NNEXT, DIRECT, WEBSITE, etc.) for program + lead_type
     - Level 5 (source_cluster / cluster): returns source clusters (GSN, PMAX, FB, etc.) for program + lead_type + main_source
-    - Level 6 (report_source): returns report sources for program + lead_type + main_source + source_cluster
+    - Level 6 (report_source): returns empty (deprecated, Level 5 is leaf)
     """
     # Normalize level aliases
     norm_level = level.lower().strip()
@@ -100,6 +101,26 @@ def get_program_children(
     effective_lead_type = (lead_type or source_category or "").strip() or None
     effective_main_src = (main_source or sub_source or "").strip() or None
     effective_cluster = (source_cluster or cluster or "").strip() or None
+
+    # Fallback from node_id if present
+    if node_id:
+        nid = node_id.strip()
+        if nid.startswith("ms:"):
+            parts = nid.split(":")
+            if len(parts) >= 4:
+                effective_pcode = effective_pcode or parts[1].strip()
+                effective_lead_type = effective_lead_type or parts[2].strip()
+                effective_main_src = effective_main_src or ":".join(parts[3:]).strip()
+        elif nid.startswith("lt:"):
+            parts = nid.split(":")
+            if len(parts) >= 3:
+                effective_pcode = effective_pcode or parts[1].strip()
+                effective_lead_type = effective_lead_type or parts[2].strip()
+        elif nid.startswith("prog:"):
+            parts = nid.split(":")
+            if len(parts) >= 3:
+                program_group = program_group or parts[1].strip()
+                effective_pcode = effective_pcode or parts[2].strip()
 
     if norm_level == "program" and not program_group:
         raise HTTPException(

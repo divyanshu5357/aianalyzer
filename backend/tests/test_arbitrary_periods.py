@@ -28,12 +28,14 @@ class TestArbitraryPeriods(unittest.TestCase):
         cls.db = SessionLocal()
         cls.test_program = _discover_program_name(cls.db)
 
-        # Discover available period labels
+        # Discover available period labels with active analytics data
         rows = cls.db.execute(
             text("""
                 SELECT DISTINCT academic_label
                 FROM system.datasets
                 WHERE academic_label IS NOT NULL
+                  AND is_analytics_enabled = TRUE
+                  AND COALESCE(row_count, 0) > 0
                 ORDER BY academic_label DESC
             """)
         ).scalars().all()

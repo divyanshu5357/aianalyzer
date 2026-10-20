@@ -609,11 +609,13 @@ def get_program_hierarchy_children(
     ref_clauses = ["r.academic_year IN (:py_year, :cy_year)"]
     ref_params: Dict[str, Any] = {"cy_year": academic_year, "py_year": py_year}
 
+    psa_where_clauses = ["psa.academic_year IN (:py_year, :cy_year)"]
     if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
         where_clauses.append("LOWER(d.campus_name) = :campus")
         params["campus"] = campus.strip().lower()
         ref_clauses.append("LOWER(r.campus_name) = :campus")
         ref_params["campus"] = campus.strip().lower()
+        psa_where_clauses.append("LOWER(psa.campus_name) = :campus")
 
     if has_date_filter:
         from_m = from_date.strip()[:7]
@@ -635,6 +637,13 @@ def get_program_hierarchy_children(
         cy_adm_expr = "CASE WHEN d.academic_year = :cy_year AND d.admission_month >= :from_m AND d.admission_month <= :to_m THEN d.admission_cy ELSE 0 END"
         py_adm_expr = "CASE WHEN d.academic_year = :py_year AND d.admission_month >= :py_from_m AND d.admission_month <= :py_to_m THEN GREATEST(d.admission_cy, d.admission_py) ELSE 0 END"
 
+        psa_cy_lead_expr = "CASE WHEN psa.created_month >= :from_m AND psa.created_month <= :to_m THEN psa.leads_count ELSE 0 END"
+        psa_py_lead_expr = "CASE WHEN psa.created_month >= :py_from_m AND psa.created_month <= :py_to_m THEN psa.leads_count ELSE 0 END"
+        psa_cy_cucet_expr = "CASE WHEN psa.created_month >= :from_m AND psa.created_month <= :to_m THEN psa.cucet_count ELSE 0 END"
+        psa_py_cucet_expr = "CASE WHEN psa.created_month >= :py_from_m AND psa.created_month <= :py_to_m THEN psa.cucet_count ELSE 0 END"
+        psa_cy_adm_expr = "CASE WHEN psa.admission_month >= :from_m AND psa.admission_month <= :to_m THEN psa.admission_count ELSE 0 END"
+        psa_py_adm_expr = "CASE WHEN psa.admission_month >= :py_from_m AND psa.admission_month <= :py_to_m THEN psa.admission_count ELSE 0 END"
+
         ref_params["from_m"] = from_m
         ref_params["to_m"] = to_m
         ref_params["py_from_m"] = py_from_m
@@ -652,11 +661,19 @@ def get_program_hierarchy_children(
         cy_adm_expr = "CASE WHEN d.academic_year = :cy_year THEN d.admission_cy ELSE 0 END"
         py_adm_expr = "CASE WHEN d.academic_year = :py_year THEN GREATEST(d.admission_cy, d.admission_py) ELSE 0 END"
 
+        psa_cy_lead_expr = "psa.leads_count"
+        psa_py_lead_expr = "psa.leads_count"
+        psa_cy_cucet_expr = "psa.cucet_count"
+        psa_py_cucet_expr = "psa.cucet_count"
+        psa_cy_adm_expr = "psa.admission_count"
+        psa_py_adm_expr = "psa.admission_count"
+
         cy_ref_expr = "CASE WHEN r.academic_year = :cy_year THEN r.refund_count ELSE 0 END"
         py_ref_expr = "CASE WHEN r.academic_year = :py_year THEN r.refund_count ELSE 0 END"
 
     where_sql = " AND ".join(where_clauses)
     ref_where_sql = " AND ".join(ref_clauses)
+    psa_where_sql = " AND ".join(psa_where_clauses)
 
     rows = []
 
@@ -805,39 +822,38 @@ def get_program_hierarchy_children(
     # LEVEL 3: Lead Type (children of Level 2 program_code)
     # IN HOUSE, OUT SOURCED, OTHERS dynamically from source_master / raw
     # -------------------------------------------------------------
+    # -------------------------------------------------------------
+    # LEVEL 3: Lead Type (children of Level 2 program_code)
+    # IN HOUSE, OUT SOURCED, OTHERS dynamically from program_source_agg
+    # -------------------------------------------------------------
     elif norm_level == "lead_type":
         level_int = 3
         has_children = True
         params["p_code"] = eff_pcode.lower()
         ref_params["p_code"] = eff_pcode.lower()
 
-        lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
-        ref_lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS')"
-
         query_sql = f"""
             WITH agg_data AS (
                 SELECT 
-                    {lead_type_expr} as lead_type,
-                    SUM({cy_lead_expr}) as cy_leads,
-                    SUM({py_lead_expr}) as py_leads,
-                    SUM({cy_cucet_expr}) as cy_cucet,
-                    SUM({py_cucet_expr}) as py_cucet,
-                    SUM({cy_adm_expr}) as cy_adm,
-                    SUM({py_adm_expr}) as py_adm
-                FROM analytics.dashboard_agg d
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
-                WHERE {where_sql} AND LOWER(d.program_code) = :p_code
-                GROUP BY {lead_type_expr}
+                    psa.lead_type,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_lead_expr} ELSE 0 END) as cy_leads,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_lead_expr} ELSE 0 END) as py_leads,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_cucet_expr} ELSE 0 END) as cy_cucet,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_cucet_expr} ELSE 0 END) as py_cucet,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_adm_expr} ELSE 0 END) as cy_adm,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_adm_expr} ELSE 0 END) as py_adm
+                FROM analytics.program_source_agg psa
+                WHERE {psa_where_sql} AND LOWER(psa.program_code) = :p_code
+                GROUP BY psa.lead_type
             ),
             ref_data AS (
                 SELECT 
-                    {ref_lead_type_expr} as lead_type,
+                    COALESCE(NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS') as lead_type,
                     SUM({cy_ref_expr}) as cy_refunds,
                     SUM({py_ref_expr}) as py_refunds
                 FROM analytics.program_refunds_summary r
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(r.source)) = LOWER(TRIM(sm.source))
                 WHERE {ref_where_sql} AND LOWER(r.program_code) = :p_code
-                GROUP BY {ref_lead_type_expr}
+                GROUP BY 1
             )
             SELECT 
                 COALESCE(a.lead_type, r.lead_type) as lead_type,
@@ -858,28 +874,27 @@ def get_program_hierarchy_children(
 
         # Monthly trend for lead types
         trend_where = [
-            "d.academic_year = :cy_year",
-            "d.created_month IS NOT NULL",
-            "LOWER(d.program_code) = :p_code",
+            "psa.academic_year = :cy_year",
+            "psa.created_month IS NOT NULL",
+            "LOWER(psa.program_code) = :p_code",
         ]
         trend_params = {"cy_year": academic_year, "p_code": eff_pcode.lower()}
         if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
-            trend_where.append("LOWER(d.campus_name) = :campus")
+            trend_where.append("LOWER(psa.campus_name) = :campus")
             trend_params["campus"] = campus.strip().lower()
         if has_date_filter:
-            trend_where.append("d.created_month >= :from_m AND d.created_month <= :to_m")
+            trend_where.append("psa.created_month >= :from_m AND psa.created_month <= :to_m")
             trend_params["from_m"] = from_date.strip()[:7]
             trend_params["to_m"] = to_date.strip()[:7]
 
         cat_trend_sql = f"""
             SELECT 
-                {lead_type_expr} as lt,
-                d.created_month,
-                SUM(d.leads_cy) as leads
-            FROM analytics.dashboard_agg d
-            LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+                psa.lead_type as lt,
+                psa.created_month,
+                SUM(psa.leads_count) as leads
+            FROM analytics.program_source_agg psa
             WHERE {" AND ".join(trend_where)}
-            GROUP BY {lead_type_expr}, d.created_month
+            GROUP BY psa.lead_type, psa.created_month
             ORDER BY 1, 2
         """
         tr_rows = db.execute(text(cat_trend_sql), trend_params).fetchall()
@@ -932,9 +947,8 @@ def get_program_hierarchy_children(
             )
 
     # -------------------------------------------------------------
-    # -------------------------------------------------------------
     # LEVEL 4: Main Source (children of Level 3 program_code + lead_type)
-    # Direct, Website, Career_360, nNext, etc. dynamically from source_master
+    # NNEXT, DIRECT, WEBSITE, BROCHURE, etc. dynamically from program_source_agg
     # -------------------------------------------------------------
     elif norm_level == "main_source":
         level_int = 4
@@ -944,39 +958,32 @@ def get_program_hierarchy_children(
         ref_params["p_code"] = eff_pcode.lower()
         ref_params["eff_lt"] = eff_lead_type.upper()
 
-        lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
-        ref_lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS')"
-        main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'DIRECT')))"
-        ref_main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'DIRECT')))"
-
         query_sql = f"""
             WITH agg_data AS (
                 SELECT 
-                    {main_src_expr} as main_source,
-                    SUM({cy_lead_expr}) as cy_leads,
-                    SUM({py_lead_expr}) as py_leads,
-                    SUM({cy_cucet_expr}) as cy_cucet,
-                    SUM({py_cucet_expr}) as py_cucet,
-                    SUM({cy_adm_expr}) as cy_adm,
-                    SUM({py_adm_expr}) as py_adm
-                FROM analytics.dashboard_agg d
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
-                WHERE {where_sql} 
-                  AND LOWER(d.program_code) = :p_code
-                  AND {lead_type_expr} = :eff_lt
-                GROUP BY {main_src_expr}
+                    UPPER(TRIM(psa.main_source)) as main_source,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_lead_expr} ELSE 0 END) as cy_leads,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_lead_expr} ELSE 0 END) as py_leads,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_cucet_expr} ELSE 0 END) as cy_cucet,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_cucet_expr} ELSE 0 END) as py_cucet,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_adm_expr} ELSE 0 END) as cy_adm,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_adm_expr} ELSE 0 END) as py_adm
+                FROM analytics.program_source_agg psa
+                WHERE {psa_where_sql} 
+                  AND LOWER(psa.program_code) = :p_code
+                  AND UPPER(psa.lead_type) = :eff_lt
+                GROUP BY UPPER(TRIM(psa.main_source))
             ),
             ref_data AS (
                 SELECT 
-                    {ref_main_src_expr} as main_source,
+                    UPPER(TRIM(COALESCE(NULLIF(TRIM(r.source), ''), 'DIRECT'))) as main_source,
                     SUM({cy_ref_expr}) as cy_refunds,
                     SUM({py_ref_expr}) as py_refunds
                 FROM analytics.program_refunds_summary r
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(r.source)) = LOWER(TRIM(sm.source))
                 WHERE {ref_where_sql} 
                   AND LOWER(r.program_code) = :p_code
-                  AND {ref_lead_type_expr} = :eff_lt
-                GROUP BY {ref_main_src_expr}
+                  AND UPPER(COALESCE(NULLIF(TRIM(r.lead_type), ''), 'OTHERS')) = :eff_lt
+                GROUP BY 1
             )
             SELECT 
                 COALESCE(a.main_source, r.main_source) as main_source,
@@ -997,10 +1004,10 @@ def get_program_hierarchy_children(
 
         # Monthly trend for main sources
         trend_where = [
-            "d.academic_year = :cy_year",
-            "d.created_month IS NOT NULL",
-            "LOWER(d.program_code) = :p_code",
-            f"{lead_type_expr} = :eff_lt",
+            "psa.academic_year = :cy_year",
+            "psa.created_month IS NOT NULL",
+            "LOWER(psa.program_code) = :p_code",
+            "UPPER(psa.lead_type) = :eff_lt",
         ]
         trend_params = {
             "cy_year": academic_year,
@@ -1008,22 +1015,21 @@ def get_program_hierarchy_children(
             "eff_lt": eff_lead_type.upper(),
         }
         if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
-            trend_where.append("LOWER(d.campus_name) = :campus")
+            trend_where.append("LOWER(psa.campus_name) = :campus")
             trend_params["campus"] = campus.strip().lower()
         if has_date_filter:
-            trend_where.append("d.created_month >= :from_m AND d.created_month <= :to_m")
+            trend_where.append("psa.created_month >= :from_m AND psa.created_month <= :to_m")
             trend_params["from_m"] = from_date.strip()[:7]
             trend_params["to_m"] = to_date.strip()[:7]
 
         src_trend_sql = f"""
             SELECT 
-                {main_src_expr} as ms,
-                d.created_month,
-                SUM(d.leads_cy) as leads
-            FROM analytics.dashboard_agg d
-            LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+                UPPER(TRIM(psa.main_source)) as ms,
+                psa.created_month,
+                SUM(psa.leads_count) as leads
+            FROM analytics.program_source_agg psa
             WHERE {" AND ".join(trend_where)}
-            GROUP BY {main_src_expr}, d.created_month
+            GROUP BY UPPER(TRIM(psa.main_source)), psa.created_month
             ORDER BY 1, 2
         """
         tr_rows = db.execute(text(src_trend_sql), trend_params).fetchall()
@@ -1037,7 +1043,7 @@ def get_program_hierarchy_children(
         sorted_m = sorted(list(distinct_months))
 
         for r in res:
-            src_name = str(r[0])
+            src_name = str(r[0]).strip().upper()
             py_l = int(r[1] or 0)
             cy_l = int(r[2] or 0)
             py_c = int(r[3] or 0)
@@ -1079,58 +1085,57 @@ def get_program_hierarchy_children(
 
     # -------------------------------------------------------------
     # LEVEL 5: Source Cluster (children of Level 4 main_source)
-    # GSN, NXT - OTHER, PMAX, FB, GDC, GDN, etc. dynamically from source_master
+    # GSN, NXT - OTHER, PMAX, FB, GDC, GDN, etc. dynamically from program_source_agg
+    # LEAF LEVEL: has_children = False (Cannot expand further)
+    # ALL IN CAPS
     # -------------------------------------------------------------
     elif norm_level == "source_cluster":
         level_int = 5
-        has_children = True
+        has_children = False  # <--- Leaf level of the 3-level source hierarchy
         params["p_code"] = eff_pcode.lower()
         params["eff_lt"] = eff_lead_type.upper()
-        params["eff_ms"] = eff_main_src.upper()
+        params["eff_ms"] = eff_main_src.strip().upper()
         ref_params["p_code"] = eff_pcode.lower()
         ref_params["eff_lt"] = eff_lead_type.upper()
-        ref_params["eff_ms"] = eff_main_src.upper()
-
-        lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
-        ref_lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS')"
-        main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'DIRECT')))"
-        ref_main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'DIRECT')))"
-        source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
-        ref_source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
+        ref_params["eff_ms"] = eff_main_src.strip().upper()
 
         query_sql = f"""
-            WITH agg_data AS (
+            WITH dim_clusters AS (
+                SELECT DISTINCT UPPER(TRIM(source_cluster)) as source_cluster
+                FROM organization.source_master
+                WHERE UPPER(TRIM(lead_type)) = :eff_lt
+                  AND UPPER(TRIM(main_source)) = :eff_ms
+                  AND source_cluster IS NOT NULL AND TRIM(source_cluster) != ''
+            ),
+            agg_data AS (
                 SELECT 
-                    {source_cluster_expr} as source_cluster,
-                    SUM({cy_lead_expr}) as cy_leads,
-                    SUM({py_lead_expr}) as py_leads,
-                    SUM({cy_cucet_expr}) as cy_cucet,
-                    SUM({py_cucet_expr}) as py_cucet,
-                    SUM({cy_adm_expr}) as cy_adm,
-                    SUM({py_adm_expr}) as py_adm
-                FROM analytics.dashboard_agg d
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
-                WHERE {where_sql} 
-                  AND LOWER(d.program_code) = :p_code
-                  AND {lead_type_expr} = :eff_lt
-                  AND {main_src_expr} = :eff_ms
-                GROUP BY {source_cluster_expr}
+                    UPPER(TRIM(psa.source_cluster)) as source_cluster,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_lead_expr} ELSE 0 END) as cy_leads,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_lead_expr} ELSE 0 END) as py_leads,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_cucet_expr} ELSE 0 END) as cy_cucet,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_cucet_expr} ELSE 0 END) as py_cucet,
+                    SUM(CASE WHEN psa.academic_year = :cy_year THEN {psa_cy_adm_expr} ELSE 0 END) as cy_adm,
+                    SUM(CASE WHEN psa.academic_year = :py_year THEN {psa_py_adm_expr} ELSE 0 END) as py_adm
+                FROM analytics.program_source_agg psa
+                WHERE {psa_where_sql} 
+                  AND LOWER(psa.program_code) = :p_code
+                  AND UPPER(psa.lead_type) = :eff_lt
+                  AND UPPER(TRIM(psa.main_source)) = :eff_ms
+                GROUP BY UPPER(TRIM(psa.source_cluster))
             ),
             ref_data AS (
                 SELECT 
-                    {ref_source_cluster_expr} as source_cluster,
+                    COALESCE(NULLIF(UPPER(TRIM(r.source)), ''), 'OTHERS') as source_cluster,
                     SUM({cy_ref_expr}) as cy_refunds,
                     SUM({py_ref_expr}) as py_refunds
                 FROM analytics.program_refunds_summary r
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(r.source)) = LOWER(TRIM(sm.source))
                 WHERE {ref_where_sql} 
                   AND LOWER(r.program_code) = :p_code
-                  AND {ref_lead_type_expr} = :eff_lt
-                  AND {ref_main_src_expr} = :eff_ms
-                GROUP BY {ref_source_cluster_expr}
+                  AND UPPER(COALESCE(NULLIF(TRIM(r.lead_type), ''), 'OTHERS')) = :eff_lt
+                GROUP BY 1
             )
             SELECT 
-                COALESCE(a.source_cluster, r.source_cluster) as source_cluster,
+                COALESCE(d.source_cluster, a.source_cluster, r.source_cluster) as source_cluster,
                 COALESCE(a.py_leads, 0) as py_leads,
                 COALESCE(a.cy_leads, 0) as cy_leads,
                 COALESCE(a.py_cucet, 0) as py_cucet,
@@ -1139,44 +1144,44 @@ def get_program_hierarchy_children(
                 COALESCE(a.cy_adm, 0) as cy_adm,
                 COALESCE(r.py_refunds, 0) as py_refunds,
                 COALESCE(r.cy_refunds, 0) as cy_refunds
-            FROM agg_data a
-            FULL OUTER JOIN ref_data r ON a.source_cluster = r.source_cluster
-            WHERE COALESCE(a.cy_leads, 0) > 0 OR COALESCE(a.py_leads, 0) > 0
+            FROM dim_clusters d
+            FULL OUTER JOIN agg_data a ON d.source_cluster = a.source_cluster
+            FULL OUTER JOIN ref_data r ON COALESCE(d.source_cluster, a.source_cluster) = r.source_cluster
+            WHERE COALESCE(a.cy_leads, 0) > 0 OR COALESCE(a.py_leads, 0) > 0 OR d.source_cluster IS NOT NULL
         """
         all_params = {**params, **ref_params}
         res = db.execute(text(query_sql), all_params).fetchall()
 
         # Monthly trend for source clusters
         trend_where = [
-            "d.academic_year = :cy_year",
-            "d.created_month IS NOT NULL",
-            "LOWER(d.program_code) = :p_code",
-            f"{lead_type_expr} = :eff_lt",
-            f"{main_src_expr} = :eff_ms",
+            "psa.academic_year = :cy_year",
+            "psa.created_month IS NOT NULL",
+            "LOWER(psa.program_code) = :p_code",
+            "UPPER(psa.lead_type) = :eff_lt",
+            "UPPER(TRIM(psa.main_source)) = :eff_ms",
         ]
         trend_params = {
             "cy_year": academic_year,
             "p_code": eff_pcode.lower(),
             "eff_lt": eff_lead_type.upper(),
-            "eff_ms": eff_main_src.upper(),
+            "eff_ms": eff_main_src.strip().upper(),
         }
         if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
-            trend_where.append("LOWER(d.campus_name) = :campus")
+            trend_where.append("LOWER(psa.campus_name) = :campus")
             trend_params["campus"] = campus.strip().lower()
         if has_date_filter:
-            trend_where.append("d.created_month >= :from_m AND d.created_month <= :to_m")
+            trend_where.append("psa.created_month >= :from_m AND psa.created_month <= :to_m")
             trend_params["from_m"] = from_date.strip()[:7]
             trend_params["to_m"] = to_date.strip()[:7]
 
         sc_trend_sql = f"""
             SELECT 
-                {source_cluster_expr} as sc,
-                d.created_month,
-                SUM(d.leads_cy) as leads
-            FROM analytics.dashboard_agg d
-            LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+                UPPER(TRIM(psa.source_cluster)) as sc,
+                psa.created_month,
+                SUM(psa.leads_count) as leads
+            FROM analytics.program_source_agg psa
             WHERE {" AND ".join(trend_where)}
-            GROUP BY {source_cluster_expr}, d.created_month
+            GROUP BY UPPER(TRIM(psa.source_cluster)), psa.created_month
             ORDER BY 1, 2
         """
         tr_rows = db.execute(text(sc_trend_sql), trend_params).fetchall()
@@ -1190,7 +1195,7 @@ def get_program_hierarchy_children(
         sorted_m = sorted(list(distinct_months))
 
         for r in res:
-            sc_name = str(r[0])
+            sc_name = str(r[0]).strip().upper()
             py_l = int(r[1] or 0)
             cy_l = int(r[2] or 0)
             py_c = int(r[3] or 0)
@@ -1218,191 +1223,24 @@ def get_program_hierarchy_children(
                     lead_trend=row_trend,
                     node_id=node_id,
                     level=level_int,
-                    has_children=has_children,
+                    has_children=has_children,  # False
                     extra_props={
                         "program_group": program_group,
                         "program_code": eff_pcode,
                         "lead_type": eff_lead_type,
                         "source_category": eff_lead_type,
-                        "main_source": eff_main_src,
-                        "sub_source": eff_main_src,
+                        "main_source": eff_main_src.strip().upper(),
+                        "sub_source": eff_main_src.strip().upper(),
                         "source_cluster": sc_name,
                     },
                 )
             )
 
     # -------------------------------------------------------------
-    # LEVEL 6: Report Source (children of Level 5 source_cluster)
-    # Granular campaign/vendor source dynamically from source_master
+    # LEVEL 6: Report Source is deprecated (terminates as empty leaf)
     # -------------------------------------------------------------
     elif norm_level == "report_source":
-        level_int = 6
-        has_children = False
-        params["p_code"] = eff_pcode.lower()
-        params["eff_lt"] = eff_lead_type.upper()
-        params["eff_ms"] = eff_main_src.upper()
-        ref_params["p_code"] = eff_pcode.lower()
-        ref_params["eff_lt"] = eff_lead_type.upper()
-        ref_params["eff_ms"] = eff_main_src.upper()
-
-        lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(d.lead_type)), ''), 'OTHERS')"
-        ref_lead_type_expr = "COALESCE(NULLIF(UPPER(TRIM(sm.lead_type)), ''), NULLIF(UPPER(TRIM(r.lead_type)), ''), 'OTHERS')"
-        main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(d.source), ''), 'DIRECT')))"
-        ref_main_src_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.main_source), ''), NULLIF(TRIM(r.source), ''), 'DIRECT')))"
-        source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
-        ref_source_cluster_expr = "UPPER(TRIM(COALESCE(NULLIF(TRIM(sm.source_cluster), ''), 'OTHERS')))"
-        rep_src_expr = "COALESCE(NULLIF(TRIM(sm.report_source), ''), NULLIF(TRIM(d.source), ''), 'Direct')"
-        ref_rep_src_expr = "COALESCE(NULLIF(TRIM(sm.report_source), ''), NULLIF(TRIM(r.source), ''), 'Direct')"
-
-        cluster_filter = ""
-        ref_cluster_filter = ""
-        trend_cluster_filter = ""
-        if eff_cluster:
-            params["eff_sc"] = eff_cluster.upper()
-            ref_params["eff_sc"] = eff_cluster.upper()
-            cluster_filter = f"AND {source_cluster_expr} = :eff_sc"
-            ref_cluster_filter = f"AND {ref_source_cluster_expr} = :eff_sc"
-            trend_cluster_filter = f"AND {source_cluster_expr} = :eff_sc"
-
-        query_sql = f"""
-            WITH agg_data AS (
-                SELECT 
-                    {rep_src_expr} as report_source,
-                    SUM({cy_lead_expr}) as cy_leads,
-                    SUM({py_lead_expr}) as py_leads,
-                    SUM({cy_cucet_expr}) as cy_cucet,
-                    SUM({py_cucet_expr}) as py_cucet,
-                    SUM({cy_adm_expr}) as cy_adm,
-                    SUM({py_adm_expr}) as py_adm
-                FROM analytics.dashboard_agg d
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
-                WHERE {where_sql} 
-                  AND LOWER(d.program_code) = :p_code
-                  AND {lead_type_expr} = :eff_lt
-                  AND {main_src_expr} = :eff_ms
-                  {cluster_filter}
-                GROUP BY {rep_src_expr}
-            ),
-            ref_data AS (
-                SELECT 
-                    {ref_rep_src_expr} as report_source,
-                    SUM({cy_ref_expr}) as cy_refunds,
-                    SUM({py_ref_expr}) as py_refunds
-                FROM analytics.program_refunds_summary r
-                LEFT JOIN organization.source_master sm ON LOWER(TRIM(r.source)) = LOWER(TRIM(sm.source))
-                WHERE {ref_where_sql} 
-                  AND LOWER(r.program_code) = :p_code
-                  AND {ref_lead_type_expr} = :eff_lt
-                  AND {ref_main_src_expr} = :eff_ms
-                  {ref_cluster_filter}
-                GROUP BY {ref_rep_src_expr}
-            )
-            SELECT 
-                COALESCE(a.report_source, r.report_source) as report_source,
-                COALESCE(a.py_leads, 0) as py_leads,
-                COALESCE(a.cy_leads, 0) as cy_leads,
-                COALESCE(a.py_cucet, 0) as py_cucet,
-                COALESCE(a.cy_cucet, 0) as cy_cucet,
-                COALESCE(a.py_adm, 0) as py_adm,
-                COALESCE(a.cy_adm, 0) as cy_adm,
-                COALESCE(r.py_refunds, 0) as py_refunds,
-                COALESCE(r.cy_refunds, 0) as cy_refunds
-            FROM agg_data a
-            FULL OUTER JOIN ref_data r ON a.report_source = r.report_source
-            WHERE COALESCE(a.cy_leads, 0) > 0 OR COALESCE(a.py_leads, 0) > 0
-        """
-        all_params = {**params, **ref_params}
-        res = db.execute(text(query_sql), all_params).fetchall()
-
-        # Monthly trend for report sources
-        trend_where = [
-            "d.academic_year = :cy_year",
-            "d.created_month IS NOT NULL",
-            "LOWER(d.program_code) = :p_code",
-            f"{lead_type_expr} = :eff_lt",
-            f"{main_src_expr} = :eff_ms",
-        ]
-        if trend_cluster_filter:
-            trend_where.append(f"{source_cluster_expr} = :eff_sc")
-        trend_params = {
-            "cy_year": academic_year,
-            "p_code": eff_pcode.lower(),
-            "eff_lt": eff_lead_type.upper(),
-            "eff_ms": eff_main_src.upper(),
-        }
-        if eff_cluster:
-            trend_params["eff_sc"] = eff_cluster.upper()
-        if campus and campus.strip() and campus.strip().lower() not in ("all", "all campuses"):
-            trend_where.append("LOWER(d.campus_name) = :campus")
-            trend_params["campus"] = campus.strip().lower()
-        if has_date_filter:
-            trend_where.append("d.created_month >= :from_m AND d.created_month <= :to_m")
-            trend_params["from_m"] = from_date.strip()[:7]
-            trend_params["to_m"] = to_date.strip()[:7]
-
-        rep_trend_sql = f"""
-            SELECT 
-                {rep_src_expr} as rs,
-                d.created_month,
-                SUM(d.leads_cy) as leads
-            FROM analytics.dashboard_agg d
-            LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
-            WHERE {" AND ".join(trend_where)}
-            GROUP BY {rep_src_expr}, d.created_month
-            ORDER BY 1, 2
-        """
-        tr_rows = db.execute(text(rep_trend_sql), trend_params).fetchall()
-        rep_trends: Dict[str, Dict[str, int]] = {}
-        distinct_months = set()
-        for tr in tr_rows:
-            rs_name = tr[0]
-            m_key = tr[1]
-            rep_trends.setdefault(rs_name, {})[m_key] = int(tr[2] or 0)
-            distinct_months.add(m_key)
-        sorted_m = sorted(list(distinct_months))
-
-        for r in res:
-            rs_name = str(r[0])
-            py_l = int(r[1] or 0)
-            cy_l = int(r[2] or 0)
-            py_c = int(r[3] or 0)
-            cy_c = int(r[4] or 0)
-            py_a = int(r[5] or 0)
-            cy_a = int(r[6] or 0)
-            py_r = int(r[7] or 0)
-            cy_r = int(r[8] or 0)
-
-            node_id = f"rs:{eff_pcode}:{eff_lead_type}:{eff_main_src}:{eff_cluster or 'all'}:{rs_name}"
-            r_dict = rep_trends.get(rs_name, {})
-            row_trend = [r_dict.get(m, 0) for m in sorted_m]
-
-            rows.append(
-                _calculate_row_metrics(
-                    name=rs_name,
-                    py_leads=py_l,
-                    cy_leads=cy_l,
-                    py_cucet=py_c,
-                    cy_cucet=cy_c,
-                    py_adm=py_a,
-                    cy_adm=cy_a,
-                    py_refunds=py_r,
-                    cy_refunds=cy_r,
-                    lead_trend=row_trend,
-                    node_id=node_id,
-                    level=level_int,
-                    has_children=has_children,
-                    extra_props={
-                        "program_group": program_group,
-                        "program_code": eff_pcode,
-                        "lead_type": eff_lead_type,
-                        "source_category": eff_lead_type,
-                        "main_source": eff_main_src,
-                        "sub_source": eff_main_src,
-                        "source_cluster": eff_cluster,
-                        "report_source": rs_name,
-                    },
-                )
-            )
+        rows = []
 
     # Sort children
     sort_key = VALID_SORT_FIELDS.get(sort_by.lower(), "cy_leads")
@@ -1527,7 +1365,7 @@ def get_program_insights(
             SUM({cy_adm_expr}) as cy_adm,
             SUM({py_adm_expr}) as py_adm
         FROM analytics.dashboard_agg d
-        LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+        LEFT JOIN organization.source_master sm ON ((d.source = 'NNEXT' AND sm.source = 'NNEXT') OR (LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source)) AND sm.source != 'NNEXT'))
         WHERE {where_sql}
         GROUP BY 1, 2, 3
     """
@@ -1903,7 +1741,7 @@ def get_program_investigation_node(
             SUM({cy_adm_expr}) as cy_adm,
             SUM({py_adm_expr}) as py_adm
         FROM analytics.dashboard_agg d
-        LEFT JOIN organization.source_master sm ON LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source))
+        LEFT JOIN organization.source_master sm ON ((d.source = 'NNEXT' AND sm.source = 'NNEXT') OR (LOWER(TRIM(d.source)) = LOWER(TRIM(sm.source)) AND sm.source != 'NNEXT'))
         WHERE {where_sql}
         GROUP BY 1, 2, 3, 4, 5, 6
     """

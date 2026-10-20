@@ -110,8 +110,16 @@ def get_dashboard_filter_options(
     )).fetchall()
     avail_years = [str(r[0]) for r in years_rows if r[0]]
 
-    # 3. Canonical Lead Types (constant, instantaneous < 0.1ms)
-    avail_lead_types = ["IN HOUSE", "OUT SOURCED", "OTHERS"]
+    # 3. Dynamic Lead Types from organization.source_master (auto-discovers future categories)
+    try:
+        lt_rows = db.execute(text(
+            "SELECT DISTINCT UPPER(TRIM(lead_type)) FROM organization.source_master WHERE lead_type IS NOT NULL AND TRIM(lead_type) != '' ORDER BY 1"
+        )).fetchall()
+        avail_lead_types = [str(r[0]) for r in lt_rows if r[0]]
+        if not avail_lead_types:
+            avail_lead_types = ["IN HOUSE", "OUT SOURCED", "OTHERS"]
+    except Exception:
+        avail_lead_types = ["IN HOUSE", "OUT SOURCED", "OTHERS"]
 
     # 4. Scope filters for states, sources, programs
     where_parts = []

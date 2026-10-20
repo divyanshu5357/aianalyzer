@@ -1,79 +1,56 @@
 """
 Lead Type Resolver Engine
 
-Maps raw/canonical lead sources into high-level business categories:
-- IN HOUSE: Direct, Website, Organic, Quick Add Form, Walk-In, Chatbot, Inbound, Search, SEO, Google, etc.
-- OUT SOURCED: Twigz, Career_360, Shiksha, CollegeDekho, Agencies, Paid Leads, Vendor, etc.
-- OTHERS: Remaining mapped sources.
+Dynamically resolves lead sources into canonical lead type categories
+using organization.source_master as the authoritative source.
+Eliminates hardcoded keyword sets.
 """
 
-from typing import Optional
+from typing import Optional, Set
+from sqlalchemy.orm import Session
 
-IN_HOUSE_KEYWORDS = {
-    "direct",
-    "website",
-    "organic",
-    "quick add form",
-    "walk-in",
-    "walkin",
-    "chatbot",
-    "chat bot",
-    "landing page",
-    "social media",
-    "referral",
-    "call center",
-    "inbound",
-    "internal",
-    "in-house",
-    "inhouse",
-    "search",
-    "seo",
-    "google",
-    "facebook",
-    "instagram",
-    "youtube",
-    "linkedin",
-    "whatsapp",
-    "self",
-}
+# Deprecated compatibility sets (kept empty/for interface compatibility)
+IN_HOUSE_KEYWORDS: Set[str] = set()
+OUT_SOURCED_KEYWORDS: Set[str] = set()
 
-OUT_SOURCED_KEYWORDS = {
-    "twigz",
-    "career_360",
-    "career360",
-    "shiksha",
-    "collegedekho",
-    "college dekho",
-    "agencies",
-    "agency",
-    "paid leads",
-    "outsource",
-    "outsourced",
-    "vendor",
-    "external partner",
-    "third party",
-    "3rd party",
-    "lead provider",
-}
+_SOURCE_LEAD_TYPE_CACHE: dict[str, str] = {}
+_RESOLVER_INSTANCE = None
 
 
-def resolve_lead_type(source: Optional[str]) -> str:
+def _get_resolver(db: Optional[Session] = None):
+    global _RESOLVER_INSTANCE
+    if _RESOLVER_INSTANCE is None or db is not None:
+        from app.normalization.dimension_resolver import SourceResolver
+        _RESOLVER_INSTANCE = SourceResolver(db)
+    return _RESOLVER_INSTANCE
+
+
+def resolve_lead_type(source: Optional[str], db: Optional[Session] = None) -> str:
     """
-    Resolve lead source into canonical lead type category: IN HOUSE, OUT SOURCED, or OTHERS.
+    Resolve lead source into canonical lead type category dynamically.
+    Uses organization.source_master via SourceResolver.
+    Returns uppercase canonical category: 'IN HOUSE', 'OUT SOURCED', or 'OTHERS'.
     """
     if not source or not isinstance(source, str):
         return "OTHERS"
 
-    cleaned = source.strip().lower()
+    cleaned = source.strip()
     if not cleaned:
         return "OTHERS"
 
-    for kw in OUT_SOURCED_KEYWORDS:
-        if kw in cleaned:
-            return "OUT SOURCED"
+    lower_key = cleaned.lower()
+    if lower_key in _SOURCE_LEAD_TYPE_CACHE:
+        return _SOURCE_LEAD_TYPE_CACHE[lower_key]
 
-    for kw in IN_HOUSE_KEYWORDS:
-        if kw in cleaned:
-            return "IN HOUSE"
+    resolver = _get_resolver(db)
+    res = resolver.resolve(cleaned)
+    lt = res.extra.get("lead_type")
+    if lt and lt.strip():
+        val = lt.strip().upper()
+        _SOURCE_LEAD_TYPE_CACHE[lower_key] = val
+        return val
 
+    # If unmapped, default to OTHERS
+    _SOURCE_LEAD_TYPE_CACHE[lower_key] = "OTHERS"
     return "OTHERS"
+

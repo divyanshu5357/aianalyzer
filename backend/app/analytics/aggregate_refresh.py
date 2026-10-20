@@ -14,7 +14,6 @@ from typing import Optional
 from sqlalchemy import text
 from sqlalchemy.orm import Session
 from app.normalization.state_resolver import STATE_LOOKUP, FOREIGN_LOCATIONS
-from app.normalization.lead_type_resolver import IN_HOUSE_KEYWORDS, OUT_SOURCED_KEYWORDS
 
 logger = logging.getLogger(__name__)
 
@@ -61,18 +60,57 @@ def _build_sql_state_case(db: Optional[Session] = None) -> str:
     return f"CASE {' '.join(branches)} WHEN state IS NOT NULL AND TRIM(state) != '' AND TRIM(state) != 'None' THEN TRIM(state) ELSE 'UNMAPPED_STATE' END"
 
 
-def _build_sql_lead_type_case() -> str:
-    """Build PostgreSQL CASE statement for lead type resolution on source."""
-    outsourced_conds = " OR ".join(f"LOWER(COALESCE(source, '')) LIKE '%{kw}%'" for kw in OUT_SOURCED_KEYWORDS)
-    inhouse_conds = " OR ".join(f"LOWER(COALESCE(source, '')) LIKE '%{kw}%'" for kw in IN_HOUSE_KEYWORDS)
+def _build_sql_lead_type_case(db: Optional[Session] = None) -> str:
+    """Build PostgreSQL CASE statement for lead type resolution dynamically from organization.source_master."""
+    in_house_sources = set()
+    out_sourced_sources = set()
+    other_sources = set()
 
-    return f"""
-        CASE
-            WHEN {outsourced_conds} THEN 'OUT SOURCED'
-            WHEN {inhouse_conds} THEN 'IN HOUSE'
-            ELSE 'OTHERS'
-        END
-    """
+    rows = []
+    if db is not None:
+        try:
+            rows = db.execute(text(
+                "SELECT source, lead_type FROM organization.source_master WHERE source IS NOT NULL AND lead_type IS NOT NULL"
+            )).fetchall()
+        except Exception as e:
+            logger.warning("Dynamic source_master load notice: %s", e)
+            rows = []
+
+    if not rows:
+        try:
+            from app.database.seeds.dimension_seed_data import SOURCES
+            rows = [(s.get("source"), s.get("lead_type")) for s in SOURCES]
+        except Exception as e:
+            logger.error("Failed to load fallback SOURCES: %s", e)
+            rows = []
+
+    for r in rows:
+        src = str(r[0] or "").strip().lower()
+        lt = str(r[1] or "").strip().upper()
+        if not src:
+            continue
+        if lt == "IN HOUSE":
+            in_house_sources.add(src)
+        elif lt == "OUT SOURCED":
+            out_sourced_sources.add(src)
+        else:
+            other_sources.add(src)
+
+    # Agency nNext is In House
+    in_house_sources.add("nnext")
+
+    branches = []
+    if in_house_sources:
+        in_house_str = ", ".join("'" + s.replace("'", "''") + "'" for s in sorted(in_house_sources))
+        branches.append(f"WHEN LOWER(TRIM(COALESCE(source, ''))) IN ({in_house_str}) THEN 'IN HOUSE'")
+    if out_sourced_sources:
+        out_sourced_str = ", ".join("'" + s.replace("'", "''") + "'" for s in sorted(out_sourced_sources))
+        branches.append(f"WHEN LOWER(TRIM(COALESCE(source, ''))) IN ({out_sourced_str}) THEN 'OUT SOURCED'")
+    if other_sources:
+        other_str = ", ".join("'" + s.replace("'", "''") + "'" for s in sorted(other_sources))
+        branches.append(f"WHEN LOWER(TRIM(COALESCE(source, ''))) IN ({other_str}) THEN 'OTHERS'")
+
+    return f"CASE {' '.join(branches)} ELSE 'OTHERS' END"
 
 
 def _build_insert_sql(dataset_filter: str = "", db: Optional[Session] = None) -> str:
@@ -84,7 +122,7 @@ def _build_insert_sql(dataset_filter: str = "", db: Optional[Session] = None) ->
         db: Optional database session to dynamically load master state mappings
     """
     state_case_expr = _build_sql_state_case(db=db)
-    lead_type_case_expr = _build_sql_lead_type_case()
+    lead_type_case_expr = _build_sql_lead_type_case(db=db)
 
     return f"""
         WITH raw_agg AS (

@@ -538,10 +538,19 @@ export default function ProgramReportTable({
       };
     }
     if (row.level === 3) {
-      const pCode = row.program_code || row.program;
-      const lt = row.lead_type || row.source_category || row.program;
+      let pCode = row.program_code;
+      let lt = row.lead_type || row.source_category || row.program;
+      if (row.id && row.id.startsWith('lt:')) {
+        const parts = row.id.split(':');
+        if (parts.length >= 3) {
+          pCode = pCode || parts[1];
+          lt = lt || parts[2];
+        }
+      }
+      pCode = pCode || row.program;
       return {
         level: 'main_source',
+        node_id: row.id,
         program_code: pCode,
         program: pCode,
         lead_type: lt,
@@ -556,11 +565,21 @@ export default function ProgramReportTable({
       };
     }
     if (row.level === 4) {
-      const pCode = row.program_code || row.program;
-      const lt = row.lead_type || row.source_category;
-      const ms = row.main_source || row.sub_source || row.program;
+      let pCode = row.program_code;
+      let lt = row.lead_type || row.source_category;
+      let ms = row.main_source || row.sub_source || row.program;
+      if (row.id && row.id.startsWith('ms:')) {
+        const parts = row.id.split(':');
+        if (parts.length >= 4) {
+          pCode = pCode || parts[1];
+          lt = lt || parts[2];
+          ms = ms || parts.slice(3).join(':');
+        }
+      }
+      pCode = pCode || row.program;
       return {
         level: 'source_cluster',
+        node_id: row.id,
         program_code: pCode,
         program: pCode,
         lead_type: lt,
@@ -576,29 +595,7 @@ export default function ProgramReportTable({
         sort_order: filters.sort_order,
       };
     }
-    if (row.level === 5) {
-      const pCode = row.program_code || row.program;
-      const lt = row.lead_type || row.source_category;
-      const ms = row.main_source || row.sub_source;
-      const sc = row.source_cluster || row.program;
-      return {
-        level: 'report_source',
-        program_code: pCode,
-        program: pCode,
-        lead_type: lt,
-        source_category: lt,
-        main_source: ms,
-        sub_source: ms,
-        source_cluster: sc,
-        program_group: row.program_group,
-        academic_year: filters.academic_year,
-        campus: filters.campus,
-        from_date: filters.from_date,
-        to_date: filters.to_date,
-        sort_by: filters.sort_by,
-        sort_order: filters.sort_order,
-      };
-    }
+    // Level 5 (Source Cluster) is the leaf level - exactly 3 source levels under program (Lead Type -> Main Source -> Source Cluster)
     return null;
   }
 
@@ -800,7 +797,7 @@ export default function ProgramReportTable({
               style={{ color: getLevelTextColor(row.level) }}
               title={row.program}
             >
-              {row.program}
+              {row.level >= 3 ? row.program.toUpperCase() : row.program}
             </span>
           </div>
         </td>

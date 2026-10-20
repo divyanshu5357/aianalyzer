@@ -732,6 +732,7 @@ export interface ProgramReportParams {
 
 export interface ProgramHierarchyParams {
   level: 'program' | 'lead_type' | 'main_source' | 'source_cluster' | 'report_source' | 'branch' | 'source_category' | 'sub_source' | 'cluster';
+  node_id?: string;
   academic_year?: number;
   campus?: string;
   from_date?: string;
